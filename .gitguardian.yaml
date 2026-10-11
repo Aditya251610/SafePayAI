@@ -1,0 +1,11 @@
+version: 2
+
+secret:
+  ignored-matches:
+    # Synthetic, hardcoded test-only DB role passwords used purely to connect to a
+    # throwaway local/CI Postgres container as the service's own runtime role (for
+    # grant/trigger enforcement tests) - not real credentials, no production system.
+    - name: mandate test fixture DB password
+      match: svc_mandate_test_pw
+  ignored-paths:
+    - "**/tests/**"
