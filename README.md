@@ -9,12 +9,10 @@ A deterministic policy engine — not the AI — decides refunds; AI only classi
 fails closed to human review on any uncertainty. Every money-moving action is logged in a
 hash-chained audit trail.
 
-**Full product/technical documentation (source of truth): [`.claude/prd/README.md`](.claude/prd/README.md).**
-
 ## Status
 
-Wave 4 (repo scaffolding: service skeletons, OpenAPI contracts, CI) — in progress. No business
-logic is implemented yet; that is Wave 5 per [`.claude/prd/sprint-plan.md`](.claude/prd/sprint-plan.md).
+Wave 4 (repo scaffolding: service skeletons, OpenAPI contracts, CI) complete. No business logic
+is implemented yet; that's Wave 5, in progress (backend services first, frontend after).
 
 ## Honesty / limitations (read this before judging)
 
@@ -33,16 +31,28 @@ cp .env.example .env   # fill in sandbox PayPal credentials; never commit this f
 docker compose up
 ```
 
-See [`.claude/prd/architecture/deployment-zero-cost.md`](.claude/prd/architecture/deployment-zero-cost.md)
-for the hosted-demo deployment profile and [`.claude/prd/architecture/ci-cd-and-repo-workflow.md`](.claude/prd/architecture/ci-cd-and-repo-workflow.md)
-for CI/CD and release process.
+Each service also runs standalone: `cd services/<slug> && uv run uvicorn app.main:app --reload`.
 
 ## Architecture
 
-11 services (api-gateway, mandate, catalog, shopping-agent, checkout, paypal-adapter, tracking,
-resolution, triage-ai, audit, web) in one monorepo — see
-[`.claude/prd/architecture/service-map.md`](.claude/prd/architecture/service-map.md) and
-[`.claude/prd/architecture/overview.md`](.claude/prd/architecture/overview.md).
+11 services in one monorepo: `api-gateway`, `mandate`, `catalog`, `shopping-agent`, `checkout`,
+`paypal-adapter`, `tracking`, `resolution`, `triage-ai`, `audit`, `web`. Each service owns its own
+Postgres schema and DB role; services never share database access directly. OpenAPI contracts for
+every backend service live in [`contracts/openapi/`](contracts/openapi/). Shared, business-logic-free
+infra (JWT verify/mint, the money-ticket HMAC helper, DB grants, HTTP client defaults, the LLM
+gateway interface) lives in [`libs/common`](libs/common).
+
+- `services/api-gateway` — auth/session edge, issues internal service JWTs
+- `services/mandate` — buyer-signed spending mandate (cap, merchant allowlist, expiry, refund terms)
+- `services/catalog` — seeded demo product catalog (read-only at runtime)
+- `services/shopping-agent` — proposes carts under a mandate; no PayPal credentials, no payment execution
+- `services/checkout` — cart → PayPal order → capture orchestration
+- `services/paypal-adapter` — the only service holding PayPal sandbox credentials; REST + a small MCP surface
+- `services/tracking` — simulated carrier/delivery state machine (PayPal tracking can't represent this; see adapter notes)
+- `services/resolution` — deterministic refund/resolution policy engine and case state machine
+- `services/triage-ai` — AI classification/drafting only; never decides money, fails closed to human review
+- `services/audit` — append-only, hash-chained audit log
+- `services/web` — Next.js frontend (built after the backend, per the current build order)
 
 ## License
 
