@@ -53,7 +53,9 @@ class Settings(BaseSettings):
     # NOTE: not in deployment.md's documented env table (only PS_SHOPPINGAGENT_DB_URL is listed
     # there); added here because Alembic migrations need a direct (non-pooled) connection per
     # data-architecture.md section 8. Flagged in the scaffolding handoff report, not silently added.
-    migration_db_url: str = "postgresql+asyncpg://mig_agent:changeme@localhost:5432/artiq"
+    migration_db_url: str = (
+        "postgresql+asyncpg://mig_agent:changeme@localhost:5432/artiq"
+    )
 
     # Peers (Profile B: in-process; Profile A: HTTP base URLs)
     catalog_base_url: str = "http://localhost:8000"

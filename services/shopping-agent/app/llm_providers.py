@@ -20,7 +20,9 @@ class GeminiProvider:
         self._api_key = api_key
         self._model = model
 
-    async def call(self, prompt: str, json_schema: dict[str, Any], timeout_s: float) -> LLMCallResult:
+    async def call(
+        self, prompt: str, json_schema: dict[str, Any], timeout_s: float
+    ) -> LLMCallResult:
         raise NotImplementedError("Gemini provider call not implemented until Wave 5")
 
 
@@ -31,7 +33,9 @@ class GroqProvider:
         self._api_key = api_key
         self._model = model
 
-    async def call(self, prompt: str, json_schema: dict[str, Any], timeout_s: float) -> LLMCallResult:
+    async def call(
+        self, prompt: str, json_schema: dict[str, Any], timeout_s: float
+    ) -> LLMCallResult:
         raise NotImplementedError("Groq provider call not implemented until Wave 5")
 
 
@@ -42,4 +46,4 @@ def build_gateway(settings: Settings) -> LLMGateway:
     return LLMGateway(primary=primary, fallback=fallback)
 
 
-__all__ = ["GeminiProvider", "GroqProvider", "build_gateway", "LLMFailClosedError"]
+__all__ = ["GeminiProvider", "GroqProvider", "LLMFailClosedError", "build_gateway"]

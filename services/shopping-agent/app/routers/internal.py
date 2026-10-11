@@ -14,7 +14,9 @@ router = APIRouter(prefix="/internal", tags=["internal"])
 
 
 @router.post("/outbox/flush", status_code=501)
-async def flush_outbox(_principal: ServicePrincipal = Depends(require_service_jwt)) -> JSONResponse:
+async def flush_outbox(
+    _principal: ServicePrincipal = Depends(require_service_jwt),
+) -> JSONResponse:
     return JSONResponse(
         status_code=501,
         content={

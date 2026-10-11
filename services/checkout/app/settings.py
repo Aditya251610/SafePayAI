@@ -28,7 +28,9 @@ class Settings(BaseSettings):
     db_url: str = "postgresql+asyncpg://svc_checkout:changeme@localhost:5432/artiq"
     # Not explicitly listed in deployment.md's env table (only PS_CHECKOUT_DATABASE_URL is);
     # added for Alembic's direct connection per data-architecture.md section 8. Flagged.
-    migration_db_url: str = "postgresql+asyncpg://mig_checkout:changeme@localhost:5432/artiq"
+    migration_db_url: str = (
+        "postgresql+asyncpg://mig_checkout:changeme@localhost:5432/artiq"
+    )
     db_pool_size: int = 2
 
     internal_jwks_url: str = "http://localhost:8080/.well-known/jwks.json"

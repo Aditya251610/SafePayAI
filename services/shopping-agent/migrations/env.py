@@ -27,9 +27,9 @@ target_metadata = None  # raw DDL via op.*, no ORM metadata in Wave 4
 
 
 def include_object(object, name, type_, reflected, compare_to):
-    if type_ == "table" and getattr(object, "schema", None) not in (None, SCHEMA):
-        return False
-    return True
+    return not (
+        type_ == "table" and getattr(object, "schema", None) not in (None, SCHEMA)
+    )
 
 
 def run_migrations_offline() -> None:
