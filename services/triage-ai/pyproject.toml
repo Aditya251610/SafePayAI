@@ -1,0 +1,26 @@
+[project]
+name = "ps-triage-ai"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic-settings>=2.6",
+  "sqlalchemy[asyncio]>=2.0",
+  "asyncpg>=0.30",
+  "alembic>=1.14",
+  "httpx>=0.27",
+  "pyjwt>=2.9",
+]
+# Service-specific deps per conventions doc section 7 (ADR-010: LLM services add the
+# provider SDKs) — added now so Wave 5 can wire them without a pyproject change, but no
+# provider SDK calls exist yet in app/llm_provider.py (NotImplementedError stubs only).
+
+[tool.uv]
+dev-dependencies = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13"]
+
+[tool.uv.sources]
+safepayai-common = { path = "../../libs/common", editable = true }
+
+[project.optional-dependencies]
+dev = []

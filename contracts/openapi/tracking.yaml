@@ -1,0 +1,393 @@
+openapi: 3.1.0
+info:
+  title: tracking
+  version: "0.1.0"
+  description: >
+    Carrier/delivery state machine, owned entirely in our DB (PayPal has no delivery-status
+    API). Derived from .claude/prd/services/tracking/api.md. Wave 4: routes other than
+    health/readyz are stubs returning 501.
+servers:
+  - url: /
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: liveness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+  /healthz:
+    get:
+      operationId: healthz
+      responses:
+        "200":
+          description: liveness (alias)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+  /readyz:
+    get:
+      operationId: readyz
+      responses:
+        "200":
+          description: ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadyResponse" }
+        "503":
+          description: not ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadyResponse" }
+  /healthz/deep:
+    get:
+      operationId: healthzDeep
+      responses:
+        "200":
+          description: keep-warm deep check
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadyResponse" }
+  /shipments:
+    post:
+      operationId: createShipment
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShipmentCreateRequest" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShipmentCreateResponse" }
+        "200": { description: idempotent replay }
+        "400": { description: VALIDATION }
+        "401": { description: unauthenticated }
+        "403": { description: ROLE_NOT_ALLOWED }
+        "404": { description: ORDER_NOT_FOUND }
+        "409": { description: ORDER_NOT_CAPTURED or DUPLICATE_TRACKING }
+        "429": { description: rate limited }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "503": { description: DEPENDENCY_UNAVAILABLE }
+  /shipments/{order_id}:
+    get:
+      operationId: getShipments
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: shipment(s) + consistency block
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShipmentsListResponse" }
+        "403": { description: buyer not owner }
+        "404": { description: not found }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /shipments/{order_id}/verify:
+    get:
+      operationId: verifyClaim
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: string } }
+        - { name: claim, in: query, required: true, schema: { type: string, enum: [LATE, LOST, NOT_DELIVERED] } }
+      responses:
+        "200":
+          description: consistency result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyClaimResponse" }
+        "400": { description: unknown claim }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /shipments/{shipment_id}/cancel:
+    post:
+      operationId: cancelShipment
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: shipment_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CancelShipmentRequest" }
+      responses:
+        "200":
+          description: cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CancelShipmentResponse" }
+        "409": { description: ILLEGAL_TRANSITION }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /demo/clock:
+    get:
+      operationId: getDemoClock
+      security: [{ internalJwt: [] }]
+      responses:
+        "200":
+          description: current sim time
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DemoClockResponse" }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /demo/clock/advance:
+    post:
+      operationId: advanceDemoClock
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DemoClockAdvanceRequest" }
+      responses:
+        "200":
+          description: advanced
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DemoClockAdvanceResponse" }
+        "404": { description: sandbox mode off }
+        "409": { description: CLOCK_VERSION_CONFLICT }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /demo/clock/reset:
+    post:
+      operationId: resetDemoClock
+      security: [{ internalJwt: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DemoClockResetRequest" }
+      responses:
+        "200":
+          description: reset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DemoClockResetResponse" }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /demo/shipments/{shipment_id}/force:
+    post:
+      operationId: forceShipment
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: shipment_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DemoForceShipmentRequest" }
+      responses:
+        "200":
+          description: forced
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DemoForceShipmentResponse" }
+        "409": { description: ILLEGAL_TRANSITION }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /detector/run:
+    post:
+      operationId: detectorRun
+      security: [{ internalJwt: [] }]
+      responses:
+        "200":
+          description: tick result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DetectorRunResponse" }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /internal/tick:
+    post:
+      operationId: internalTick
+      security: [{ tickSecret: [] }]
+      responses:
+        "200":
+          description: tick result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DetectorRunResponse" }
+        "401": { description: invalid tick secret }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /internal/events:
+    post:
+      operationId: receiveInternalEvent
+      security: [{ internalJwt: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InternalEventEnvelope" }
+      responses:
+        "200": { description: accepted }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+    get:
+      operationId: pullInternalEvents
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: after, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: outbox page }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+components:
+  securitySchemes:
+    internalJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    tickSecret:
+      type: apiKey
+      in: header
+      name: X-Tick-Secret
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string }
+        service: { type: string }
+    ReadyResponse:
+      type: object
+      required: [status, db]
+      properties:
+        status: { type: string }
+        db: { type: string }
+    ShipmentCreateRequest:
+      type: object
+      required: [order_id, tracking_number, carrier_name]
+      properties:
+        order_id: { type: string }
+        tracking_number: { type: string }
+        carrier_name: { type: string }
+        outcome_profile: { type: string, enum: [ON_TIME, LATE, LOST, DELIVERED_AFTER_LATE] }
+    ShipmentCreateResponse:
+      type: object
+      properties:
+        id: { type: string }
+        order_id: { type: string }
+        status: { type: string }
+        promised_at_sim: { type: string, format: date-time }
+        paypal_sync: { type: string, enum: [ADDED, FAILED, NOT_ATTEMPTED] }
+        paypal_tracker_id: { type: string }
+        simulated: { type: boolean }
+        carrier_label: { type: string }
+    ShipmentEvent:
+      type: object
+      properties:
+        seq: { type: integer }
+        to: { type: string }
+        source: { type: string, enum: [SCRIPT, FORCE, MERCHANT] }
+        occurred_at_sim: { type: string, format: date-time }
+    ShipmentView:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string }
+        active: { type: boolean }
+        promised_at_sim: { type: string, format: date-time }
+        anomaly: { type: string, nullable: true }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/ShipmentEvent" }
+    ConsistencyBlock:
+      type: object
+      properties:
+        delivered: { type: boolean }
+        delivered_at_sim: { type: string, format: date-time, nullable: true }
+        late_detected: { type: boolean }
+        lost_detected: { type: boolean }
+    ShipmentsListResponse:
+      type: object
+      properties:
+        order_id: { type: string }
+        sim_now: { type: string, format: date-time }
+        shipments:
+          type: array
+          items: { $ref: "#/components/schemas/ShipmentView" }
+        consistency: { $ref: "#/components/schemas/ConsistencyBlock" }
+        simulated: { type: boolean }
+    VerifyClaimResponse:
+      type: object
+      properties:
+        result: { type: string, enum: [CONSISTENT, CONTRADICTED, INSUFFICIENT] }
+        reason_code: { type: string }
+        sim_now: { type: string, format: date-time }
+    CancelShipmentRequest:
+      type: object
+      properties:
+        reason_code: { type: string }
+    CancelShipmentResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [CANCELLED] }
+        paypal_sync: { type: string, enum: [CANCELLED, FAILED] }
+    DemoClockResponse:
+      type: object
+      properties:
+        sim_now: { type: string, format: date-time }
+    DemoClockAdvanceRequest:
+      type: object
+      required: [delta_seconds, reason]
+      properties:
+        delta_seconds: { type: integer }
+        reason: { type: string }
+    TickSummary:
+      type: object
+      properties:
+        applied: { type: integer }
+        detected: { type: integer }
+        skipped_lease: { type: boolean }
+    DemoClockAdvanceResponse:
+      type: object
+      properties:
+        from_sim: { type: string, format: date-time }
+        to_sim: { type: string, format: date-time }
+        version: { type: integer }
+        tick: { $ref: "#/components/schemas/TickSummary" }
+    DemoClockResetRequest:
+      type: object
+      properties:
+        reason: { type: string }
+    DemoClockResetResponse:
+      type: object
+      properties:
+        offset_seconds: { type: integer }
+    DemoForceShipmentRequest:
+      type: object
+      required: [to_status, reason]
+      properties:
+        to_status: { type: string }
+        reason: { type: string }
+    DemoForceShipmentResponse:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string }
+        source: { type: string, enum: [FORCE] }
+        tick: { $ref: "#/components/schemas/TickSummary" }
+    DetectorRunResponse:
+      type: object
+      properties:
+        trigger: { type: string, enum: [manual, inprocess, ping, external] }
+        skipped_lease: { type: boolean }
+        applied: { type: integer }
+        detected: { type: integer }
+        sim_now: { type: string, format: date-time }
+    InternalEventEnvelope:
+      type: object
+      required: [event_id, type, version, aggregate_id, payload]
+      properties:
+        event_id: { type: string, format: uuid }
+        type: { type: string }
+        version: { type: integer }
+        aggregate_id: { type: string }
+        payload: { type: object }
+        trace_id: { type: string, nullable: true }
+    ErrorEnvelope:
+      type: object
+      required: [error, detail]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        request_id: { type: string, nullable: true }

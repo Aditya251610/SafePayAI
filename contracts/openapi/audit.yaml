@@ -1,0 +1,489 @@
+openapi: 3.1.0
+info:
+  title: SafePayAI Audit Service
+  version: "0.1.0"
+  description: >
+    Append-only, hash-chained event log. Not on the money path, never decides anything.
+    Derived from .claude/prd/services/audit/api.md. Service-internal paths (as served by
+    this process); api-gateway renames these for the public surface per api.md sec 0
+    (GET /entries -> GET /api/audit/records, etc.) -- that rewrite is api-gateway's own
+    contract, out of scope here.
+servers:
+  - url: http://localhost:8000
+    description: local
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness probe. Never touches the database.
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service]
+                properties:
+                  status: { type: string, enum: [ok] }
+                  service: { type: string, enum: [audit] }
+  /readyz:
+    get:
+      operationId: readyz
+      summary: Readiness probe. SELECT 1 against the pooled connection, 3 retries with backoff.
+      security: []
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, db]
+                properties:
+                  status: { type: string, enum: [ready] }
+                  db: { type: string, enum: [ok] }
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, db]
+                properties:
+                  status: { type: string, enum: [not_ready] }
+                  db: { type: string }
+  /internal/events:
+    post:
+      operationId: appendEvent
+      summary: Append one event. Idempotent on event_id.
+      security: [{ serviceJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EventEnvelope" }
+      responses:
+        "201":
+          description: Appended
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppendResult" }
+        "200":
+          description: Duplicate (event_id already recorded, no new row)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppendResult" }
+        "400":
+          description: MALFORMED_ENVELOPE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: PRODUCER_MISMATCH | EVENT_NOT_ALLOWED_FOR_PRODUCER | ACTOR_NOT_ALLOWED | AUTH_METHOD_MISMATCH
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: EVENT_ID_CONFLICT (same event_id, different content hash)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: PAYLOAD_SCHEMA_INVALID | FLOAT_FORBIDDEN | UNKNOWN_FIELD | SECRET_PATTERN_REJECTED | CHECKS_ARRAY_INVALID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+        "503":
+          description: CHAIN_BUSY | DB_UNAVAILABLE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /internal/events/batch:
+    post:
+      operationId: appendEventsBatch
+      summary: Append up to PS_AUDIT_BATCH_MAX events in one advisory-locked transaction.
+      security: [{ serviceJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EventBatchRequest" }
+      responses:
+        "200":
+          description: Per-item results (HTTP 200 overall; individual items carry APPENDED|DUPLICATE|REJECTED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+        "503":
+          description: CHAIN_BUSY | DB_UNAVAILABLE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /entries:
+    get:
+      operationId: listEntries
+      summary: AG Grid server-side row model. Role-scoped (buyer sees own rows only).
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: startRow, in: query, schema: { type: integer } }
+        - { name: endRow, in: query, schema: { type: integer } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: event_type, in: query, schema: { type: string } }
+        - { name: family, in: query, schema: { type: string, enum: [MANDATE, CART, ORDER, TRACKING, CASE, OFFER, APPROVAL, REFUND, AI, OPS] } }
+        - { name: actor_type, in: query, schema: { type: string } }
+        - { name: actor_id, in: query, schema: { type: string } }
+        - { name: mandate_id, in: query, schema: { type: string } }
+        - { name: order_id, in: query, schema: { type: string } }
+        - { name: case_id, in: query, schema: { type: string } }
+        - { name: request_id, in: query, schema: { type: string } }
+        - { name: trace_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: after_seq, in: query, schema: { type: integer } }
+        - { name: before_seq, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntriesResponse" }
+        "400":
+          description: BAD_FILTER
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: ROLE_NOT_ALLOWED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: invalid range
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /entries/by-ref:
+    get:
+      operationId: entriesByRef
+      summary: Ordered trail (ascending seq) for one subject (mandate_id | order_id | case_id).
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: mandate_id, in: query, schema: { type: string } }
+        - { name: order_id, in: query, schema: { type: string } }
+        - { name: case_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntriesResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /entries/{seq}:
+    get:
+      operationId: getEntry
+      summary: Full entry for the detail drawer. 404 if missing or not visible to the caller's role.
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: seq, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryDetail" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Not found or not visible
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /verify:
+    get:
+      operationId: verifyChain
+      summary: Recompute the whole chain bounded by the head at call start. Always 200; `ok` carries the verdict.
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: anchor_seq, in: query, schema: { type: integer } }
+        - { name: anchor_hash, in: query, schema: { type: string } }
+        - { name: from_seq, in: query, schema: { type: integer } }
+        - { name: from_hash, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Verdict (ok true/false; see schema for reason codes on failure)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyResult" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429":
+          description: rate limited (gateway-owned)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+        "503":
+          description: DB_UNAVAILABLE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /verify/last:
+    get:
+      operationId: verifyLast
+      summary: Latest verify_runs row (cheap; used by the grid header).
+      security: [{ internalJwt: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyLastResult" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /head:
+    get:
+      operationId: getHead
+      summary: Current chain head, with a one-line paste string for external anchoring.
+      security: [{ internalJwt: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HeadResult" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /export:
+    get:
+      operationId: exportChain
+      summary: NDJSON export of full rows (reviewer/operator only).
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: from_seq, in: query, schema: { type: integer } }
+        - { name: to_seq, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: NDJSON stream (one full row per line)
+          content:
+            application/x-ndjson:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: role not allowed (reviewer/operator only)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+components:
+  securitySchemes:
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Internal service JWT, aud=audit, scope svc:audit (producer outbox relays).
+    internalJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Internal JWT minted by api-gateway carrying the verified principal (act claim).
+  responses:
+    Unauthenticated:
+      description: UNAUTHENTICATED (bad/expired token)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotImplemented:
+      description: Wave 4 stub -- endpoint pending Wave 5
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      description: >
+        Error envelope per service-skeleton-conventions.md sec 4. Note: audit's own
+        api.md sec 0 documents {"error","message","request_id"} (auth-gateway.md sec 2
+        wording); this contract follows the platform-wide conventions doc's
+        {"error","detail","request_id"} shape instead, since that doc explicitly covers
+        the envelope for all 11 services and is not marked service-specific. Flagged for
+        the gateway/audit doc owners to reconcile.
+      required: [error, detail]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        request_id: { type: ["string", "null"] }
+    Actor:
+      type: object
+      required: [type, id, auth_method]
+      properties:
+        type: { type: string, enum: [buyer, merchant_shared, reviewer_selfasserted, service, system, paypal_hint] }
+        id: { type: string }
+        auth_method: { type: string }
+        session_id_hash: { type: string }
+    SubjectRefs:
+      type: object
+      properties:
+        buyer_id: { type: string }
+        mandate_id: { type: string }
+        order_id: { type: string }
+        case_id: { type: string }
+    EventEnvelope:
+      type: object
+      required: [event_id, type, version, occurred_at, producer, trace_id, request_id, actor, payload]
+      properties:
+        event_id: { type: string }
+        type: { type: string }
+        version: { type: integer }
+        occurred_at: { type: string, format: date-time }
+        producer: { type: string }
+        aggregate_id: { type: string }
+        trace_id: { type: string }
+        request_id: { type: string }
+        actor: { $ref: "#/components/schemas/Actor" }
+        refs: { $ref: "#/components/schemas/SubjectRefs" }
+        payload:
+          type: object
+          description: >
+            Per-type payload. Money fields are integer minor units with a currency
+            sibling (never float/number), e.g. {"total": 5400, "currency": "USD"}, per
+            data-architecture.md sec 5. Per-type JSON Schemas (spec.md sec 6) land in
+            Wave 5 under contracts/events/; this wave validates only the envelope shape.
+    EventBatchRequest:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/EventEnvelope" }
+    AppendResult:
+      type: object
+      required: [seq, row_hash, duplicate]
+      properties:
+        seq: { type: integer }
+        row_hash: { type: string }
+        duplicate: { type: boolean }
+    BatchItemResult:
+      type: object
+      required: [event_id, status]
+      properties:
+        event_id: { type: string }
+        status: { type: string, enum: [APPENDED, DUPLICATE, REJECTED] }
+        seq: { type: ["integer", "null"] }
+        error: { type: ["string", "null"] }
+    BatchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/BatchItemResult" }
+    EntryRow:
+      type: object
+      required: [seq, recorded_at, event_type, actor_type, actor_id, auth_method, request_id, summary, row_hash_short, prev_hash_short]
+      properties:
+        seq: { type: integer }
+        recorded_at: { type: string, format: date-time }
+        event_type: { type: string }
+        actor_type: { type: string }
+        actor_id: { type: string }
+        auth_method: { type: string }
+        request_id: { type: string }
+        mandate_id: { type: ["string", "null"] }
+        order_id: { type: ["string", "null"] }
+        case_id: { type: ["string", "null"] }
+        summary: { type: string }
+        row_hash_short: { type: string }
+        prev_hash_short: { type: string }
+    VerifiedSummary:
+      type: object
+      required: [ok, head_seq, at]
+      properties:
+        ok: { type: boolean }
+        head_seq: { type: integer }
+        at: { type: string, format: date-time }
+    EntriesResponse:
+      type: object
+      required: [rows, lastRow, head_seq]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/EntryRow" }
+        lastRow: { type: integer, description: "Total matching count on the final block, else -1 (AG Grid contract)." }
+        head_seq: { type: integer }
+        verified: { $ref: "#/components/schemas/VerifiedSummary" }
+    EntryDetail:
+      allOf:
+        - { $ref: "#/components/schemas/EntryRow" }
+        - type: object
+          required: [payload, prev_hash, row_hash]
+          properties:
+            payload: { type: object }
+            prev_hash: { type: string }
+            row_hash: { type: string }
+            canonical:
+              type: ["string", "null"]
+              description: Reviewer/operator only.
+    AnchorCheck:
+      type: object
+      required: [checked]
+      properties:
+        checked: { type: boolean }
+        ok: { type: ["boolean", "null"] }
+    VerifyResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+        chain_id: { type: string }
+        checked: { type: integer }
+        head_seq: { type: integer }
+        head_hash: { type: string }
+        algorithm: { type: string }
+        duration_ms: { type: integer }
+        anchor: { $ref: "#/components/schemas/AnchorCheck" }
+        first_bad_seq: { type: integer }
+        reason:
+          type: string
+          enum:
+            - HASH_MISMATCH
+            - PREV_MISMATCH
+            - SEQ_GAP
+            - PAYLOAD_MISMATCH
+            - GENESIS_MISSING
+            - CHAIN_ID_MISMATCH
+            - ANCHOR_HASH_MISMATCH
+            - ANCHOR_SEQ_BEYOND_HEAD
+        expected: { type: string }
+        found: { type: string }
+    VerifyLastResult:
+      type: object
+      required: [id, started_at, head_seq_at_start]
+      properties:
+        id: { type: integer }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: ["string", "null"], format: date-time }
+        head_seq_at_start: { type: integer }
+        ok: { type: ["boolean", "null"] }
+        first_bad_seq: { type: ["integer", "null"] }
+        reason: { type: ["string", "null"] }
+    HeadResult:
+      type: object
+      required: [chain_id, seq, row_hash, count, recorded_at, canonical_version, paste]
+      properties:
+        chain_id: { type: string }
+        seq: { type: integer }
+        row_hash: { type: string }
+        count: { type: integer }
+        recorded_at: { type: string, format: date-time }
+        canonical_version: { type: integer }
+        paste: { type: string }
+        signature: { type: ["string", "null"] }
+        key_id: { type: ["string", "null"] }

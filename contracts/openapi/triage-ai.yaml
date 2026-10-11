@@ -1,0 +1,258 @@
+openapi: 3.1.0
+info:
+  title: triage-ai
+  version: "0.1.0"
+  description: >
+    Classify/draft/brief for buyer problem reports. Derived from
+    .claude/prd/services/triage-ai/api.md. ADR-010: AI never decides money; every output is
+    schema-validated and fails closed. Wave 4: /classify, /draft, /brief are stubs
+    returning 501 after auth + schema validation; health/readyz are real.
+servers:
+  - url: /
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200": { description: liveness, content: { application/json: { schema: { $ref: "#/components/schemas/HealthResponse" } } } }
+  /healthz:
+    get:
+      operationId: healthz
+      responses:
+        "200": { description: liveness (alias), content: { application/json: { schema: { $ref: "#/components/schemas/HealthResponse" } } } }
+  /readyz:
+    get:
+      operationId: readyz
+      responses:
+        "200": { description: ready, content: { application/json: { schema: { $ref: "#/components/schemas/ReadyResponse" } } } }
+        "503": { description: NOT_READY, content: { application/json: { schema: { $ref: "#/components/schemas/ReadyResponse" } } } }
+  /health/deep:
+    get:
+      operationId: healthDeep
+      responses:
+        "200": { description: keep-warm deep check (llm-gateway kill-switch/breaker state), content: { application/json: { schema: { $ref: "#/components/schemas/ReadyResponse" } } } }
+  /classify:
+    post:
+      operationId: classify
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClassifyRequest" }
+      responses:
+        "200":
+          description: always 200 for model-path outcomes (success or fail-closed), same shape
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClassifyResponse" }
+        "401": { description: UNAUTHENTICATED }
+        "403": { description: FORBIDDEN_CALLER }
+        "422": { description: INVALID_REQUEST }
+        "500": { description: INTERNAL (genuine bug, not a model/provider failure) }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /draft:
+    post:
+      operationId: draft
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DraftRequest" }
+      responses:
+        "200":
+          description: always 200 for model-path outcomes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DraftResponse" }
+        "401": { description: UNAUTHENTICATED }
+        "403": { description: FORBIDDEN_CALLER }
+        "422": { description: INVALID_REQUEST }
+        "500": { description: INTERNAL }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /brief:
+    post:
+      operationId: brief
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BriefRequest" }
+      responses:
+        "200":
+          description: always 200; read-only reviewer brief
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BriefResponse" }
+        "401": { description: UNAUTHENTICATED }
+        "403": { description: FORBIDDEN_CALLER }
+        "422": { description: INVALID_REQUEST }
+        "500": { description: INTERNAL }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+components:
+  securitySchemes:
+    internalJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: aud=triage-ai, caller allowlist = resolution only
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string }
+        service: { type: string }
+    ReadyResponse:
+      type: object
+      required: [status, db]
+      properties:
+        status: { type: string }
+        db: { type: string }
+    Category:
+      type: string
+      enum: [LATE, LOST, DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED, OTHER]
+    Route:
+      type: string
+      enum: [PROCEED, HUMAN_REVIEW]
+    Source:
+      type: string
+      enum: [live, cached, template, rules]
+    ShipStatus:
+      type: string
+      enum: [LABEL_CREATED, SHIPPED, IN_TRANSIT, DELAYED, DELIVERED, LOST_FLAGGED, UNKNOWN]
+    Provenance:
+      type: object
+      required: [source, prompt_version, latency_ms]
+      properties:
+        source: { $ref: "#/components/schemas/Source" }
+        model: { type: string, nullable: true }
+        prompt_version: { type: string }
+        cached_at: { type: string, format: date-time, nullable: true }
+        latency_ms: { type: integer }
+    TimelineEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, ts, status]
+      properties:
+        event_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,40}$" }
+        ts: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/ShipStatus" }
+        note: { type: string, maxLength: 300, nullable: true }
+    OrderFacts:
+      type: object
+      additionalProperties: false
+      required: [order_ref, order_date, demo_now, state]
+      properties:
+        order_ref: { type: string, pattern: "^[A-Za-z0-9_-]{1,40}$" }
+        order_date: { type: string, format: date }
+        promised_by: { type: string, format: date, nullable: true }
+        demo_now: { type: string, format: date-time }
+        state: { type: string, maxLength: 40 }
+        item_titles: { type: array, items: { type: string, maxLength: 80 }, maxItems: 5 }
+        amount_minor: { type: integer, minimum: 0, nullable: true }
+        currency: { type: string, enum: [USD], nullable: true }
+    InconsistencyFlag:
+      type: object
+      additionalProperties: false
+      required: [code, severity, origin, explanation]
+      properties:
+        code: { type: string }
+        severity: { type: string, enum: [INFO, WARN] }
+        origin: { type: string, enum: [rule, model] }
+        event_ids: { type: array, items: { type: string }, maxItems: 5 }
+        explanation: { type: string, maxLength: 160 }
+    ClassifyRequest:
+      type: object
+      additionalProperties: false
+      required: [case_id, trace_id, origin, order]
+      properties:
+        case_id: { type: string, format: uuid }
+        trace_id: { type: string }
+        origin: { type: string, enum: [buyer_report, detector] }
+        buyer_text: { type: string, maxLength: 4000, nullable: true }
+        timeline: { type: array, items: { $ref: "#/components/schemas/TimelineEvent" }, maxItems: 30 }
+        order: { $ref: "#/components/schemas/OrderFacts" }
+    ClassifyResponse:
+      type: object
+      required: [triage_id, category, confidence, route, provenance]
+      properties:
+        triage_id: { type: string, format: uuid }
+        category: { $ref: "#/components/schemas/Category" }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        route: { $ref: "#/components/schemas/Route" }
+        reasons: { type: array, items: { type: string } }
+        timeline_flags: { type: array, items: { $ref: "#/components/schemas/InconsistencyFlag" } }
+        provenance: { $ref: "#/components/schemas/Provenance" }
+    DraftRequest:
+      type: object
+      additionalProperties: false
+      required: [case_id, trace_id, audience, category, outcome, order_ref]
+      properties:
+        case_id: { type: string, format: uuid }
+        trace_id: { type: string }
+        audience: { type: string, enum: [buyer, merchant] }
+        category: { $ref: "#/components/schemas/Category" }
+        outcome: { type: string, enum: [REFUND_OFFER_INSIDE_TERMS, APPROVAL_REQUESTED, UNDER_REVIEW, INFO_REQUEST] }
+        order_ref: { type: string }
+    DraftResponse:
+      type: object
+      required: [triage_id, subject, body, gate, provenance]
+      properties:
+        triage_id: { type: string, format: uuid }
+        subject: { type: string, maxLength: 80 }
+        body: { type: string, maxLength: 600 }
+        placeholders_used:
+          type: array
+          items: { type: string, enum: ["{amount}", "{order_ref}", "{date}", "{buyer_name}"] }
+        gate: { type: string, enum: [PASSED, REJECTED_USED_TEMPLATE] }
+        gate_hits: { type: array, items: { type: string } }
+        provenance: { $ref: "#/components/schemas/Provenance" }
+    BriefRequest:
+      type: object
+      additionalProperties: false
+      required: [case_id, trace_id, order]
+      properties:
+        case_id: { type: string, format: uuid }
+        trace_id: { type: string }
+        buyer_text: { type: string, maxLength: 4000, nullable: true }
+        timeline: { type: array, items: { $ref: "#/components/schemas/TimelineEvent" } }
+        order: { $ref: "#/components/schemas/OrderFacts" }
+        triage:
+          oneOf:
+            - { $ref: "#/components/schemas/ClassifyResponse" }
+            - type: "null"
+        policy_decision: { type: string, maxLength: 40, nullable: true }
+    KeyFact:
+      type: object
+      properties:
+        field: { type: string }
+        value: { type: string }
+        source_field: { type: string }
+    BriefResponse:
+      type: object
+      required: [triage_id, summary, read_only, provenance]
+      properties:
+        triage_id: { type: string, format: uuid }
+        summary: { type: string, maxLength: 500 }
+        key_facts: { type: array, items: { $ref: "#/components/schemas/KeyFact" } }
+        inconsistency_flags: { type: array, items: { $ref: "#/components/schemas/InconsistencyFlag" } }
+        open_questions: { type: array, items: { type: string }, maxItems: 4 }
+        read_only: { type: boolean, enum: [true] }
+        provenance: { $ref: "#/components/schemas/Provenance" }
+    TransportErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        trace_id: { type: string, nullable: true }
+    ErrorEnvelope:
+      type: object
+      required: [error, detail]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        request_id: { type: string, nullable: true }

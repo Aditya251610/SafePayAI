@@ -1,0 +1,83 @@
+x-service-defaults: &service-defaults
+  env_file: .env
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: safepayai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api-gateway:
+    <<: *service-defaults
+    build: ./services/api-gateway
+    ports: ["8001:8000"]
+
+  mandate:
+    <<: *service-defaults
+    build: ./services/mandate
+    ports: ["8002:8000"]
+
+  catalog:
+    <<: *service-defaults
+    build: ./services/catalog
+    ports: ["8003:8000"]
+
+  shopping-agent:
+    <<: *service-defaults
+    build: ./services/shopping-agent
+    ports: ["8004:8000"]
+
+  checkout:
+    <<: *service-defaults
+    build: ./services/checkout
+    ports: ["8005:8000"]
+
+  paypal-adapter:
+    <<: *service-defaults
+    build: ./services/paypal-adapter
+    ports: ["8006:8000"]
+
+  tracking:
+    <<: *service-defaults
+    build: ./services/tracking
+    ports: ["8007:8000"]
+
+  resolution:
+    <<: *service-defaults
+    build: ./services/resolution
+    ports: ["8008:8000"]
+
+  triage-ai:
+    <<: *service-defaults
+    build: ./services/triage-ai
+    ports: ["8009:8000"]
+
+  audit:
+    <<: *service-defaults
+    build: ./services/audit
+    ports: ["8010:8000"]
+
+  web:
+    env_file: .env
+    build: ./services/web
+    ports: ["3000:3000"]
+    depends_on:
+      - api-gateway
+
+volumes:
+  pgdata:

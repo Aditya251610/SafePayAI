@@ -1,0 +1,355 @@
+openapi: 3.1.0
+info:
+  title: paypal-adapter
+  version: "0.1.0"
+  description: >
+    Internal-only anti-corruption layer over PayPal sandbox REST. Wave 4: contract only;
+    every /v1/* route returns 501 until Wave 5; /healthz, /health, /readyz are real.
+    Never routed by api-gateway. Derived from .claude/prd/services/paypal-adapter/api.md.
+    MCP tool schemas live in api.md section 8 (not expressed here; this file covers REST).
+servers:
+  - url: /
+paths:
+  /v1/orders:
+    post:
+      operationId: createOrder
+      summary: create_order (MONEY, ticket required)
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: X-Authorization-Ticket
+          in: header
+          required: true
+          schema: { type: string, maxLength: 2048 }
+        - name: X-Trace-Id
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrderRequest" }
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/orders/{order_id}:
+    get:
+      operationId: getOrder
+      summary: get_order (READ)
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "404": { description: NOT_FOUND }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/orders/{order_id}/capture:
+    post:
+      operationId: captureOrder
+      summary: capture_order (MONEY, ticket required)
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        - name: X-Authorization-Ticket
+          in: header
+          required: true
+          schema: { type: string, maxLength: 2048 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CaptureOrderRequest" }
+      responses:
+        "201":
+          description: Captured
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/captures/{capture_id}:
+    get:
+      operationId: getCapture
+      summary: get_capture (READ)
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: capture_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+      responses:
+        "200":
+          description: Capture
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/captures/{capture_id}/refund:
+    post:
+      operationId: refundCapture
+      summary: refund_capture (MONEY, ticket required; NOT create_refund, per the confirmed rename)
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: capture_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        - name: X-Authorization-Ticket
+          in: header
+          required: true
+          schema: { type: string, maxLength: 2048 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundCaptureRequest" }
+      responses:
+        "201":
+          description: Refunded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "422": { description: "REFUND_AMOUNT_EXCEEDED | DUPLICATE_INVOICE_ID" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/refunds/{refund_id}:
+    get:
+      operationId: getRefund
+      summary: get_refund (READ)
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: refund_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+      responses:
+        "200":
+          description: Refund
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/orders/{order_id}/track:
+    post:
+      operationId: addTracking
+      summary: add_tracking (WRITE, caller tracking only)
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddTrackingRequest" }
+      responses:
+        "201":
+          description: Tracker created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/orders/{order_id}/trackers/{tracker_id}:
+    get:
+      operationId: getTracking
+      summary: get_tracking (READ; path unverified, U2)
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        - name: tracker_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+      responses:
+        "200":
+          description: Tracker
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/reconcile/{request_id}:
+    post:
+      operationId: reconcile
+      summary: Reconcile a non-terminal call by request_id
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Reconciled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/control/status:
+    get:
+      operationId: controlStatus
+      summary: "{money_enabled, frozen}"
+      security: [{ internalJwt: [] }]
+      responses:
+        "200": { description: Status }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/control/freeze:
+    post:
+      operationId: controlFreeze
+      summary: Operator-only freeze
+      security: [{ internalJwt: [] }]
+      responses:
+        "200": { description: Frozen }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/control/unfreeze:
+    post:
+      operationId: controlUnfreeze
+      summary: Operator-only unfreeze
+      security: [{ internalJwt: [] }]
+      responses:
+        "200": { description: Unfrozen }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /v1/webhooks/paypal:
+    post:
+      operationId: paypalWebhook
+      summary: Optional hint-only receiver, default disabled
+      security: []
+      responses:
+        "404": { description: "Disabled (PS_PAYPALADAPTER_WEBHOOK_ENABLED=false)" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness, no secrets
+      security: []
+      responses:
+        "200": { description: OK }
+  /health:
+    get:
+      operationId: healthAlias
+      summary: Alias for pingers (C8)
+      security: []
+      responses:
+        "200": { description: OK }
+  /readyz:
+    get:
+      operationId: readyz
+      summary: DB reachable, sandbox_guard pass, no secrets in body
+      security: []
+      responses:
+        "200": { description: ready }
+        "503": { description: not ready }
+components:
+  securitySchemes:
+    internalJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    NotPermitted:
+      description: NOT_PERMITTED (caller not in the allowlist for this tool)
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Envelope" } }
+    ValidationError:
+      description: VALIDATION_ERROR
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Envelope" } }
+    NotImplemented:
+      description: Wave 4 stub
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Envelope" } }
+  schemas:
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        retryable: { type: boolean }
+        paypal_name: { type: ["string", "null"] }
+    Envelope:
+      type: object
+      additionalProperties: false
+      required: [ok, status, trace_id]
+      properties:
+        ok: { type: boolean }
+        status: { type: string, enum: [OK, IN_PROGRESS, REJECTED, UNKNOWN] }
+        paypal_http_status: { type: ["integer", "null"] }
+        data: { type: ["object", "null"] }
+        error:
+          oneOf:
+            - { $ref: "#/components/schemas/ErrorDetail" }
+            - type: "null"
+        replayed: { type: boolean }
+        trace_id: { type: string }
+    CreateOrderRequest:
+      type: object
+      additionalProperties: false
+      required:
+        [request_id, mandate_id, proposal_hash, internal_order_id, amount_minor, currency, return_url, cancel_url]
+      properties:
+        request_id: { type: string, format: uuid }
+        mandate_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        proposal_hash: { type: string }
+        internal_order_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        amount_minor: { type: integer, minimum: 1 }
+        currency: { type: string, enum: [USD] }
+        return_url: { type: string, format: uri }
+        cancel_url: { type: string, format: uri }
+    CaptureOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [request_id, mandate_id, proposal_hash, amount_minor, currency]
+      properties:
+        request_id: { type: string, format: uuid }
+        mandate_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        proposal_hash: { type: string }
+        amount_minor: { type: integer, minimum: 1 }
+        currency: { type: string, enum: [USD] }
+    RefundCaptureRequest:
+      type: object
+      additionalProperties: false
+      required: [request_id, mandate_id, proposal_hash, amount_minor, currency]
+      properties:
+        request_id: { type: string, format: uuid }
+        mandate_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        proposal_hash: { type: string }
+        amount_minor: { type: integer, minimum: 1 }
+        currency: { type: string, enum: [USD] }
+        invoice_id: { type: ["string", "null"], pattern: "^[A-Za-z0-9_-]{1,64}$" }
+    AddTrackingRequest:
+      type: object
+      additionalProperties: false
+      required: [request_id, capture_id, tracking_number, carrier_name_other]
+      properties:
+        request_id: { type: string, format: uuid }
+        capture_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        tracking_number: { type: string, maxLength: 64 }
+        carrier_name_other: { type: string, maxLength: 64 }
+        notify_payer: { type: boolean, default: false }

@@ -1,0 +1,4 @@
+{
+  "_comment": "Local static trusted-issuer fixture for standalone Wave 4 runs only (service-skeleton-conventions.md sec 5: 'point it at a local static JWKS fixture if the gateway isn't implemented yet'). Shape: {issuer: {kid: {public_key, alg}}}. Empty by default -- PS_AUDIT_TRUSTED_ISSUERS (inline JSON or a file path) overrides this entirely in every real environment. Never put a real key in this file; it ships in the public repo.",
+  "local-dev-issuer": {}
+}

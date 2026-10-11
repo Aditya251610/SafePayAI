@@ -1,0 +1,351 @@
+openapi: 3.1.0
+info:
+  title: mandate
+  version: "0.1.0"
+  description: >
+    Signed, immutable buyer Mandate + spend ledger + protection grants.
+    Derived from .claude/prd/services/mandate/api.md. Wave 4: contracts + skeleton
+    only; routes other than health/readyz return 501 until Wave 5.
+servers:
+  - url: /
+components:
+  securitySchemes:
+    internalBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        request_id: { type: string, nullable: true }
+      required: [error, detail]
+    MerchantAllowlistEntry:
+      type: object
+      properties:
+        merchant_id: { type: string }
+        display_name: { type: string }
+      required: [merchant_id, display_name]
+      additionalProperties: false
+    ProtectionTerms:
+      type: object
+      properties:
+        kinds_covered:
+          type: array
+          items: { type: string, enum: [LATE, LOST] }
+        max_refund_minor: { type: integer, minimum: 1 }
+        deliver_by_days: { type: integer, minimum: 1 }
+      required: [kinds_covered, max_refund_minor, deliver_by_days]
+      additionalProperties: false
+    MandateTermsInput:
+      type: object
+      properties:
+        currency: { type: string }
+        max_total_minor: { type: integer, minimum: 1 }
+        max_qty_per_line: { type: integer, minimum: 1, nullable: true }
+        merchant_allowlist:
+          type: array
+          items: { $ref: "#/components/schemas/MerchantAllowlistEntry" }
+        intent_text: { type: string }
+        expires_at: { type: string, format: date-time }
+        protection: { $ref: "#/components/schemas/ProtectionTerms" }
+        policy_version: { type: string, nullable: true }
+        revoke_effect: { type: string, nullable: true }
+      required: [currency, max_total_minor, merchant_allowlist, intent_text, expires_at, protection]
+      additionalProperties: false
+    MandatePreviewRequest:
+      type: object
+      properties:
+        terms: { $ref: "#/components/schemas/MandateTermsInput" }
+      required: [terms]
+      additionalProperties: false
+    MandatePreviewResponse:
+      type: object
+      properties:
+        normalized_terms: { type: object }
+        screen_text: { type: string }
+        screen_text_hash: { type: string }
+        render_version: { type: string }
+        policy_version: { type: string }
+        nonce: { type: string }
+        nonce_expires_at: { type: string, format: date-time }
+    MandateSignRequest:
+      type: object
+      properties:
+        terms: { $ref: "#/components/schemas/MandateTermsInput" }
+        screen_text_hash: { type: string }
+        nonce: { type: string }
+      required: [terms, screen_text_hash, nonce]
+      additionalProperties: false
+    CartLine:
+      type: object
+      properties:
+        sku: { type: string }
+        qty: { type: integer, minimum: 1 }
+        unit_minor: { type: integer }
+        line_minor: { type: integer }
+        merchant_id: { type: string }
+        sku_known: { type: boolean }
+        stated_unit_minor: { type: integer, nullable: true }
+      required: [sku, qty, unit_minor, line_minor, merchant_id, sku_known]
+      additionalProperties: false
+    Cart:
+      type: object
+      properties:
+        currency: { type: string }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/CartLine" }
+        total_minor: { type: integer }
+      required: [currency, lines, total_minor]
+      additionalProperties: false
+    EvaluateRequest:
+      type: object
+      properties:
+        cart: { $ref: "#/components/schemas/Cart" }
+        committed_minor: { type: integer, nullable: true }
+      required: [cart]
+      additionalProperties: false
+    RevokeRequest:
+      type: object
+      properties:
+        reason_code: { type: string }
+      required: [reason_code]
+      additionalProperties: false
+    ReservationCreateRequest:
+      type: object
+      properties:
+        order_id: { type: string }
+        amount_minor: { type: integer }
+        currency: { type: string }
+        proposal_hash: { type: string }
+        cart: { $ref: "#/components/schemas/Cart" }
+      required: [order_id, amount_minor, currency, proposal_hash, cart]
+      additionalProperties: false
+security:
+  - internalBearer: []
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      security: []
+      responses:
+        "200": { description: OK }
+  /readyz:
+    get:
+      operationId: readyz
+      security: []
+      responses:
+        "200": { description: Ready }
+        "503": { description: Not ready }
+  /mandates/preview:
+    post:
+      operationId: previewMandate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MandatePreviewRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MandatePreviewResponse" }
+        "422": { description: Validation error }
+        "501": { description: Not implemented (Wave 4) }
+  /mandates:
+    post:
+      operationId: signMandate
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MandateSignRequest" }
+      responses:
+        "201": { description: Created }
+        "409": { description: Nonce/idempotency/policy conflict }
+        "422": { description: Validation error }
+        "501": { description: Not implemented (Wave 4) }
+    get:
+      operationId: listMandates
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /mandates/{mandate_id}:
+    get:
+      operationId: getMandate
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Mandate not found }
+        "501": { description: Not implemented (Wave 4) }
+  /mandates/{mandate_id}/terms:
+    get:
+      operationId: getMandateTerms
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Mandate not found }
+        "501": { description: Not implemented (Wave 4) }
+  /mandates/{mandate_id}/summary:
+    get:
+      operationId: getMandateSummary
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Mandate not found }
+        "501": { description: Not implemented (Wave 4) }
+  /mandates/{mandate_id}/verify:
+    get:
+      operationId: verifyMandate
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Mandate not found }
+        "501": { description: Not implemented (Wave 4) }
+  /mandates/{mandate_id}/revoke:
+    post:
+      operationId: revokeMandate
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokeRequest" }
+      responses:
+        "200": { description: OK }
+        "404": { description: Mandate not found }
+        "501": { description: Not implemented (Wave 4) }
+  /mandates/{mandate_id}/evaluate:
+    post:
+      operationId: evaluateMandate
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EvaluateRequest" }
+      responses:
+        "200": { description: Decision (ALLOW or BLOCK) }
+        "422": { description: Malformed cart }
+        "501": { description: Not implemented (Wave 4) }
+  /mandates/{mandate_id}/reservations:
+    post:
+      operationId: createReservation
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReservationCreateRequest" }
+      responses:
+        "201": { description: Created }
+        "200": { description: Idempotent replay }
+        "409": { description: Reservation refused/conflict }
+        "501": { description: Not implemented (Wave 4) }
+  /reservations/{reservation_id}:
+    get:
+      operationId: getReservation
+      parameters:
+        - { name: reservation_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Reservation not found }
+        "501": { description: Not implemented (Wave 4) }
+  /reservations/{reservation_id}/authorize-capture:
+    post:
+      operationId: authorizeCapture
+      parameters:
+        - { name: reservation_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "409": { description: Refused }
+        "501": { description: Not implemented (Wave 4) }
+  /reservations/{reservation_id}/mark-unknown:
+    post:
+      operationId: markUnknown
+      parameters:
+        - { name: reservation_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /reservations/{reservation_id}/commit:
+    post:
+      operationId: commitReservation
+      parameters:
+        - { name: reservation_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "409": { description: Amount mismatch / invalid state }
+        "501": { description: Not implemented (Wave 4) }
+  /reservations/{reservation_id}/release:
+    post:
+      operationId: releaseReservation
+      parameters:
+        - { name: reservation_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "409": { description: Invalid state }
+        "501": { description: Not implemented (Wave 4) }
+  /grants:
+    get:
+      operationId: listGrants
+      parameters:
+        - { name: order_id, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Grant not found }
+        "501": { description: Not implemented (Wave 4) }
+  /grants/{grant_id}:
+    get:
+      operationId: getGrant
+      parameters:
+        - { name: grant_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Grant not found }
+        "501": { description: Not implemented (Wave 4) }
+  /internal/sweep:
+    post:
+      operationId: internalSweep
+      security: []
+      parameters:
+        - { name: X-Tick-Secret, in: header, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "401": { description: Unauthenticated }
+        "501": { description: Not implemented (Wave 4) }
+  /internal/outbox:
+    get:
+      operationId: internalOutboxPull
+      security: []
+      parameters:
+        - { name: after, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /internal/outbox/flush:
+    post:
+      operationId: internalOutboxFlush
+      security: []
+      parameters:
+        - { name: X-Tick-Secret, in: header, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "401": { description: Unauthenticated }
+        "501": { description: Not implemented (Wave 4) }

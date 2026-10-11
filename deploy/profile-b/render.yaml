@@ -1,0 +1,70 @@
+# Profile B: co-located hosts for the free-tier hosted demo (see
+# architecture/deployment-zero-cost.md §3a and hosts/_mount.py — read the KNOWN LIMITATION there
+# before deploying this). Only ONE of these should be kept always-on (Render 750 instance-h/mo
+# per workspace, shared across all services here); the rest sleep and are woken by scripts/warmup.sh.
+services:
+  - type: web
+    name: safepayai-edge
+    runtime: python
+    plan: free
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run uvicorn hosts.edge:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /gateway/health
+    envVarGroups:
+      - safepayai-shared
+      - safepayai-edge
+
+  - type: web
+    name: safepayai-core
+    runtime: python
+    plan: free
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run uvicorn hosts.core:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /mandate/health
+    envVarGroups:
+      - safepayai-shared
+      - safepayai-core
+
+  - type: web
+    name: safepayai-ai
+    runtime: python
+    plan: free
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run uvicorn hosts.ai:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /shopping-agent/health
+    envVarGroups:
+      - safepayai-shared
+      - safepayai-ai
+
+  - type: web
+    name: safepayai-paypal
+    runtime: python
+    plan: free
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run uvicorn hosts.paypal:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /paypal-adapter/health
+    envVarGroups:
+      - safepayai-shared
+      - safepayai-paypal
+
+envVarGroups:
+  - name: safepayai-shared
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: INTERNAL_TICK_SECRET
+        sync: false
+  - name: safepayai-edge
+    envVars: []
+  - name: safepayai-core
+    envVars: []
+  - name: safepayai-ai
+    envVars:
+      - key: LLM_API_KEY
+        sync: false
+  - name: safepayai-paypal
+    envVars:
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false

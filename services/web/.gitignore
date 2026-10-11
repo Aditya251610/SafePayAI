@@ -1,0 +1,21 @@
+# deps
+node_modules
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# testing
+coverage/
+playwright-report/
+test-results/
+
+# env - never commit real values (deployment.md sec 3: names only in repo)
+.env
+.env.local
+.env.*.local
+
+# misc
+.DS_Store
+*.log

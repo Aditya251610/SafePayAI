@@ -1,0 +1,492 @@
+openapi: 3.1.0
+info:
+  title: resolution
+  version: "0.1.0"
+  description: >
+    12-state case machine + REFUNDS_FROZEN kill switch. Derived from
+    .claude/prd/services/resolution/api.md. Wave 4: routes other than health/readyz are
+    stubs returning 501 (including /controls/refunds-frozen, which checks the settings flag
+    but does not yet read/write the real DB-row kill switch).
+servers:
+  - url: /
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200": { description: liveness, content: { application/json: { schema: { $ref: "#/components/schemas/HealthResponse" } } } }
+  /healthz:
+    get:
+      operationId: healthz
+      responses:
+        "200": { description: liveness (alias), content: { application/json: { schema: { $ref: "#/components/schemas/HealthResponse" } } } }
+  /readyz:
+    get:
+      operationId: readyz
+      responses:
+        "200": { description: ready, content: { application/json: { schema: { $ref: "#/components/schemas/ReadyResponse" } } } }
+        "503": { description: not ready, content: { application/json: { schema: { $ref: "#/components/schemas/ReadyResponse" } } } }
+  /health/deep:
+    get:
+      operationId: healthDeep
+      responses:
+        "200": { description: keep-warm deep check, content: { application/json: { schema: { $ref: "#/components/schemas/ReadyResponse" } } } }
+  /cases/report:
+    post:
+      operationId: reportCase
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReportCaseRequest" }
+      responses:
+        "201": { description: new case, content: { application/json: { schema: { $ref: "#/components/schemas/ReportCaseResponse" } } } }
+        "200": { description: existing case for (order_id, kind) }
+        "400": { description: VALIDATION_ERROR }
+        "404": { description: ORDER_NOT_FOUND }
+        "409": { description: ORDER_NOT_CAPTURED }
+        "422": { description: FIELD_NOT_ALLOWED / TEXT_TOO_LONG / IDEMPOTENCY_KEY_REUSED }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "503": { description: DEPENDENCY_UNAVAILABLE }
+  /cases/{case_id}:
+    get:
+      operationId: getCase
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: case_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: case detail, content: { application/json: { schema: { $ref: "#/components/schemas/CaseDetailResponse" } } } }
+        "404": { description: not found }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /cases:
+    get:
+      operationId: listCases
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: order_id, in: query, schema: { type: string } }
+      responses:
+        "200": { description: list }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /review/queue:
+    get:
+      operationId: reviewQueue
+      security: [{ internalJwt: [] }]
+      responses:
+        "200": { description: HUMAN_REVIEW queue, content: { application/json: { schema: { $ref: "#/components/schemas/ReviewQueueResponse" } } } }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /cases/{case_id}/review-decision:
+    post:
+      operationId: reviewDecision
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: case_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewDecisionRequest" }
+      responses:
+        "200": { description: decision applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReviewDecisionResponse" } } } }
+        "403": { description: ROLE_NOT_ALLOWED }
+        "409": { description: ILLEGAL_TRANSITION / CONCURRENT_MODIFICATION }
+        "422": { description: REASON_REQUIRED / FIELD_NOT_ALLOWED }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /offers/{offer_id}/accept:
+    post:
+      operationId: acceptOffer
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: offer_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OfferAcceptRequest" }
+      responses:
+        "200": { description: accepted, content: { application/json: { schema: { $ref: "#/components/schemas/OfferAcceptResponse" } } } }
+        "409": { description: OFFER_NOT_ACTIVE / PROPOSAL_HASH_MISMATCH / ILLEGAL_TRANSITION }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /offers/{offer_id}/decline:
+    post:
+      operationId: declineOffer
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: offer_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OfferDeclineRequest" }
+      responses:
+        "200": { description: declined, content: { application/json: { schema: { $ref: "#/components/schemas/OfferDeclineResponse" } } } }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /approvals/{token}:
+    get:
+      operationId: previewApproval
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: preview, content: { application/json: { schema: { $ref: "#/components/schemas/ApprovalPreviewResponse" } } } }
+        "404": { description: not found }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /approvals/{token}/consent:
+    post:
+      operationId: consentApproval
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalConsentRequest" }
+      responses:
+        "200": { description: consented, content: { application/json: { schema: { $ref: "#/components/schemas/ApprovalConsentResponse" } } } }
+        "409": { description: APPROVAL_REPLAY / PROPOSAL_HASH_MISMATCH / APPROVAL_EXPIRED / APPROVAL_REVOKED }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /cases/{case_id}/merchant-action:
+    post:
+      operationId: merchantAction
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: case_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MerchantActionRequest" }
+      responses:
+        "200": { description: action applied, content: { application/json: { schema: { $ref: "#/components/schemas/MerchantActionResponse" } } } }
+        "409": { description: ILLEGAL_TRANSITION }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /cases/{case_id}/appeal:
+    post:
+      operationId: appealCase
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: case_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppealRequest" }
+      responses:
+        "200": { description: appealed, content: { application/json: { schema: { $ref: "#/components/schemas/AppealResponse" } } } }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /refunds/reconcile:
+    post:
+      operationId: reconcileRefunds
+      security: [{ internalJwt: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReconcileRequest" }
+      responses:
+        "200": { description: reconciled, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResponse" } } } }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /controls/refunds-frozen:
+    get:
+      operationId: getRefundsFrozen
+      security: [{ internalJwt: [] }]
+      responses:
+        "200": { description: current state, content: { application/json: { schema: { $ref: "#/components/schemas/RefundsFrozenState" } } } }
+        "501": { description: "Wave 5 pending (Wave 4 checks the settings flag only; does not read/write the DB row)" }
+    put:
+      operationId: putRefundsFrozen
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundsFrozenPutRequest" }
+      responses:
+        "200": { description: toggled, content: { application/json: { schema: { $ref: "#/components/schemas/RefundsFrozenState" } } } }
+        "403": { description: only operator role }
+        "422": { description: REASON_REQUIRED }
+        "501": { description: "Wave 5 pending (Wave 4 checks the settings flag only; does not read/write the DB row)" }
+  /notifications:
+    get:
+      operationId: listNotifications
+      security: [{ internalJwt: [] }]
+      responses:
+        "200": { description: notifications, content: { application/json: { schema: { $ref: "#/components/schemas/NotificationsResponse" } } } }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /internal/events:
+    post:
+      operationId: internalEventsReceive
+      security: [{ internalJwt: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InternalEventEnvelope" }
+      responses:
+        "200": { description: accepted }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /internal/outbox:
+    get:
+      operationId: internalOutboxPull
+      security: [{ internalJwt: [] }]
+      parameters:
+        - { name: after, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: outbox page }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /internal/outbox/flush:
+    post:
+      operationId: internalOutboxFlush
+      security: [{ tickSecret: [] }]
+      responses:
+        "200": { description: flushed }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+  /internal/tick:
+    post:
+      operationId: internalTick
+      security: [{ tickSecret: [] }]
+      responses:
+        "200": { description: reconcile + outbox flush + window checks }
+        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+components:
+  securitySchemes:
+    internalJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    tickSecret:
+      type: apiKey
+      in: header
+      name: X-Tick-Secret
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string }
+        service: { type: string }
+    ReadyResponse:
+      type: object
+      required: [status, db]
+      properties:
+        status: { type: string }
+        db: { type: string }
+    Reason:
+      type: object
+      properties:
+        code: { type: string }
+        text: { type: string, nullable: true }
+    ReportCaseRequest:
+      type: object
+      required: [order_id, text]
+      properties:
+        order_id: { type: string }
+        text: { type: string, maxLength: 4000 }
+    OfferView:
+      type: object
+      properties:
+        offer_id: { type: string }
+        action: { type: string, enum: [REFUND, RESHIP] }
+        amount_minor: { type: integer }
+        currency: { type: string }
+        tier: { type: string, enum: [AUTO, CONFIRM, APPROVE, REVIEW] }
+        status: { type: string }
+        proposal_hash: { type: string }
+        expires_at: { type: string, format: date-time }
+    ReportCaseResponse:
+      type: object
+      properties:
+        case_id: { type: string }
+        state: { $ref: "#/components/schemas/CaseState" }
+        kind: { $ref: "#/components/schemas/Kind" }
+        origin: { type: string, enum: [BUYER_REPORT] }
+        reasons:
+          type: array
+          items: { $ref: "#/components/schemas/Reason" }
+        offer:
+          oneOf:
+            - { $ref: "#/components/schemas/OfferView" }
+            - type: "null"
+        protection: { type: object }
+    Kind:
+      type: string
+      enum: [LATE, LOST, DAMAGED, WRONG_ITEM, NOT_AS_DESCRIBED, OTHER]
+    CaseState:
+      type: string
+      enum:
+        [PROTECTED, MONITORING, PROBLEM_DETECTED, TRIAGED, OFFERED, HUMAN_REVIEW, APPROVED,
+         REFUNDING, RESOLVED_REFUNDED, RESOLVED_RESHIP, DECLINED, CLOSED]
+    CaseDetailResponse:
+      type: object
+      properties:
+        case_id: { type: string }
+        order_id: { type: string }
+        state: { $ref: "#/components/schemas/CaseState" }
+        version: { type: integer }
+        kind: { $ref: "#/components/schemas/Kind" }
+        origin: { type: string, enum: [DETECTOR, BUYER_REPORT] }
+        opened_at: { type: string, format: date-time }
+        window_hold: { type: boolean }
+        timeline: { type: array, items: { type: object } }
+        decision: { type: object, nullable: true }
+        offer:
+          oneOf:
+            - { $ref: "#/components/schemas/OfferView" }
+            - type: "null"
+        refund: { type: object, nullable: true }
+        queued_reason: { type: string, nullable: true }
+    ReviewQueueItem:
+      type: object
+      properties:
+        case_id: { type: string }
+        kind: { $ref: "#/components/schemas/Kind" }
+        reason_codes: { type: array, items: { type: string } }
+        entered_at: { type: string, format: date-time }
+        age_s: { type: integer }
+        sla_target_s: { type: integer, nullable: true }
+        sla_state: { type: string, enum: [NO_TARGET, WITHIN, OVER] }
+        brief: { type: string }
+    ReviewQueueResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ReviewQueueItem" }
+    ReviewDecisionRequest:
+      type: object
+      required: [decision, reviewer_name]
+      properties:
+        decision: { type: string, enum: [PROPOSE_REFUND, PROPOSE_RESHIP, DECLINE, CLOSE] }
+        reviewer_name: { type: string }
+        reason: { type: string, nullable: true }
+    ReviewDecisionResponse:
+      type: object
+      properties:
+        case_id: { type: string }
+        state: { $ref: "#/components/schemas/CaseState" }
+        offer_id: { type: string, nullable: true }
+    OfferAcceptRequest:
+      type: object
+      required: [proposal_hash]
+      properties:
+        proposal_hash: { type: string }
+    RefundView:
+      type: object
+      properties:
+        status: { type: string, enum: [NONE, REQUESTED, SENT, COMPLETED, FAILED, UNKNOWN, NOT_SENT] }
+        paypal_refund_id: { type: string, nullable: true }
+    OfferAcceptResponse:
+      type: object
+      properties:
+        case_id: { type: string }
+        state: { $ref: "#/components/schemas/CaseState" }
+        execution: { type: string, enum: [DONE, IN_PROGRESS, QUEUED_FROZEN, NOT_STARTED] }
+        refund: { $ref: "#/components/schemas/RefundView" }
+    OfferDeclineRequest:
+      type: object
+      required: [reason_code]
+      properties:
+        reason_code: { type: string, enum: [NOT_WANTED, WANT_HUMAN, OTHER] }
+    OfferDeclineResponse:
+      type: object
+      properties:
+        state: { type: string, enum: [DECLINED] }
+    ApprovalPreviewResponse:
+      type: object
+      properties:
+        case_id: { type: string }
+        action: { type: string, enum: [REFUND, RESHIP] }
+        amount_minor: { type: integer }
+        currency: { type: string }
+        summary: { type: string }
+        expires_at: { type: string, format: date-time }
+        proposal_hash: { type: string }
+    ApprovalConsentRequest:
+      type: object
+      required: [proposal_hash, csrf_nonce]
+      properties:
+        proposal_hash: { type: string }
+        csrf_nonce: { type: string }
+    ApprovalConsentResponse:
+      type: object
+      properties:
+        case_id: { type: string }
+        state: { $ref: "#/components/schemas/CaseState" }
+        execution: { type: string, enum: [DONE, IN_PROGRESS, QUEUED_FROZEN] }
+    MerchantActionRequest:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [OVERRIDE_OFFER, CONFIRM_RESHIP] }
+    MerchantActionResponse:
+      type: object
+      properties:
+        case_id: { type: string }
+        state: { $ref: "#/components/schemas/CaseState" }
+        offer_id: { type: string, nullable: true }
+        supersedes: { type: string, nullable: true }
+    AppealRequest:
+      type: object
+      properties:
+        note: { type: string, nullable: true }
+    AppealResponse:
+      type: object
+      properties:
+        state: { type: string, enum: [HUMAN_REVIEW] }
+    ReconcileRequest:
+      type: object
+      properties:
+        limit: { type: integer, default: 25 }
+    ReconcileResponse:
+      type: object
+      properties:
+        examined: { type: integer }
+        finalized_completed: { type: integer }
+        finalized_failed: { type: integer }
+        still_unknown: { type: integer }
+        needs_review: { type: integer }
+        frozen_skipped_replays: { type: integer }
+    RefundsFrozenState:
+      type: object
+      properties:
+        refunds_frozen: { type: boolean }
+        reason: { type: string, nullable: true }
+        set_by: { type: string, nullable: true }
+        set_at: { type: string, format: date-time, nullable: true }
+        epoch: { type: integer }
+        adapter_mirror: { type: string, enum: [ACKED, PENDING] }
+        readable: { type: boolean }
+    RefundsFrozenPutRequest:
+      type: object
+      required: [refunds_frozen, reason]
+      properties:
+        refunds_frozen: { type: boolean }
+        reason: { type: string, minLength: 1 }
+    NotificationView:
+      type: object
+      properties:
+        id: { type: string }
+        case_id: { type: string }
+        type: { type: string }
+        created_at: { type: string, format: date-time }
+        body: { type: string }
+    NotificationsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NotificationView" }
+    InternalEventEnvelope:
+      type: object
+      required: [event_id, type, version, aggregate_id, payload]
+      properties:
+        event_id: { type: string, format: uuid }
+        type: { type: string }
+        version: { type: integer }
+        aggregate_id: { type: string }
+        payload: { type: object }
+        trace_id: { type: string, nullable: true }
+    ErrorEnvelope:
+      type: object
+      required: [error, detail]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        request_id: { type: string, nullable: true }

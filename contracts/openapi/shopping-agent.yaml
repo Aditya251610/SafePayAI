@@ -1,0 +1,244 @@
+openapi: 3.1.0
+info:
+  title: shopping-agent
+  version: "0.1.0"
+  description: >
+    Bounded cart-proposal / intent-fit service. Wave 4: contract only; routes other than
+    /healthz and /readyz return 501 until Wave 5. Derived from
+    .claude/prd/services/shopping-agent/api.md.
+servers:
+  - url: /
+paths:
+  /propose:
+    post:
+      operationId: propose
+      summary: Intent (or form fields) -> validated cart proposal
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProposeRequest" }
+      responses:
+        "200":
+          description: Proposal result (including NO_MATCH/NO_PROPOSAL/AI_PAUSED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProposeResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/InvalidRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+        "503": { $ref: "#/components/responses/DependencyUnavailable" }
+  /propose/{proposal_id}:
+    get:
+      operationId: getPropose
+      summary: Re-read a prior proposal
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: proposal_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Same shape as POST /propose
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProposeResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /intent-fit:
+    post:
+      operationId: intentFit
+      summary: Validated cart + mandate intent -> advisory verdict (service caller only)
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IntentFitRequest" }
+      responses:
+        "200":
+          description: Always 200; model/provider failure is encoded in the body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IntentFitResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/InvalidRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /internal/outbox/flush:
+    post:
+      operationId: flushOutbox
+      summary: Relay cart.proposed now (cron-safe)
+      security: [{ internalJwt: [] }]
+      responses:
+        "200":
+          description: "{delivered, pending}"
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /internal/outbox:
+    get:
+      operationId: readOutbox
+      summary: Pull catch-up
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Events after seq
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness; no DB, no LLM call
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { status: { type: string, enum: [ok] } }
+  /readyz:
+    get:
+      operationId: readyz
+      summary: DB + gateway breaker state; no live LLM call
+      security: []
+      responses:
+        "200": { description: ready }
+        "503": { description: not ready }
+components:
+  securitySchemes:
+    internalJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthenticated:
+      description: UNAUTHENTICATED
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    Forbidden:
+      description: FORBIDDEN
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    NotFound:
+      description: MANDATE_NOT_FOUND | PROPOSAL_NOT_FOUND
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    InvalidRequest:
+      description: INVALID_REQUEST | FIELD_NOT_ALLOWED
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    RateLimited:
+      description: RATE_LIMITED
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    DependencyUnavailable:
+      description: MANDATE_UNAVAILABLE | CATALOG_UNAVAILABLE
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    NotImplemented:
+      description: Wave 4 stub
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        request_id: { type: ["string", "null"] }
+    FormIntent:
+      type: object
+      additionalProperties: false
+      required: [category, max_budget_minor, quantity]
+      properties:
+        category: { type: string }
+        max_budget_minor: { type: integer, minimum: 0 }
+        quantity: { type: integer, minimum: 1, maximum: 5 }
+        merchant_id: { type: ["string", "null"] }
+        keywords: { type: ["string", "null"] }
+    ProposeRequest:
+      type: object
+      additionalProperties: false
+      required: [mandate_id, mode]
+      properties:
+        mandate_id: { type: string, format: uuid }
+        mode: { type: string, enum: [intent, form] }
+        intent_text: { type: ["string", "null"], maxLength: 500 }
+        catalog_snapshot_id: { type: ["string", "null"] }
+        form: { $ref: "#/components/schemas/FormIntent" }
+    CartLineOut:
+      type: object
+      additionalProperties: false
+      required: [sku, quantity]
+      properties:
+        sku: { type: string, pattern: "^[A-Z0-9_-]{3,32}$" }
+        quantity: { type: integer, minimum: 1, maximum: 5 }
+        display_title: { type: ["string", "null"] }
+    ProposeResponse:
+      type: object
+      additionalProperties: false
+      required: [proposal_id, status, source, trace_id]
+      properties:
+        proposal_id: { type: string, format: uuid }
+        status: { type: string, enum: [OK, NO_MATCH, NO_PROPOSAL, AI_PAUSED] }
+        source: { type: string, enum: [live, cached, form] }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/CartLineOut" }
+        rationale: { type: ["string", "null"], maxLength: 300 }
+        confidence: { type: ["number", "null"], minimum: 0, maximum: 1 }
+        no_match_reason: { type: ["string", "null"], maxLength: 200 }
+        model: { type: ["string", "null"] }
+        latency_ms: { type: ["integer", "null"] }
+        badge: { type: ["string", "null"] }
+        recorded_model: { type: ["string", "null"] }
+        trace_id: { type: string, format: uuid }
+    IntentFitCartLine:
+      type: object
+      additionalProperties: false
+      required: [sku, quantity, title, category]
+      properties:
+        sku: { type: string }
+        quantity: { type: integer, minimum: 1, maximum: 5 }
+        title: { type: string }
+        category: { type: string }
+    IntentFitRequest:
+      type: object
+      additionalProperties: false
+      required: [mandate_id, intent_text, cart_lines]
+      properties:
+        mandate_id: { type: string, format: uuid }
+        intent_text: { type: string }
+        cart_lines:
+          type: array
+          items: { $ref: "#/components/schemas/IntentFitCartLine" }
+    IntentFitResponse:
+      type: object
+      additionalProperties: false
+      required: [verdict, reason_code, reason, confidence, advisory, degraded, source, trace_id]
+      properties:
+        verdict: { type: string, enum: [PASS, NEEDS_BUYER_CONFIRMATION, REJECT_WITH_REASON] }
+        reason_code:
+          type: string
+          enum: [OK, CATEGORY_MISMATCH, QUANTITY_ODD, RECIPIENT_MISMATCH, UNCLEAR]
+        reason: { type: string, maxLength: 200 }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        advisory: { type: boolean }
+        degraded: { type: boolean }
+        source: { type: string, enum: [live, cached, form] }
+        trace_id: { type: string, format: uuid }

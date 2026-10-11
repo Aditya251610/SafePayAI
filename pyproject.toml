@@ -1,0 +1,31 @@
+[project]
+name = "safepayai"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "SafePayAI monorepo workspace root (PayPal AI Hackathon 2026)."
+
+[tool.uv.workspace]
+members = [
+  "services/api-gateway",
+  "services/mandate",
+  "services/catalog",
+  "services/shopping-agent",
+  "services/checkout",
+  "services/paypal-adapter",
+  "services/tracking",
+  "services/resolution",
+  "services/triage-ai",
+  "services/audit",
+  "libs/common",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

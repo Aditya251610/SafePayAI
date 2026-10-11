@@ -1,0 +1,429 @@
+openapi: 3.1.0
+info:
+  title: checkout
+  version: "0.1.0"
+  description: >
+    Cart pricing/checks, PayPal order orchestration, receipts. Wave 4: contract only;
+    routes other than /healthz and /readyz return 501 until Wave 5. Derived from
+    .claude/prd/services/checkout/api.md.
+servers:
+  - url: /
+paths:
+  /carts:
+    post:
+      operationId: createCart
+      summary: Re-price, check, advisory intent-fit
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCartRequest" }
+      responses:
+        "201":
+          description: Cart checked (including BLOCKED -- a normal result, not an error)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateCartResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/RoleNotAllowed" }
+        "404": { $ref: "#/components/responses/MandateNotFound" }
+        "422": { $ref: "#/components/responses/FieldNotAllowed" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+        "503": { $ref: "#/components/responses/DependencyUnavailable" }
+  /carts/{cart_id}:
+    get:
+      operationId: getCart
+      summary: Cart + checks
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: cart_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Cart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateCartResponse" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/MandateNotFound" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /carts/{cart_id}/confirm:
+    post:
+      operationId: confirmCart
+      summary: Re-check, create order, return approve URL
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: cart_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmCartRequest" }
+      responses:
+        "200": { description: "Idempotent replay" }
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfirmCartResponse" }
+        "404": { $ref: "#/components/responses/MandateNotFound" }
+        "409": { description: "CART_CHANGED | CART_ALREADY_ORDERED" }
+        "422": { description: "CART_BLOCKED | INTENT_FIT_CONFIRMATION_REQUIRED" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+        "502": { description: PAYPAL_CREATE_FAILED }
+        "503": { description: PAYPAL_CREATE_UNKNOWN }
+  /orders/return:
+    post:
+      operationId: ordersReturn
+      summary: PayPal return handling and verified capture
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrderReturnRequest" }
+      responses:
+        "200":
+          description: Capture outcome
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderReturnResponse" }
+        "400": { description: "STATE_INVALID | TOKEN_MISMATCH" }
+        "401": { description: SIGN_IN_REQUIRED }
+        "403": { description: BUYER_MISMATCH }
+        "409": { description: "NOT_APPROVED | STATE_ALREADY_USED_OTHER_ORDER" }
+        "422": { description: ORDER_MISMATCH }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+        "503": { description: PAYPAL_UNAVAILABLE }
+  /orders/cancel:
+    post:
+      operationId: ordersCancel
+      summary: cancel_url handling
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrderCancelRequest" }
+      responses:
+        "200": { description: Cancelled }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /orders/{order_id}/capture:
+    post:
+      operationId: captureOrder
+      summary: Idempotent retry/reconcile of capture
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200": { description: Current/updated order }
+        "404": { $ref: "#/components/responses/MandateNotFound" }
+        "409": { description: "ORDER_NOT_CAPTURABLE | NOT_APPROVED" }
+        "422": { description: "MANDATE_REVOKED | ORDER_MISMATCH" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /orders/{order_id}:
+    get:
+      operationId: getOrder
+      summary: Order + capture facts
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Order }
+        "404": { $ref: "#/components/responses/MandateNotFound" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /orders/{order_id}/receipt:
+    get:
+      operationId: getReceipt
+      summary: Receipt
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Receipt }
+        "404": { $ref: "#/components/responses/MandateNotFound" }
+        "409": { description: RECEIPT_NOT_READY }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /orders:
+    get:
+      operationId: listOrders
+      summary: List orders
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: mandate_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200": { description: "{items, next_cursor}" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /internal/events:
+    post:
+      operationId: internalEvents
+      summary: Event inbox
+      security: [{ internalJwt: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InboundEvent" }
+      responses:
+        "200": { description: Accepted (duplicate-safe) }
+        "400": { description: Unknown version }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /internal/outbox:
+    get:
+      operationId: readOutbox
+      summary: Pull catch-up
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        "200": { description: Events after seq }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /internal/outbox/flush:
+    post:
+      operationId: flushOutbox
+      summary: Relay now
+      security: [{ internalJwt: [] }]
+      responses:
+        "200": { description: "{delivered, pending}" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /internal/reconcile:
+    post:
+      operationId: reconcile
+      summary: Reconcile non-terminal orders
+      security: [{ internalJwt: [] }]
+      responses:
+        "200": { description: "{examined, advanced, unchanged, errors}" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness
+      security: []
+      responses:
+        "200": { description: OK }
+  /readyz:
+    get:
+      operationId: readyz
+      summary: DB + dependency flags
+      security: []
+      responses:
+        "200": { description: ready }
+        "503": { description: not ready }
+components:
+  securitySchemes:
+    internalJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthenticated:
+      description: UNAUTHENTICATED
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    RoleNotAllowed:
+      description: ROLE_NOT_ALLOWED
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    MandateNotFound:
+      description: MANDATE_NOT_FOUND (also wrong owner)
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    FieldNotAllowed:
+      description: FIELD_NOT_ALLOWED | IDEMPOTENCY_KEY_REUSED
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    ValidationError:
+      description: VALIDATION_ERROR
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    RateLimited:
+      description: Rate limited
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    DependencyUnavailable:
+      description: DEPENDENCY_UNAVAILABLE
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+    NotImplemented:
+      description: Wave 4 stub
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        request_id: { type: ["string", "null"] }
+    CartLineIn:
+      type: object
+      additionalProperties: false
+      required: [sku, qty]
+      properties:
+        sku: { type: string }
+        qty: { type: integer, minimum: 1 }
+    CreateCartRequest:
+      type: object
+      additionalProperties: false
+      required: [mandate_id, lines]
+      properties:
+        mandate_id: { type: string, format: uuid }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/CartLineIn" }
+        proposal_id: { type: ["string", "null"], format: uuid }
+        stated_unit_prices_minor:
+          type: ["object", "null"]
+          additionalProperties: { type: integer }
+    CartCheck:
+      type: object
+      additionalProperties: false
+      required: [name, result, source]
+      properties:
+        name: { type: string }
+        result: { type: string, enum: [PASS, BLOCK, TIGHTEN, SKIPPED] }
+        reason_code: { type: ["string", "null"] }
+        source: { type: string }
+        advisory: { type: ["boolean", "null"] }
+    CartLineOut:
+      type: object
+      additionalProperties: false
+      required: [sku, qty, unit_minor, line_minor, merchant_id]
+      properties:
+        sku: { type: string }
+        qty: { type: integer }
+        unit_minor: { type: integer }
+        line_minor: { type: integer }
+        merchant_id: { type: string }
+    IntentFitSummary:
+      type: object
+      additionalProperties: false
+      required: [verdict, reason_code]
+      properties:
+        verdict: { type: string, enum: [PASS, NEEDS_BUYER_CONFIRMATION, REJECT_WITH_REASON] }
+        reason_code: { type: string }
+        advisory: { type: boolean, default: true }
+    CreateCartResponse:
+      type: object
+      additionalProperties: false
+      required:
+        [cart_id, status, currency, lines, total_minor, remaining_cap_minor_after, proposal_hash, checks, expires_at]
+      properties:
+        cart_id: { type: string, format: uuid }
+        status: { type: string, enum: [CHECKED, NEEDS_CONFIRMATION, BLOCKED] }
+        currency: { type: string, enum: [USD] }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/CartLineOut" }
+        total_minor: { type: integer }
+        remaining_cap_minor_after: { type: integer }
+        proposal_hash: { type: string }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/CartCheck" }
+        intent_fit:
+          oneOf:
+            - { $ref: "#/components/schemas/IntentFitSummary" }
+            - type: "null"
+        expires_at: { type: string, format: date-time }
+    ConfirmCartRequest:
+      type: object
+      additionalProperties: false
+      required: [proposal_hash]
+      properties:
+        proposal_hash: { type: string }
+        confirm_intent_fit: { type: boolean, default: false }
+    ConfirmCartResponse:
+      type: object
+      additionalProperties: false
+      required: [order_id, status, approve_url, total_minor, currency, expires_at]
+      properties:
+        order_id: { type: string, format: uuid }
+        status: { type: string }
+        approve_url: { type: string, format: uri }
+        total_minor: { type: integer }
+        currency: { type: string, enum: [USD] }
+        expires_at: { type: string, format: date-time }
+    OrderReturnRequest:
+      type: object
+      additionalProperties: false
+      required: [state, token, payer_id]
+      properties:
+        state: { type: string }
+        token: { type: string }
+        payer_id: { type: string }
+    OrderReturnResponse:
+      type: object
+      additionalProperties: false
+      required: [order_id, status, receipt_url, message_code]
+      properties:
+        order_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [CAPTURED, CAPTURE_PENDING, CAPTURE_UNKNOWN, CANCELLED_REVOKED, CAPTURE_FAILED]
+        receipt_url: { type: string }
+        message_code:
+          type: string
+          enum: [CAPTURED, PENDING_PROTECTION_NOT_STARTED, MANDATE_REVOKED, TRY_AGAIN]
+    OrderCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: { type: string }
+    InboundEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, type, version, occurred_at, producer, aggregate_id, payload]
+      properties:
+        event_id: { type: string, format: uuid }
+        type: { type: string }
+        version: { type: integer }
+        occurred_at: { type: string, format: date-time }
+        producer: { type: string }
+        aggregate_id: { type: string }
+        trace_id: { type: ["string", "null"] }
+        payload: { type: object }

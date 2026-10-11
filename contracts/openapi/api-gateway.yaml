@@ -1,0 +1,397 @@
+openapi: 3.1.0
+info:
+  title: api-gateway
+  version: "0.1.0"
+  description: >
+    Single public entry point: sessions, CSRF, proxy to owning services, read-only
+    BFF, ops surface. Derived from .claude/prd/services/api-gateway/api.md. Wave 4:
+    contracts + skeleton only; routes other than health/readyz return 501.
+    Note: api-gateway/spec.md section 14 (REQ-GW-050) names the contract file
+    `contracts/openapi/api-gateway.json`; this scaffold uses `.yaml` per the
+    binding conventions doc section 8 and this task's explicit instructions -
+    flagged conflict.
+servers:
+  - url: /
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-ps_sid
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+        request_id: { type: string, nullable: true }
+        details: { type: object, nullable: true }
+      required: [error, message]
+    Principal:
+      type: object
+      properties:
+        actor_type: { type: string }
+        actor_id: { type: string }
+        role: { type: string, enum: [buyer, merchant, operator] }
+        display_name: { type: string, nullable: true }
+    SessionResponse:
+      type: object
+      properties:
+        principal: { $ref: "#/components/schemas/Principal" }
+        expires_at: { type: string, format: date-time }
+    LoginRequest:
+      type: object
+      properties:
+        handle: { type: string }
+        password: { type: string }
+      required: [handle, password]
+      additionalProperties: false
+    MeResponse:
+      type: object
+      properties:
+        actor_type: { type: string }
+        actor_id: { type: string }
+        role: { type: string }
+        auth_method: { type: string }
+        display_name: { type: string, nullable: true }
+        session_expires_at: { type: string, format: date-time }
+    CsrfResponse:
+      type: object
+      properties:
+        csrf_token: { type: string }
+        purpose: { type: string }
+        expires_at: { type: string, format: date-time }
+    OpsStatusResponse:
+      type: object
+      properties:
+        demo_mode: { type: boolean }
+        money_routes_enabled: { type: boolean }
+        refunds_frozen: { type: string, enum: ["true", "false", "unknown"] }
+        build_id: { type: string }
+    FreezeRequest:
+      type: object
+      properties:
+        frozen: { type: boolean }
+        reason: { type: string, nullable: true }
+      required: [frozen]
+      additionalProperties: false
+security:
+  - sessionCookie: []
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      security: []
+      responses:
+        "200": { description: OK }
+  /readyz:
+    get:
+      operationId: readyz
+      security: []
+      responses:
+        "200": { description: Ready }
+        "503": { description: Not ready }
+  /.well-known/jwks.json:
+    get:
+      operationId: jwks
+      security: []
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/auth/demo-session:
+    post:
+      operationId: demoSession
+      security: []
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResponse" }
+        "429": { description: Rate limited }
+        "501": { description: Not implemented (Wave 4) }
+  /api/auth/login:
+    post:
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResponse" }
+        "401": { description: Unauthenticated }
+        "501": { description: Not implemented (Wave 4) }
+  /api/auth/logout:
+    post:
+      operationId: logout
+      responses:
+        "204": { description: No content }
+        "501": { description: Not implemented (Wave 4) }
+  /api/auth/me:
+    get:
+      operationId: me
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeResponse" }
+        "401": { description: Unauthenticated }
+        "501": { description: Not implemented (Wave 4) }
+  /api/auth/csrf:
+    get:
+      operationId: csrf
+      parameters:
+        - name: purpose
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CsrfResponse" }
+        "422": { description: Unknown purpose }
+        "501": { description: Not implemented (Wave 4) }
+  /api/ops/status:
+    get:
+      operationId: opsStatus
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpsStatusResponse" }
+        "501": { description: Not implemented (Wave 4) }
+  /api/ops/freeze:
+    post:
+      operationId: opsFreeze
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FreezeRequest" }
+      responses:
+        "200": { description: OK }
+        "403": { description: Forbidden }
+        "501": { description: Not implemented (Wave 4) }
+  /api/ops/tick:
+    post:
+      operationId: opsTick
+      security: []
+      parameters:
+        - name: X-Tick-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "202": { description: Accepted }
+        "401": { description: Unauthenticated }
+        "501": { description: Not implemented (Wave 4) }
+  /api/bff/buyer-home:
+    get:
+      operationId: bffBuyerHome
+      responses:
+        "200": { description: OK }
+        "503": { description: Unavailable }
+        "501": { description: Not implemented (Wave 4) }
+  /api/bff/orders/{order_id}:
+    get:
+      operationId: bffOrderDetail
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Not found }
+        "501": { description: Not implemented (Wave 4) }
+  /api/bff/merchant-queue:
+    get:
+      operationId: bffMerchantQueue
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/mandate/mandates:
+    post:
+      operationId: proxyMandateSign
+      responses:
+        "201": { description: Created }
+        "501": { description: Not implemented (Wave 4) }
+  /api/mandate/mandates/{mandate_id}:
+    get:
+      operationId: proxyMandateGet
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/mandate/mandates/{mandate_id}/terms:
+    get:
+      operationId: proxyMandateTerms
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/mandate/mandates/{mandate_id}/revoke:
+    post:
+      operationId: proxyMandateRevoke
+      parameters:
+        - { name: mandate_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/catalog/items:
+    get:
+      operationId: proxyCatalogItems
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/catalog/items/{sku}:
+    get:
+      operationId: proxyCatalogItem
+      parameters:
+        - { name: sku, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/agent/propose:
+    post:
+      operationId: proxyAgentPropose
+      responses:
+        "200": { description: OK }
+        "429": { description: LLM budget exhausted }
+        "501": { description: Not implemented (Wave 4) }
+  /api/checkout/carts:
+    post:
+      operationId: proxyCheckoutCreateCart
+      responses:
+        "201": { description: Created }
+        "501": { description: Not implemented (Wave 4) }
+  /api/checkout/carts/{cart_id}/confirm:
+    post:
+      operationId: proxyCheckoutConfirmCart
+      parameters:
+        - { name: cart_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/checkout/orders/{order_id}/capture:
+    post:
+      operationId: proxyCheckoutCapture
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "409": { description: Capture in progress }
+        "501": { description: Not implemented (Wave 4) }
+  /api/checkout/orders/{order_id}:
+    get:
+      operationId: proxyCheckoutGetOrder
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/checkout/orders:
+    get:
+      operationId: proxyCheckoutListOrders
+      parameters:
+        - { name: mandate_id, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/tracking/shipments:
+    post:
+      operationId: proxyTrackingCreateShipment
+      responses:
+        "201": { description: Created }
+        "501": { description: Not implemented (Wave 4) }
+  /api/tracking/shipments/{order_id}:
+    get:
+      operationId: proxyTrackingGetShipment
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/tracking/demo/clock/advance:
+    post:
+      operationId: proxyTrackingDemoClockAdvance
+      responses:
+        "200": { description: OK }
+        "404": { description: Demo mode disabled }
+        "501": { description: Not implemented (Wave 4) }
+  /api/tracking/demo/shipments/{shipment_id}/force:
+    post:
+      operationId: proxyTrackingDemoForce
+      parameters:
+        - { name: shipment_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "404": { description: Demo mode disabled }
+        "501": { description: Not implemented (Wave 4) }
+  /api/resolution/cases/report:
+    post:
+      operationId: proxyResolutionReport
+      responses:
+        "201": { description: Created }
+        "501": { description: Not implemented (Wave 4) }
+  /api/resolution/cases/{case_id}:
+    get:
+      operationId: proxyResolutionGetCase
+      parameters:
+        - { name: case_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/resolution/cases:
+    get:
+      operationId: proxyResolutionListCases
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "403": { description: Forbidden (buyer cannot list) }
+        "501": { description: Not implemented (Wave 4) }
+  /api/resolution/offers/{offer_id}/accept:
+    post:
+      operationId: proxyResolutionOfferAccept
+      parameters:
+        - { name: offer_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/resolution/approvals/{token}/consent:
+    post:
+      operationId: proxyResolutionApprovalConsent
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/resolution/cases/{case_id}/merchant-action:
+    post:
+      operationId: proxyResolutionMerchantAction
+      parameters:
+        - { name: case_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/audit/entries:
+    get:
+      operationId: proxyAuditEntries
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
+  /api/audit/verify:
+    get:
+      operationId: proxyAuditVerify
+      responses:
+        "200": { description: OK }
+        "501": { description: Not implemented (Wave 4) }
