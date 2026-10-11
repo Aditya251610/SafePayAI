@@ -56,8 +56,8 @@ async def pg_env(test_db_name):
 
     migration_url = _sqlalchemy_dsn(test_db_name, "postgres", "postgres")
     env = os.environ.copy()
-    env["PS_PAYPALADAPTER_MIGRATION_DB_URL"] = migration_url
-    env["PS_PAYPALADAPTER_DB_URL"] = migration_url
+    env["PS_PAYPALADAPTER_MIGRATION_DATABASE_URL"] = migration_url
+    env["PS_PAYPALADAPTER_DATABASE_URL"] = migration_url
     result = subprocess.run(  # noqa: ASYNC221 - one-time session setup, not request-path code
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=SERVICE_DIR,
@@ -76,8 +76,8 @@ async def pg_env(test_db_name):
         await admin_conn.close()
 
     env_vars = {
-        "PS_PAYPALADAPTER_DB_URL": _sqlalchemy_dsn(test_db_name, "svc_paypal", svc_password),
-        "PS_PAYPALADAPTER_MIGRATION_DB_URL": migration_url,
+        "PS_PAYPALADAPTER_DATABASE_URL": _sqlalchemy_dsn(test_db_name, "svc_paypal", svc_password),
+        "PS_PAYPALADAPTER_MIGRATION_DATABASE_URL": migration_url,
         "PAYPAL_CLIENT_ID": "test-client-id",
         "PAYPAL_CLIENT_SECRET": "test-client-secret",  # noqa: S105
         "PS_PAYPALADAPTER_INTERNAL_TRUSTED_ISSUERS": json.dumps({TEST_KID: TEST_SECRET}),

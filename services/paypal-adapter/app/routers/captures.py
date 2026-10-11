@@ -21,7 +21,7 @@ router = APIRouter(prefix="/v1", tags=["captures"])
 @router.get("/captures/{capture_id}", status_code=501)
 async def get_capture(
     capture_id: str,
-    _caller: Caller = Depends(require_tool_permission("get_capture")),
+    _caller: Caller = Depends(require_tool_permission("get_capture")),  # noqa: B008
 ) -> JSONResponse:
     return JSONResponse(
         status_code=501,
@@ -33,7 +33,7 @@ async def get_capture(
 async def refund_capture(
     capture_id: str,
     body: RefundCaptureRequest,
-    _caller: Caller = Depends(require_tool_permission("refund_capture")),
+    _caller: Caller = Depends(require_tool_permission("refund_capture")),  # noqa: B008
     _ticket: str = Depends(require_authorization_ticket),
 ) -> JSONResponse:
     return JSONResponse(

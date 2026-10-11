@@ -21,7 +21,7 @@ router = APIRouter(prefix="/v1", tags=["tracking"])
 async def add_tracking(
     order_id: str,
     body: AddTrackingRequest,
-    _caller: Caller = Depends(require_tool_permission("add_tracking")),
+    _caller: Caller = Depends(require_tool_permission("add_tracking")),  # noqa: B008
 ) -> JSONResponse:
     return JSONResponse(
         status_code=501,
@@ -33,7 +33,7 @@ async def add_tracking(
 async def get_tracking(
     order_id: str,
     tracker_id: str,
-    _caller: Caller = Depends(require_tool_permission("get_tracking")),
+    _caller: Caller = Depends(require_tool_permission("get_tracking")),  # noqa: B008
 ) -> JSONResponse:
     return JSONResponse(
         status_code=501,

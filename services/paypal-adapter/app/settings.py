@@ -40,10 +40,19 @@ class Settings(BaseSettings):
     paypal_token_refresh_skew_seconds: int = 60
     paypal_return_url_allowed_origins: str = "http://localhost:3000"
 
-    db_url: str = "postgresql+asyncpg://svc_paypal:changeme@localhost:5432/artiq"
-    # Not explicitly listed in deployment.md's env table (only PS_PAYPALADAPTER_DATABASE_URL
-    # is); added for Alembic's direct connection per data-architecture.md section 8. Flagged.
-    migration_db_url: str = "postgresql+asyncpg://mig_paypal:changeme@localhost:5432/artiq"
+    # Explicit alias: CLAUDE.md's documented convention is PS_<SLUG>_{DATABASE_URL,
+    # MIGRATION_DATABASE_URL} (every other service and ci-python-service.yml use this) --
+    # the DB_URL/MIGRATION_DB_URL names previously here were never read by CI's exported
+    # env vars, silently falling back to these dev defaults and failing against CI's
+    # postgres container as role "mig_paypal" with the wrong password/database.
+    db_url: str = Field(
+        default="postgresql+asyncpg://svc_paypal:changeme@localhost:5432/artiq",
+        alias="PS_PAYPALADAPTER_DATABASE_URL",
+    )
+    migration_db_url: str = Field(
+        default="postgresql+asyncpg://mig_paypal:changeme@localhost:5432/artiq",
+        alias="PS_PAYPALADAPTER_MIGRATION_DATABASE_URL",
+    )
 
     internal_jwks_url: str | None = None
     internal_trusted_issuers: str | None = None
