@@ -36,26 +36,25 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
-from typing import Sequence, Union
+from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy import text
-from sqlalchemy.dialects import postgresql
-
 from safepayai_common.db.grants import (
     ROLE_FLAGS,
     TableGrant,
     apply_table_grants,
     create_schema_and_roles,
 )
+from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "0001_baseline"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "audit"
 OWNER_ROLE = "audit_owner"
@@ -79,7 +78,9 @@ def _jcs_bytes(obj: dict) -> bytes:
     full unicode/number-edge-case handling is Wave 5's app/chain/canonical.py; this is
     not a reimplementation of that module, just enough to seed a correct genesis hash.
     """
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(
+        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
 
 
 def _row_hash(prev_hash: str, canonical: bytes) -> str:
@@ -161,11 +162,19 @@ def upgrade() -> None:
         "ix_entries_buyer_id", "entries", ["buyer_id", "seq"], unique=False,
         schema=SCHEMA, postgresql_where=sa.text("buyer_id IS NOT NULL"),
     )
-    op.create_index("ix_entries_event_type", "entries", ["event_type", "seq"], unique=False, schema=SCHEMA)
     op.create_index(
-        "ix_entries_actor", "entries", ["actor_type", "actor_id", "seq"], unique=False, schema=SCHEMA
+        "ix_entries_event_type", "entries", ["event_type", "seq"], unique=False, schema=SCHEMA
     )
-    op.create_index("ix_entries_request_id", "entries", ["request_id"], unique=False, schema=SCHEMA)
+    op.create_index(
+        "ix_entries_actor",
+        "entries",
+        ["actor_type", "actor_id", "seq"],
+        unique=False,
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_entries_request_id", "entries", ["request_id"], unique=False, schema=SCHEMA
+    )
 
     # --- audit.verify_runs (spec.md sec 2.2, informational, NOT hashed) ---
     op.create_table(
@@ -205,6 +214,14 @@ def upgrade() -> None:
             TableGrant("head_exports", ("INSERT", "SELECT")),
         ],
     )
+    # `verify_runs.id` and `head_exports.id` are SERIAL (autoincrement) PKs, which are
+    # backed by an implicit sequence owned by audit_owner -- INSERT privilege on the
+    # TABLE does not imply USAGE on that SEQUENCE (unlike `entries.seq`, which is
+    # writer-assigned, not a sequence, per this migration's own docstring item 2, so it
+    # needs no sequence grant at all). Without this, `audit_app` gets
+    # "permission denied for sequence ..._id_seq" on its very first INSERT.
+    conn.execute(text(f"GRANT USAGE ON SEQUENCE {SCHEMA}.verify_runs_id_seq TO {APP_ROLE}"))
+    conn.execute(text(f"GRANT USAGE ON SEQUENCE {SCHEMA}.head_exports_id_seq TO {APP_ROLE}"))
 
     # --- Triggers (audit-specific DDL; not covered by the shared grants helper) ---
     conn.execute(
@@ -216,7 +233,8 @@ def upgrade() -> None:
             SET search_path = {SCHEMA}, pg_temp
             AS $fn$
             BEGIN
-                RAISE EXCEPTION 'audit_is_append_only: % is not permitted on {SCHEMA}.entries', TG_OP
+                RAISE EXCEPTION
+                    'audit_is_append_only: % is not permitted on {SCHEMA}.entries', TG_OP
                     USING ERRCODE = 'insufficient_privilege';
             END;
             $fn$;
@@ -261,16 +279,24 @@ def upgrade() -> None:
                 -- is also the guard against a second/buggy writer that skipped the lock.
                 PERFORM pg_advisory_xact_lock({ADVISORY_LOCK_KEY});
 
-                SELECT seq, row_hash INTO head_seq, head_hash FROM {SCHEMA}.entries ORDER BY seq DESC LIMIT 1;
+                SELECT seq, row_hash INTO head_seq, head_hash
+                    FROM {SCHEMA}.entries ORDER BY seq DESC LIMIT 1;
 
                 IF head_seq IS NULL THEN
                     IF NEW.seq <> 1 OR NEW.prev_hash <> repeat('0', 64) THEN
-                        RAISE EXCEPTION 'audit_linkage_violation: first row must be seq=1 with zero prev_hash (genesis)'
+                        RAISE EXCEPTION
+                            'audit_linkage_violation: first row must be seq=1'
+                            ' with zero prev_hash (genesis)'
                             USING ERRCODE = 'check_violation';
+                        -- (the two literals above are newline-separated, which SQL
+                        -- treats as implicit concatenation into one string constant)
                     END IF;
                 ELSE
                     IF NEW.seq <> head_seq + 1 OR NEW.prev_hash <> head_hash THEN
-                        RAISE EXCEPTION 'audit_linkage_violation: seq/prev_hash does not extend the current head (expected seq=%, prev_hash=%)', head_seq + 1, head_hash
+                        RAISE EXCEPTION
+                            'audit_linkage_violation: seq/prev_hash does not extend'
+                            ' the current head (expected seq=%, prev_hash=%)',
+                            head_seq + 1, head_hash
                             USING ERRCODE = 'check_violation';
                     END IF;
                 END IF;
@@ -294,10 +320,11 @@ def upgrade() -> None:
     # so it cannot ALTER TABLE ... DISABLE TRIGGER (spec.md sec 8).
 
     # --- Genesis row (spec.md sec 2.1 "Row 1 ... inserted by the migration as owner", sec 10) ---
-    chain_id = "ps-demo-1"  # matches Settings.chain_id default; real value from PS_AUDIT_CHAIN_ID
+    chain_id = "ps-demo-1"  # matches Settings.chain_id default; real value PS_AUDIT_CHAIN_ID
     event_id = "00000000-0000-0000-0000-000000000000"
-    now = datetime.now(timezone.utc)
-    occurred_at = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "000Z"  # 6 fractional digits, Z suffix
+    now = datetime.now(UTC)
+    # 6 fractional digits, Z suffix (spec.md sec 4 timestamp format).
+    occurred_at = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "000Z"
     recorded_at = occurred_at
 
     genesis_payload = {"note": "genesis", "created_by": "migration"}
@@ -350,7 +377,9 @@ def downgrade() -> None:
     conn = op.get_bind()
     conn.execute(text(f"DROP TRIGGER IF EXISTS trg_entries_check_linkage ON {SCHEMA}.entries"))
     conn.execute(text(f"DROP TRIGGER IF EXISTS trg_entries_reject_truncate ON {SCHEMA}.entries"))
-    conn.execute(text(f"DROP TRIGGER IF EXISTS trg_entries_reject_update_delete ON {SCHEMA}.entries"))
+    conn.execute(
+        text(f"DROP TRIGGER IF EXISTS trg_entries_reject_update_delete ON {SCHEMA}.entries")
+    )
     conn.execute(text(f"DROP FUNCTION IF EXISTS {SCHEMA}.audit_check_linkage()"))
     conn.execute(text(f"DROP FUNCTION IF EXISTS {SCHEMA}.audit_reject_mutation()"))
     op.drop_table("head_exports", schema=SCHEMA)

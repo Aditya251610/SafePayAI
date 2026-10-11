@@ -17,7 +17,12 @@ import asyncio
 import logging
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.settings import get_settings
 
@@ -66,7 +71,9 @@ async def get_session() -> AsyncSession:
         yield session
 
 
-async def check_db_ready(retries: int = 3, backoff_seconds: float = 0.25) -> tuple[bool, str | None]:
+async def check_db_ready(
+    retries: int = 3, backoff_seconds: float = 0.25
+) -> tuple[bool, str | None]:
     """SELECT 1 against the pooled connection with retry/backoff.
 
     Matches data-architecture.md sec 9's pre_ping pattern and api.md sec 6's /readyz

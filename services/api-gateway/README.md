@@ -6,10 +6,13 @@ proxies `/api/<svc>/*` to the owning service, and enforces CSRF/CORS/rate limits
 and header stripping. Owns only the `gateway` schema (users, sessions, csrf_uses,
 signing_keys, settings) - no business data.
 
-Wave 4 status: contracts + skeleton only. All routes except `/healthz`, `/readyz`
-return `501 not_implemented`, including `/.well-known/jwks.json` and the
-session/login endpoints (modeled per spec.md but not wired up). Session mechanics,
-JWT minting, CSRF, rate limiting, and the real proxy pipeline land in Wave 5.
+Wave 5 status: real logic for sessions/login/logout, argon2id passwords, RS256
+internal JWT minting + `/.well-known/jwks.json` with kid rotation, role guards,
+an in-process rate limiter on auth endpoints, and the generic `/api/<svc>/*`
+proxy (header allowlist, JWT mint, forward, response filter, idempotency and
+money-routes checks). `GET /api/auth/csrf` and the ops/BFF endpoints remain
+`501 not_implemented` stubs - out of this pass's scope; see the handoff notes in
+the PR/report for the full list of flagged scope cuts and deviations.
 
 ## Run alone
 

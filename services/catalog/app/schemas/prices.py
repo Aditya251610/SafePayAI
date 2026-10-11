@@ -6,14 +6,19 @@ per docs/service-skeleton-conventions.md section 8 / data-architecture.md sectio
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class PriceResolveLine(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sku: str
-    qty: int = Field(ge=1)
+    # Bounds (1..PS_CATALOG_MAX_LINE_QTY) are enforced in the router, not here, so an
+    # out-of-bounds qty produces the documented `INVALID_QUANTITY` business error
+    # (spec.md section 9) instead of a generic pydantic VALIDATION_ERROR. `qty` must
+    # still be an int - a non-numeric value is still a schema-level VALIDATION_ERROR
+    # (spec.md section 5 step 2 lists "int" as part of strict body validation).
+    qty: int
     agent_stated_price_minor: int | None = None
 
 

@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     port: int = 8000
 
     database_url: str = "postgresql+asyncpg://svc_apigateway:password@localhost:5432/artiq"
-    migration_database_url: str = "postgresql+asyncpg://mig_apigateway:password@localhost:5432/artiq"
+    migration_database_url: str = (
+        "postgresql+asyncpg://mig_apigateway:password@localhost:5432/artiq"
+    )
 
     frontend_origins: str = "http://localhost:3000"
     cookie_name: str = "__Host-ps_sid"

@@ -11,17 +11,20 @@ Create Date: 2026-10-11
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-
-from safepayai_common.db.grants import TableGrant, apply_table_grants, create_schema_and_roles
+from alembic import op
+from safepayai_common.db.grants import (
+    TableGrant,
+    apply_table_grants,
+    create_schema_and_roles,
+)
 
 revision: str = "0001_baseline"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "mandate"
 MIGRATION_ROLE = "mig_mandate"

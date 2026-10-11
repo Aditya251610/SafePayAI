@@ -18,7 +18,7 @@ import sys
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -62,6 +62,15 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    # Bootstrap-only chicken-and-egg fix: Alembic's own version-table bookkeeping
+    # (`_ensure_version_table`, scoped to `version_table_schema=SCHEMA`) runs BEFORE any
+    # upgrade script executes, so on a brand-new database it tries to
+    # `CREATE TABLE audit.alembic_version` before this revision's own `upgrade()` has
+    # had a chance to `CREATE SCHEMA audit`. Create the (otherwise-empty) schema shell
+    # here so Alembic's bookkeeping has somewhere to write; revision 0001 still owns all
+    # real schema/role/grant/trigger DDL.
+    connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"'))
+    connection.commit()
     context.configure(
         connection=connection,
         target_metadata=target_metadata,

@@ -15,18 +15,20 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "0002_seed_v1"
-down_revision: Union[str, None] = "0001_baseline"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0001_baseline"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "catalog"
-SEED_PATH = pathlib.Path(__file__).resolve().parents[2] / "app" / "seed" / "catalog_seed.json"
+SEED_PATH = (
+    pathlib.Path(__file__).resolve().parents[2] / "app" / "seed" / "catalog_seed.json"
+)
 
 
 def _load_seed() -> dict:
@@ -41,7 +43,9 @@ def upgrade() -> None:
     version = data["version"]
 
     bind.execute(
-        sa.text(f'INSERT INTO "{SCHEMA}"."catalog_versions" (version, seed_hash, reason) VALUES (:v, :h, :r)'),
+        sa.text(
+            f'INSERT INTO "{SCHEMA}"."catalog_versions" (version, seed_hash, reason) VALUES (:v, :h, :r)'
+        ),
         {"v": version, "h": seed_hash, "r": "initial_seed"},
     )
 
@@ -72,7 +76,9 @@ def upgrade() -> None:
 
     for c in data["categories"]:
         bind.execute(
-            sa.text(f'INSERT INTO "{SCHEMA}"."categories" (category_id, display_name) VALUES (:category_id, :display_name)'),
+            sa.text(
+                f'INSERT INTO "{SCHEMA}"."categories" (category_id, display_name) VALUES (:category_id, :display_name)'
+            ),
             {"category_id": c["category_id"], "display_name": c["display_name"]},
         )
 

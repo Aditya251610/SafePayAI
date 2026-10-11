@@ -18,6 +18,13 @@ dependencies = [
 [tool.uv]
 dev-dependencies = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13"]
 
+[tool.ruff.lint]
+# B008 (no function calls in argument defaults) fires on every `Depends(...)` default, the
+# standard FastAPI dependency-injection idiom used throughout this service - ignored here
+# rather than rewritten into a module-level-singleton workaround, matching catalog's same
+# documented choice.
+extend-ignore = ["B008"]
+
 [tool.uv.sources]
 safepayai-common = { workspace = true }
 
@@ -27,3 +34,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

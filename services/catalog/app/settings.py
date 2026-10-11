@@ -23,7 +23,9 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://catalog_ro:password@localhost:5432/artiq"
     seed_database_url: str | None = None
-    migration_database_url: str = "postgresql+asyncpg://mig_catalog:password@localhost:5432/artiq"
+    migration_database_url: str = (
+        "postgresql+asyncpg://mig_catalog:password@localhost:5432/artiq"
+    )
 
     seed_on_start: bool = True
     admin_enabled: bool = False
