@@ -228,6 +228,22 @@ def upgrade() -> None:
     )
 
     conn = op.get_bind()
+    # Idempotent local/CI role bootstrap (data-architecture.md section 1), matching
+    # catalog/mandate's baseline migration pattern -- without this, create_schema_and_roles
+    # below (which only grants, never creates) fails with "role does not exist" at runtime.
+    for role in (MIGRATION_ROLE, RUNTIME_ROLE):
+        conn.execute(
+            sa.text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                        CREATE ROLE "{role}" NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS LOGIN;
+                    END IF;
+                END $$;
+                """
+            )
+        )
     create_schema_and_roles(conn, SCHEMA, MIGRATION_ROLE, RUNTIME_ROLE)
     # Known failure class (CLAUDE.md "sequence grants"): a bigserial PK (outbox.seq)
     # needs GRANT USAGE ON SEQUENCE in addition to GRANT INSERT ON TABLE - the latter

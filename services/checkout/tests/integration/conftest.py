@@ -63,6 +63,18 @@ def migrated_db() -> str:
     assert result.returncode == 0, (
         f"alembic upgrade head failed:\n{result.stdout}\n{result.stderr}"
     )
+
+    async def _set_password() -> None:
+        conn = await asyncpg.connect(_asyncpg_dsn(MIGRATION_URL))
+        try:
+            await conn.execute(
+                f"ALTER ROLE svc_checkout WITH PASSWORD '{DEV_DB_PASSWORD}'"
+            )
+        finally:
+            await conn.close()
+
+    anyio.run(_set_password)
+
     return RUNTIME_URL
 
 
