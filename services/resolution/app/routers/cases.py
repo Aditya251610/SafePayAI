@@ -1,43 +1,146 @@
-"""Case endpoints per resolution/api.md sections 3.1-3.9. Wave 4: validated stubs, 501.
+"""Case endpoints per resolution/api.md sections 3.1-3.9.
 
-The 12-state case machine (spec.md section 3) and the 9 ordered pre-refund checks (section 6)
-are Wave 5 business logic; this file only validates request/response shape and wires auth.
+Wired (Wave 5B) for the buyer-report -> decide -> offer -> accept -> refund path: report_case,
+get_case, accept_offer, decline_offer. Reviewer/merchant/approval-link paths (review_decision,
+merchant_action, appeal_case, approvals preview/consent, list_cases, review_queue,
+notifications) stay 501: they need the `approvals` table and reviewer tooling this wave did not
+scaffold usecases for (resolution/app/usecases only covers open_case/decide/offers/execute_refund).
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app import repo
+from app.db import get_session
 from app.deps import require_idempotency_key, require_internal_jwt
+from app.domain.policy import PolicyClass, PolicyConfig, config_from_settings
+from app.domain.proposal import Action, ApprovalTier
+from app.domain.states import CaseKind, CaseOrigin
 from app.schemas.cases import (
     AppealRequest,
     ApprovalConsentRequest,
+    CaseDetailResponse,
     MerchantActionRequest,
     OfferAcceptRequest,
+    OfferAcceptResponse,
     OfferDeclineRequest,
+    OfferDeclineResponse,
+    OfferView,
+    Reason,
+    RefundView,
     ReportCaseRequest,
+    ReportCaseResponse,
     ReviewDecisionRequest,
 )
+from app.settings import settings
+from app.usecases.decide import assemble_facts_and_decide
+from app.usecases.execute_refund import execute_refund
+from app.usecases.offers import accept_offer as uc_accept_offer
+from app.usecases.offers import create_offer
+from app.usecases.offers import decline_offer as uc_decline_offer
+from app.usecases.open_case import OpenCaseCommand
+from app.usecases.open_case import open_case as uc_open_case
 
 router = APIRouter(tags=["cases"])
 
 
 def _not_implemented(endpoint: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=f"{endpoint} pending Wave 5")
+    return HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=f"{endpoint} pending Wave 5"
+    )
 
 
-@router.post("/cases/report", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+def _policy_config() -> PolicyConfig:
+    return config_from_settings(
+        {
+            "policy_version": settings.policy_version,
+            "refund_cap_minor": settings.policy_refund_cap_minor,
+            "excluded_categories": settings.policy_excluded_categories,
+            "velocity_max": settings.policy_velocity_max,
+            "velocity_window_days": settings.policy_velocity_window_days,
+            "triage_min_confidence": settings.triage_min_confidence,
+        }
+    )
+
+
+@router.post("/cases/report", status_code=201)
 async def report_case(
     body: ReportCaseRequest,
     claims: dict = Depends(require_internal_jwt),
     idempotency_key: str = Depends(require_idempotency_key),
-) -> None:
-    raise _not_implemented("POST /cases/report")
+    session: AsyncSession = Depends(get_session),
+) -> ReportCaseResponse:
+    opened = await uc_open_case(
+        session,
+        OpenCaseCommand(
+            order_id=UUID(body.order_id),
+            kind=CaseKind.OTHER,
+            origin=CaseOrigin.BUYER_REPORT,
+            source_event_id=None,
+            untrusted_text=body.text[: settings.case_report_max_chars],
+        ),
+    )
+    decision = await assemble_facts_and_decide(
+        session, opened.case_id, _policy_config()
+    )
+
+    offer_view: OfferView | None = None
+    if decision.klass in (PolicyClass.INSIDE_TERMS, PolicyClass.OUTSIDE_TERMS):
+        tier = (
+            ApprovalTier.CONFIRM
+            if decision.klass == PolicyClass.INSIDE_TERMS
+            else ApprovalTier.APPROVE
+        )
+        offer = await create_offer(
+            session, opened.case_id, decision, Action.REFUND, tier
+        )
+        offer_view = OfferView(
+            offer_id=str(offer.offer_id),
+            action=offer.action.value,
+            amount_minor=offer.amount_minor,
+            currency=offer.currency,
+            tier=offer.tier.value,
+            status=offer.status.value,
+            proposal_hash=offer.proposal_hash,
+            expires_at="",
+        )
+    await session.commit()
+
+    case = await repo.get_case(session, opened.case_id)
+    return ReportCaseResponse(
+        case_id=str(opened.case_id),
+        state=case["state"] if case else opened.state.value,
+        kind="OTHER",
+        origin="BUYER_REPORT",
+        reasons=[Reason(code=r.code.value) for r in decision.reasons],
+        offer=offer_view,
+        protection={},
+    )
 
 
-@router.get("/cases/{case_id}", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def get_case(case_id: str, claims: dict = Depends(require_internal_jwt)) -> None:
-    raise _not_implemented("GET /cases/{case_id}")
+@router.get("/cases/{case_id}")
+async def get_case_route(
+    case_id: str,
+    claims: dict = Depends(require_internal_jwt),
+    session: AsyncSession = Depends(get_session),
+) -> CaseDetailResponse:
+    case = await repo.get_case(session, UUID(case_id))
+    if case is None:
+        raise HTTPException(status_code=404, detail="CASE_NOT_FOUND")
+    return CaseDetailResponse(
+        case_id=str(case["id"]),
+        order_id=case["order_id"],
+        state=case["state"],
+        version=case["version"],
+        kind=case["kind"],
+        origin=case["origin"],
+        opened_at=case["opened_at"].isoformat(),
+        window_hold=case["window_hold"],
+    )
 
 
 @router.get("/cases", status_code=status.HTTP_501_NOT_IMPLEMENTED)
@@ -54,7 +157,9 @@ async def review_queue(claims: dict = Depends(require_internal_jwt)) -> None:
     raise _not_implemented("GET /review/queue")
 
 
-@router.post("/cases/{case_id}/review-decision", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post(
+    "/cases/{case_id}/review-decision", status_code=status.HTTP_501_NOT_IMPLEMENTED
+)
 async def review_decision(
     case_id: str,
     body: ReviewDecisionRequest,
@@ -63,26 +168,67 @@ async def review_decision(
     raise _not_implemented("POST /cases/{case_id}/review-decision")
 
 
-@router.post("/offers/{offer_id}/accept", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def accept_offer(
+@router.post("/offers/{offer_id}/accept")
+async def accept_offer_route(
     offer_id: str,
     body: OfferAcceptRequest,
     claims: dict = Depends(require_internal_jwt),
-) -> None:
-    raise _not_implemented("POST /offers/{offer_id}/accept")
+    session: AsyncSession = Depends(get_session),
+) -> OfferAcceptResponse:
+    buyer_id = str(claims.get("sub", ""))
+    try:
+        result = await uc_accept_offer(
+            session, UUID(offer_id), buyer_id, body.proposal_hash
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="OFFER_NOT_FOUND") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await session.commit()
+
+    execution = "NOT_STARTED"
+    refund_status = "NONE"
+    if not result.replayed and result.state == "APPROVED":
+        outcome = await execute_refund(session, result.case_id)
+        execution = outcome.execution
+        refund_status = (
+            outcome.attempt_status.value if outcome.attempt_status else "NONE"
+        )
+        await session.commit()
+        case_state = outcome.case_state
+    else:
+        case_state = result.state
+
+    return OfferAcceptResponse(
+        case_id=str(result.case_id),
+        state=case_state,  # type: ignore[arg-type]
+        execution=execution,  # type: ignore[arg-type]
+        refund=RefundView(status=refund_status, paypal_refund_id=None),  # type: ignore[arg-type]
+    )
 
 
-@router.post("/offers/{offer_id}/decline", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def decline_offer(
+@router.post("/offers/{offer_id}/decline")
+async def decline_offer_route(
     offer_id: str,
     body: OfferDeclineRequest,
     claims: dict = Depends(require_internal_jwt),
-) -> None:
-    raise _not_implemented("POST /offers/{offer_id}/decline")
+    session: AsyncSession = Depends(get_session),
+) -> OfferDeclineResponse:
+    buyer_id = str(claims.get("sub", ""))
+    try:
+        await uc_decline_offer(session, UUID(offer_id), buyer_id, body.reason_code)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="OFFER_NOT_FOUND") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await session.commit()
+    return OfferDeclineResponse(state="DECLINED")
 
 
 @router.get("/approvals/{token}", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def preview_approval(token: str, claims: dict = Depends(require_internal_jwt)) -> None:
+async def preview_approval(
+    token: str, claims: dict = Depends(require_internal_jwt)
+) -> None:
     raise _not_implemented("GET /approvals/{token}")
 
 
@@ -95,7 +241,9 @@ async def consent_approval(
     raise _not_implemented("POST /approvals/{token}/consent")
 
 
-@router.post("/cases/{case_id}/merchant-action", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post(
+    "/cases/{case_id}/merchant-action", status_code=status.HTTP_501_NOT_IMPLEMENTED
+)
 async def merchant_action(
     case_id: str,
     body: MerchantActionRequest,

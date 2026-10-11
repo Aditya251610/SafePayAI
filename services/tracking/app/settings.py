@@ -1,11 +1,17 @@
-"""Settings for tracking (Wave 4 skeleton).
+"""Settings for tracking.
 
-Env prefix PS_TRACKING_ per docs/service-skeleton-conventions.md section 2, with two
-documented bare-name exceptions used by this service: INTERNAL_TICK_SECRET (shared
-cron-trigger name, this service has /internal/tick) and the DB url name which this
-service's own deployment.md/spec.md document as PS_TRACKING_DB_URL (not *_DATABASE_URL).
-Names are copied verbatim from services/tracking/{spec,deployment}.md section 9 / env list.
-No values, no secrets here.
+Env prefix PS_TRACKING_ per docs/service-skeleton-conventions.md section 2.
+
+Bug fix (Wave 5B, CLAUDE.md "known recurring failure classes" - CI integration env vars):
+tracking/spec.md section 9 names the DB url `PS_TRACKING_DB_URL`, but CLAUDE.md's
+platform-wide hard rule and ci-python-service.yml's exported env vars use
+PS_<SLUG>_{DATABASE_URL,MIGRATION_DATABASE_URL} for every service; this exact mismatch was
+independently found and fixed in 3 other services' settings.py this session. Using the
+spec's name here would make CI silently fall back to the dev default and fail auth as
+mig_tracking against CI's postgres container. Flagged for the tracking spec.md owner to
+update section 9 to match the platform convention.
+INTERNAL_TICK_SECRET remains the one documented bare-name exception (shared cron-trigger
+name across every service with an /internal/tick-style endpoint).
 """
 
 from __future__ import annotations
@@ -19,9 +25,15 @@ class Settings(BaseSettings):
 
     service_name: str = "tracking"
 
-    # Database (direct per-service convention name, see deployment.md)
-    db_url: str = Field(default="", alias="PS_TRACKING_DB_URL")
-    migration_db_url: str = Field(default="", alias="PS_TRACKING_MIGRATION_DB_URL")
+    # Database (CLAUDE.md platform convention: PS_<SLUG>_{DATABASE_URL,MIGRATION_DATABASE_URL})
+    db_url: str = Field(
+        default="postgresql+asyncpg://svc_tracking:changeme@localhost:5432/artiq",
+        alias="PS_TRACKING_DATABASE_URL",
+    )
+    migration_db_url: str = Field(
+        default="postgresql+asyncpg://mig_tracking:changeme@localhost:5432/artiq",
+        alias="PS_TRACKING_MIGRATION_DATABASE_URL",
+    )
 
     # Sandbox / demo controls
     sandbox_mode: bool = False

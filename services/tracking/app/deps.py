@@ -11,14 +11,16 @@ from collections.abc import AsyncIterator
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
+from safepayai_common.auth.jwt import verify_service_token
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.settings import settings
-from safepayai_common.auth.jwt import verify_service_token
 
 
-async def db_session(session: AsyncSession = Depends(get_session)) -> AsyncIterator[AsyncSession]:
+async def db_session(
+    session: AsyncSession = Depends(get_session),
+) -> AsyncIterator[AsyncSession]:
     yield session
 
 
@@ -27,10 +29,14 @@ def _jwks_client() -> jwt.PyJWKClient:
     return jwt.PyJWKClient(url)
 
 
-async def require_internal_jwt(authorization: str | None = Header(default=None)) -> dict:
+async def require_internal_jwt(
+    authorization: str | None = Header(default=None),
+) -> dict:
     """Verifies the internal service-JWT. Fails closed (401) on any error — never an `if True` stub."""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing bearer token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="missing bearer token"
+        )
     token = authorization.removeprefix("Bearer ")
     try:
         claims = verify_service_token(
@@ -40,20 +46,33 @@ async def require_internal_jwt(authorization: str | None = Header(default=None))
             trusted_issuers=["api-gateway", "resolution"],
         )
     except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"invalid token: {exc}") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"invalid token: {exc}"
+        ) from exc
     return claims
 
 
-def require_idempotency_key(idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> str:
+def require_idempotency_key(
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> str:
     if not idempotency_key:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Idempotency-Key header required")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key header required",
+        )
     return idempotency_key
 
 
-def require_tick_secret(x_tick_secret: str | None = Header(default=None, alias="X-Tick-Secret")) -> None:
+def require_tick_secret(
+    x_tick_secret: str | None = Header(default=None, alias="X-Tick-Secret"),
+) -> None:
     import hmac
 
     if not x_tick_secret or not settings.internal_tick_secret:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid tick secret")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid tick secret"
+        )
     if not hmac.compare_digest(x_tick_secret, settings.internal_tick_secret):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid tick secret")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid tick secret"
+        )

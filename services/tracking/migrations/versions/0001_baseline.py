@@ -11,17 +11,20 @@ gets scoped grants) per data-architecture.md section 4 and conventions doc secti
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-
-from safepayai_common.db.grants import TableGrant, apply_table_grants, create_schema_and_roles
+from safepayai_common.db.grants import (
+    TableGrant,
+    apply_table_grants,
+    create_schema_and_roles,
+)
 
 revision: str = "0001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "tracking"
 MIGRATION_ROLE = "mig_tracking"
@@ -30,6 +33,23 @@ RUNTIME_ROLE = "svc_tracking"
 
 def upgrade() -> None:
     bind = op.get_bind()
+    # Idempotent local/CI role bootstrap (CLAUDE.md "known recurring failure classes" -
+    # create_schema_and_roles only GRANTs, it never CREATEs; without this block it fails with
+    # "role does not exist" on a fresh DB, a bug independently found and fixed in two other
+    # services' baseline migrations this session).
+    for role in (MIGRATION_ROLE, RUNTIME_ROLE):
+        bind.execute(
+            sa.text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                        CREATE ROLE "{role}" NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS LOGIN;
+                    END IF;
+                END $$;
+                """
+            )
+        )
     create_schema_and_roles(bind, SCHEMA, MIGRATION_ROLE, RUNTIME_ROLE)
 
     op.create_table(
@@ -42,22 +62,36 @@ def upgrade() -> None:
         sa.Column("carrier_name", sa.Text(), nullable=False),
         sa.Column("status", sa.Text(), nullable=False, server_default="LABEL_CREATED"),
         sa.Column("anomaly", sa.Text(), nullable=True),
-        sa.Column("outcome_profile", sa.Text(), nullable=False, server_default="ON_TIME"),
+        sa.Column(
+            "outcome_profile", sa.Text(), nullable=False, server_default="ON_TIME"
+        ),
         sa.Column("promised_at_sim", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at_sim", sa.DateTime(timezone=True), nullable=True),
         sa.Column("paypal_tracker_id", sa.Text(), nullable=True),
-        sa.Column("paypal_sync", sa.Text(), nullable=False, server_default="NOT_ATTEMPTED"),
+        sa.Column(
+            "paypal_sync", sa.Text(), nullable=False, server_default="NOT_ATTEMPTED"
+        ),
         sa.Column("paypal_last_error", sa.Text(), nullable=True),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true()),
+        # Added (Wave 5B): models.py already declared this (reset scope, spec s3) but the
+        # baseline migration's DDL was missing it - caught by the first real integration test
+        # against this table.
+        sa.Column("demo", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("version", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.UniqueConstraint("order_id", "tracking_number", name="uq_shipments_order_tracking"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.UniqueConstraint(
+            "order_id", "tracking_number", name="uq_shipments_order_tracking"
+        ),
         schema=SCHEMA,
     )
 
     op.create_table(
         "scheduled_events",
-        sa.Column("shipment_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "shipment_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column("seq", sa.Integer(), nullable=False),
         sa.Column("due_at_sim", sa.DateTime(timezone=True), nullable=False),
         sa.Column("to_status", sa.Text(), nullable=False),
@@ -70,13 +104,17 @@ def upgrade() -> None:
     op.create_table(
         "shipment_events",
         sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("shipment_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "shipment_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column("seq", sa.Integer(), nullable=False),
         sa.Column("from_status", sa.Text(), nullable=True),
         sa.Column("to_status", sa.Text(), nullable=False),
         sa.Column("source", sa.Text(), nullable=False),
         sa.Column("occurred_at_sim", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("occurred_at_real", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "occurred_at_real", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("actor", sa.Text(), nullable=True),
         sa.Column("note_code", sa.Text(), nullable=True),
         schema=SCHEMA,
@@ -85,9 +123,13 @@ def upgrade() -> None:
     op.create_table(
         "demo_clock",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("offset_seconds", sa.BigInteger(), nullable=False, server_default="0"),
+        sa.Column(
+            "offset_seconds", sa.BigInteger(), nullable=False, server_default="0"
+        ),
         sa.Column("version", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         schema=SCHEMA,
     )
 
@@ -105,7 +147,9 @@ def upgrade() -> None:
 
     op.create_table(
         "detections",
-        sa.Column("shipment_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "shipment_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column("kind", sa.Text(), nullable=False),
         sa.Column("detected_at_sim", sa.DateTime(timezone=True), nullable=False),
         sa.Column("event_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=True),
@@ -126,18 +170,26 @@ def upgrade() -> None:
         "detector_runs",
         sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("trigger", sa.Text(), nullable=False),
-        sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "started_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("applied_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("detected_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("skipped_lease", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "skipped_lease", sa.Boolean(), nullable=False, server_default=sa.false()
+        ),
         schema=SCHEMA,
     )
 
     op.create_table(
         "inbox",
-        sa.Column("event_id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("received_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "event_id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True
+        ),
+        sa.Column(
+            "received_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
         schema=SCHEMA,
     )
@@ -145,17 +197,38 @@ def upgrade() -> None:
     op.create_table(
         "outbox",
         sa.Column("seq", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("event_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False, unique=True),
+        sa.Column(
+            "event_id",
+            sa.dialects.postgresql.UUID(as_uuid=True),
+            nullable=False,
+            unique=True,
+        ),
         sa.Column("type", sa.Text(), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("aggregate_id", sa.Text(), nullable=False),
         sa.Column("payload", sa.dialects.postgresql.JSONB(), nullable=False),
         sa.Column("trace_id", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("delivered_to", sa.dialects.postgresql.JSONB(), nullable=False, server_default="{}"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "delivered_to",
+            sa.dialects.postgresql.JSONB(),
+            nullable=False,
+            server_default="{}",
+        ),
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), nullable=True),
         schema=SCHEMA,
+    )
+
+    # Known failure class (CLAUDE.md "sequence grants"): a bigserial PK (outbox.seq) needs
+    # GRANT USAGE ON SEQUENCE in addition to GRANT INSERT ON TABLE - the latter does not imply
+    # the former, and INSERT without it fails at runtime, not at migration time.
+    bind.execute(
+        sa.text(
+            f'GRANT USAGE, SELECT ON SEQUENCE "{SCHEMA}"."outbox_seq_seq" TO "{RUNTIME_ROLE}"'
+        )
     )
 
     apply_table_grants(
