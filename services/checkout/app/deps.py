@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import jwt
 from fastapi import Depends, Header, HTTPException
+from safepayai_common.auth.jwt import ServiceJWTConfig, mint_service_token
 
 from app.settings import Settings, get_settings
 
@@ -57,3 +58,23 @@ async def require_idempotency_key(
     if not idempotency_key:
         raise HTTPException(status_code=422, detail="IDEMPOTENCY_KEY_REQUIRED")
     return idempotency_key
+
+
+def mint_outbound_token(settings: Settings, audience: str) -> str:
+    """Mints a short-lived checkout -> <audience> service token (ADR-006).
+
+    Falls back to a fixed dev literal when no signing key is configured (local/dev
+    docker-compose without a real signing key yet) -- the downstream service's own
+    JWKS-based verification is what actually enforces auth; this is only the token
+    checkout presents.
+    """
+    if not settings.service_signing_key or not settings.service_signing_kid:
+        return "dev-unsigned-checkout-token"
+    config = ServiceJWTConfig(
+        issuer="checkout",
+        audience=audience,
+        signing_key_pem=settings.service_signing_key,
+        kid=settings.service_signing_kid,
+        ttl_seconds=60,
+    )
+    return mint_service_token("svc:checkout", config)

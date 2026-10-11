@@ -8,6 +8,7 @@ that asserts the manifest is clean.
 
 from __future__ import annotations
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,11 +50,19 @@ class Settings(BaseSettings):
     fit_min_confidence: float = 0.6
 
     # Database (schema `agent`; role svc_agent per data-architecture.md section 4)
-    db_url: str = "postgresql+asyncpg://svc_agent:changeme@localhost:5432/artiq"
-    # NOTE: not in deployment.md's documented env table (only PS_SHOPPINGAGENT_DB_URL is listed
-    # there); added here because Alembic migrations need a direct (non-pooled) connection per
-    # data-architecture.md section 8. Flagged in the scaffolding handoff report, not silently added.
-    migration_db_url: str = "postgresql+asyncpg://mig_agent:changeme@localhost:5432/artiq"
+    # NOTE: deployment.md section 2 documents PS_SHOPPINGAGENT_DB_URL, but CLAUDE.md's
+    # repo-wide convention and ci-python-service.yml's exported env vars both use
+    # PS_<SLUG>_DATABASE_URL -- that's a PRD/CI mismatch (not fixed here), and the
+    # DATABASE_URL form is what actually has to match for CI to pass. Explicit alias used
+    # so migrations aren't silently skipped and falling back to this dev default.
+    db_url: str = Field(
+        default="postgresql+asyncpg://svc_agent:changeme@localhost:5432/artiq",
+        alias="PS_SHOPPINGAGENT_DATABASE_URL",
+    )
+    migration_db_url: str = Field(
+        default="postgresql+asyncpg://mig_agent:changeme@localhost:5432/artiq",
+        alias="PS_SHOPPINGAGENT_MIGRATION_DATABASE_URL",
+    )
 
     # Peers (Profile B: in-process; Profile A: HTTP base URLs)
     catalog_base_url: str = "http://localhost:8000"

@@ -11,16 +11,20 @@ data-architecture.md section 4; shopping-agent/spec.md section 12).
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from safepayai_common.db.grants import TableGrant, apply_table_grants, create_schema_and_roles
+from safepayai_common.db.grants import (
+    TableGrant,
+    apply_table_grants,
+    create_schema_and_roles,
+)
 
 revision: str = "0001_baseline"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "agent"
 MIGRATION_ROLE = "mig_agent"
@@ -28,13 +32,37 @@ RUNTIME_ROLE = "svc_agent"
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+
+    # Idempotent local/CI role bootstrap (data-architecture.md section 1), matching
+    # catalog/mandate's baseline migration pattern -- without this, create_schema_and_roles
+    # below (which only grants, never creates) fails with "role does not exist" on a fresh
+    # database.
+    for role in (MIGRATION_ROLE, RUNTIME_ROLE):
+        bind.execute(
+            sa.text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                        CREATE ROLE "{role}" NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS LOGIN;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+
     op.execute(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"')
 
     op.create_table(
         "proposal_log",
         sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("trace_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("mandate_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "trace_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False
+        ),
+        sa.Column(
+            "mandate_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column("kind", sa.String(length=16), nullable=False),
         sa.Column("prompt_version", sa.String(length=32), nullable=False),
         sa.Column("provider", sa.String(length=32), nullable=True),
@@ -44,25 +72,57 @@ def upgrade() -> None:
         sa.Column("output_sha256", sa.String(length=64), nullable=True),
         sa.Column("output_json", sa.dialects.postgresql.JSONB(), nullable=True),
         sa.Column("validation_result", sa.String(length=32), nullable=True),
-        sa.Column("injection_suspected", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "injection_suspected",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
+        ),
         sa.Column("latency_ms", sa.Integer(), nullable=True),
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="1"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         schema=SCHEMA,
     )
-    op.create_index("ix_agent_proposal_log_mandate_id", "proposal_log", ["mandate_id"], schema=SCHEMA)
+    op.create_index(
+        "ix_agent_proposal_log_mandate_id",
+        "proposal_log",
+        ["mandate_id"],
+        schema=SCHEMA,
+    )
 
     op.create_table(
         "outbox",
         sa.Column("seq", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("event_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False, unique=True),
+        sa.Column(
+            "event_id",
+            sa.dialects.postgresql.UUID(as_uuid=True),
+            nullable=False,
+            unique=True,
+        ),
         sa.Column("type", sa.String(length=64), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
-        sa.Column("aggregate_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "aggregate_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column("payload", sa.dialects.postgresql.JSONB(), nullable=False),
         sa.Column("trace_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("delivered_to", sa.dialects.postgresql.JSONB(), nullable=False, server_default="{}"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "delivered_to",
+            sa.dialects.postgresql.JSONB(),
+            nullable=False,
+            server_default="{}",
+        ),
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("done", sa.Boolean(), nullable=False, server_default=sa.false()),
@@ -82,7 +142,12 @@ def upgrade() -> None:
         sa.Column("key", sa.String(length=128), primary_key=True),
         sa.Column("request_hash", sa.String(length=64), nullable=False),
         sa.Column("response", sa.dialects.postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         schema=SCHEMA,
     )
 
@@ -98,12 +163,22 @@ def upgrade() -> None:
             TableGrant("idempotency_keys", ("INSERT", "SELECT", "UPDATE")),
         ],
     )
+    # CLAUDE.md known recurring failure class: a SERIAL/BIGSERIAL PK needs
+    # GRANT USAGE ON SEQUENCE in addition to GRANT INSERT ON TABLE -- the latter does
+    # not imply the former. outbox.seq is bigserial.
+    conn.execute(
+        sa.text(
+            f'GRANT USAGE ON SEQUENCE "{SCHEMA}".outbox_seq_seq TO "{RUNTIME_ROLE}"'
+        )
+    )
 
 
 def downgrade() -> None:
     op.drop_table("idempotency_keys", schema=SCHEMA)
     op.drop_index("ix_agent_outbox_pending", table_name="outbox", schema=SCHEMA)
     op.drop_table("outbox", schema=SCHEMA)
-    op.drop_index("ix_agent_proposal_log_mandate_id", table_name="proposal_log", schema=SCHEMA)
+    op.drop_index(
+        "ix_agent_proposal_log_mandate_id", table_name="proposal_log", schema=SCHEMA
+    )
     op.drop_table("proposal_log", schema=SCHEMA)
     op.execute(f'DROP SCHEMA IF EXISTS "{SCHEMA}" CASCADE')

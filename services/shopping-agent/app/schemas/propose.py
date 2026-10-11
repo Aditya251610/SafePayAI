@@ -77,7 +77,9 @@ class IntentFitResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     verdict: Literal["PASS", "NEEDS_BUYER_CONFIRMATION", "REJECT_WITH_REASON"]
-    reason_code: Literal["OK", "CATEGORY_MISMATCH", "QUANTITY_ODD", "RECIPIENT_MISMATCH", "UNCLEAR"]
+    reason_code: Literal[
+        "OK", "CATEGORY_MISMATCH", "QUANTITY_ODD", "RECIPIENT_MISMATCH", "UNCLEAR"
+    ]
     reason: str = Field(max_length=200)
     confidence: float
     advisory: bool = True

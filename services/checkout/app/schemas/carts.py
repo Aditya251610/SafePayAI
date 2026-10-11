@@ -99,7 +99,11 @@ class OrderReturnResponse(BaseModel):
 
     order_id: str
     status: Literal[
-        "CAPTURED", "CAPTURE_PENDING", "CAPTURE_UNKNOWN", "CANCELLED_REVOKED", "CAPTURE_FAILED"
+        "CAPTURED",
+        "CAPTURE_PENDING",
+        "CAPTURE_UNKNOWN",
+        "CANCELLED_REVOKED",
+        "CAPTURE_FAILED",
     ]
     receipt_url: str
     message_code: Literal[

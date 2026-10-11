@@ -18,16 +18,20 @@ the checkout spec.md owner to update that doc to match.
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from safepayai_common.db.grants import TableGrant, apply_table_grants, create_schema_and_roles
+from safepayai_common.db.grants import (
+    TableGrant,
+    apply_table_grants,
+    create_schema_and_roles,
+)
 
 revision: str = "0001_baseline"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "checkout"
 MIGRATION_ROLE = "mig_checkout"
@@ -55,9 +59,19 @@ def upgrade() -> None:
         sa.Column("intent_fit_verdict", sa.String(length=32), nullable=True),
         sa.Column("intent_fit_reason_code", sa.String(length=32), nullable=True),
         sa.Column("intent_fit_confidence", sa.Float(), nullable=True),
-        sa.Column("stated_price_mismatch", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "stated_price_mismatch",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
+        ),
         sa.Column("committed_minor_at_check", sa.BigInteger(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.CheckConstraint("total_minor > 0", name="ck_carts_total_minor_positive"),
         sa.CheckConstraint("currency = 'USD'", name="ck_carts_currency_usd"),
         schema=SCHEMA,
@@ -73,10 +87,17 @@ def upgrade() -> None:
         sa.Column("reason_code", sa.String(length=64), nullable=True),
         sa.Column("detail", sa.Text(), nullable=True),
         sa.Column("source", sa.String(length=32), nullable=False),
-        sa.Column("ts", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "ts",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         schema=SCHEMA,
     )
-    op.create_index("ix_checkout_cart_checks_cart_id", "cart_checks", ["cart_id"], schema=SCHEMA)
+    op.create_index(
+        "ix_checkout_cart_checks_cart_id", "cart_checks", ["cart_id"], schema=SCHEMA
+    )
 
     op.create_table(
         "orders",
@@ -96,11 +117,23 @@ def upgrade() -> None:
         sa.Column("last_paypal_status", sa.String(length=32), nullable=True),
         sa.Column("failure_code", sa.String(length=64), nullable=True),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         schema=SCHEMA,
     )
-    op.create_index("ix_checkout_orders_mandate_id", "orders", ["mandate_id"], schema=SCHEMA)
+    op.create_index(
+        "ix_checkout_orders_mandate_id", "orders", ["mandate_id"], schema=SCHEMA
+    )
 
     op.create_table(
         "captures",
@@ -114,7 +147,13 @@ def upgrade() -> None:
         sa.Column("captured_at", sa.DateTime(timezone=True), nullable=True),
         schema=SCHEMA,
     )
-    op.create_index("ix_checkout_captures_order_id", "captures", ["order_id"], schema=SCHEMA, unique=True)
+    op.create_index(
+        "ix_checkout_captures_order_id",
+        "captures",
+        ["order_id"],
+        schema=SCHEMA,
+        unique=True,
+    )
 
     op.create_table(
         "receipts",
@@ -124,7 +163,12 @@ def upgrade() -> None:
         sa.Column("audit_event_id", pg_uuid, nullable=True),
         sa.Column("protection_window_days", sa.Integer(), nullable=True),
         sa.Column("remaining_cap_minor", sa.BigInteger(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         schema=SCHEMA,
     )
 
@@ -149,7 +193,12 @@ def upgrade() -> None:
         sa.Column("request_hash", sa.String(length=64), nullable=False),
         sa.Column("response_code", sa.Integer(), nullable=True),
         sa.Column("response_body", jsonb, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         schema=SCHEMA,
     )
 
@@ -157,7 +206,12 @@ def upgrade() -> None:
         "inbox",
         sa.Column("event_id", pg_uuid, primary_key=True),
         sa.Column("type", sa.String(length=64), nullable=False),
-        sa.Column("received_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "received_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         schema=SCHEMA,
     )
 
@@ -174,7 +228,32 @@ def upgrade() -> None:
     )
 
     conn = op.get_bind()
+    # Idempotent local/CI role bootstrap (data-architecture.md section 1), matching
+    # catalog/mandate's baseline migration pattern -- without this, create_schema_and_roles
+    # below (which only grants, never creates) fails with "role does not exist" at runtime.
+    for role in (MIGRATION_ROLE, RUNTIME_ROLE):
+        conn.execute(
+            sa.text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                        CREATE ROLE "{role}" NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS LOGIN;
+                    END IF;
+                END $$;
+                """
+            )
+        )
     create_schema_and_roles(conn, SCHEMA, MIGRATION_ROLE, RUNTIME_ROLE)
+    # Known failure class (CLAUDE.md "sequence grants"): a bigserial PK (outbox.seq)
+    # needs GRANT USAGE ON SEQUENCE in addition to GRANT INSERT ON TABLE - the latter
+    # does not imply the former, and INSERT without it fails at runtime, not at
+    # migration time, so it is easy to miss until the first real write.
+    conn.execute(
+        sa.text(
+            f'GRANT USAGE, SELECT ON SEQUENCE "{SCHEMA}"."outbox_seq_seq" TO "{RUNTIME_ROLE}"'
+        )
+    )
     apply_table_grants(
         conn,
         SCHEMA,

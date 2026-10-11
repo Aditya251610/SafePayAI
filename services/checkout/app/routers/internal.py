@@ -38,10 +38,14 @@ async def read_outbox(
 
 
 @router.post("/outbox/flush", status_code=501)
-async def flush_outbox(_principal: Principal = Depends(require_service_jwt)) -> JSONResponse:
+async def flush_outbox(
+    _principal: Principal = Depends(require_service_jwt),
+) -> JSONResponse:
     return _not_implemented("POST /internal/outbox/flush pending Wave 5")
 
 
 @router.post("/reconcile", status_code=501)
-async def reconcile(_principal: Principal = Depends(require_service_jwt)) -> JSONResponse:
+async def reconcile(
+    _principal: Principal = Depends(require_service_jwt),
+) -> JSONResponse:
     return _not_implemented("POST /internal/reconcile pending Wave 5")
