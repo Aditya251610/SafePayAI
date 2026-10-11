@@ -17,7 +17,16 @@ class Settings(BaseSettings):
 
     service_id: str = "resolution"
 
-    database_url: str = ""
+    # CLAUDE.md platform convention: PS_<SLUG>_{DATABASE_URL,MIGRATION_DATABASE_URL}.
+    # database_url derives its env var from env_prefix + field name (PS_RESOLUTION_DATABASE_URL)
+    # automatically; migration_database_url needs an explicit default so migrations/env.py has
+    # somewhere to fall back to when the migration-role URL isn't set (mirrors mandate/checkout).
+    database_url: str = Field(
+        default="postgresql+asyncpg://svc_resolution:changeme@localhost:5432/artiq",
+    )
+    migration_database_url: str = Field(
+        default="postgresql+asyncpg://mig_resolution:changeme@localhost:5432/artiq",
+    )
     db_pool_size: int = 2
     transport: str = "http"
 

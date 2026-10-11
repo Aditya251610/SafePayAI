@@ -68,7 +68,9 @@ class CaseTimelineEntry(BaseModel):
 
 
 class DecisionView(BaseModel):
-    klass: Literal["INSIDE_TERMS", "OUTSIDE_TERMS", "HUMAN_REVIEW", "MERCHANT_OVERRIDE"] = Field(alias="class")
+    klass: Literal[
+        "INSIDE_TERMS", "OUTSIDE_TERMS", "HUMAN_REVIEW", "MERCHANT_OVERRIDE"
+    ] = Field(alias="class")
     policy_version: str
     reasons: list[Reason] = Field(default_factory=list)
     illustrative: bool = True
@@ -77,7 +79,9 @@ class DecisionView(BaseModel):
 
 
 class RefundView(BaseModel):
-    status: Literal["NONE", "REQUESTED", "SENT", "COMPLETED", "FAILED", "UNKNOWN", "NOT_SENT"]
+    status: Literal[
+        "NONE", "REQUESTED", "SENT", "COMPLETED", "FAILED", "UNKNOWN", "NOT_SENT"
+    ]
     paypal_refund_id: str | None = None
 
 

@@ -12,7 +12,9 @@ router = APIRouter(prefix="/internal", tags=["internal"])
 
 
 def _not_implemented(endpoint: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=f"{endpoint} pending Wave 5")
+    return HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=f"{endpoint} pending Wave 5"
+    )
 
 
 @router.post("/events", status_code=status.HTTP_501_NOT_IMPLEMENTED)
@@ -24,7 +26,9 @@ async def internal_events_receive(
 
 
 @router.get("/outbox", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def internal_outbox_pull(after: int = 0, claims: dict = Depends(require_internal_jwt)) -> None:
+async def internal_outbox_pull(
+    after: int = 0, claims: dict = Depends(require_internal_jwt)
+) -> None:
     raise _not_implemented("GET /internal/outbox")
 
 

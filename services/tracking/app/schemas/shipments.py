@@ -13,7 +13,9 @@ class ShipmentCreateRequest(BaseModel):
     order_id: str
     tracking_number: str
     carrier_name: str
-    outcome_profile: Literal["ON_TIME", "LATE", "LOST", "DELIVERED_AFTER_LATE"] = "ON_TIME"
+    outcome_profile: Literal["ON_TIME", "LATE", "LOST", "DELIVERED_AFTER_LATE"] = (
+        "ON_TIME"
+    )
 
 
 class ShipmentCreateResponse(BaseModel):
