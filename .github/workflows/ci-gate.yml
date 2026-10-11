@@ -165,9 +165,17 @@ jobs:
     if: always()
     steps:
       - name: fail if any required job failed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
-          if echo "${{ toJSON(needs) }}" | grep -q '"result":"failure"'; then
-            echo "A required job failed"
+          # NOTE: a previous version of this check used `grep -q '"result":"failure"'`
+          # (no space after the colon) against toJSON(needs), which actually renders
+          # `"result": "failure"` (with a space) - the grep never matched, so this gate
+          # silently passed regardless of real job failures. Use jq instead of
+          # hand-rolled string matching so this can't silently regress again.
+          failed=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure") | .key')
+          if [ -n "$failed" ]; then
+            echo "Required job(s) failed: $failed"
             exit 1
           fi
           echo "ci-gate passed"
