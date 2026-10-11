@@ -19,7 +19,7 @@ dependencies = [
 dev-dependencies = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13"]
 
 [tool.uv.sources]
-safepayai-common = { path = "../../libs/common", editable = true }
+safepayai-common = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
