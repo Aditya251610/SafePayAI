@@ -50,7 +50,7 @@ def migrated_db() -> str:
     anyio.run(_reset)
 
     env = os.environ.copy()
-    env["PS_CHECKOUT_MIGRATION_DB_URL"] = MIGRATION_URL
+    env["PS_CHECKOUT_MIGRATION_DATABASE_URL"] = MIGRATION_URL
     env["PS_CHECKOUT_DEV_DB_PASSWORD"] = DEV_DB_PASSWORD
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],

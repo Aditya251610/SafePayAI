@@ -32,6 +32,26 @@ RUNTIME_ROLE = "svc_agent"
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+
+    # Idempotent local/CI role bootstrap (data-architecture.md section 1), matching
+    # catalog/mandate's baseline migration pattern -- without this, create_schema_and_roles
+    # below (which only grants, never creates) fails with "role does not exist" on a fresh
+    # database.
+    for role in (MIGRATION_ROLE, RUNTIME_ROLE):
+        bind.execute(
+            sa.text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                        CREATE ROLE "{role}" NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS LOGIN;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+
     op.execute(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"')
 
     op.create_table(
@@ -142,6 +162,14 @@ def upgrade() -> None:
             TableGrant("outbox", ("INSERT", "SELECT", "UPDATE")),
             TableGrant("idempotency_keys", ("INSERT", "SELECT", "UPDATE")),
         ],
+    )
+    # CLAUDE.md known recurring failure class: a SERIAL/BIGSERIAL PK needs
+    # GRANT USAGE ON SEQUENCE in addition to GRANT INSERT ON TABLE -- the latter does
+    # not imply the former. outbox.seq is bigserial.
+    conn.execute(
+        sa.text(
+            f'GRANT USAGE ON SEQUENCE "{SCHEMA}".outbox_seq_seq TO "{RUNTIME_ROLE}"'
+        )
     )
 
 

@@ -25,11 +25,17 @@ class Settings(BaseSettings):
     log_level: str = "info"
     currency: str = "USD"
 
-    db_url: str = "postgresql+asyncpg://svc_checkout:changeme@localhost:5432/artiq"
-    # Not explicitly listed in deployment.md's env table (only PS_CHECKOUT_DATABASE_URL is);
-    # added for Alembic's direct connection per data-architecture.md section 8. Flagged.
-    migration_db_url: str = (
-        "postgresql+asyncpg://mig_checkout:changeme@localhost:5432/artiq"
+    # Explicit alias: CLAUDE.md's documented convention is PS_<SLUG>_{DATABASE_URL,
+    # MIGRATION_DATABASE_URL} (every other service and ci-python-service.yml use this) --
+    # without it, CI's exported env vars are never read and migrations silently fall back
+    # to these dev defaults, failing auth against CI's postgres container as "mig_checkout".
+    db_url: str = Field(
+        default="postgresql+asyncpg://svc_checkout:changeme@localhost:5432/artiq",
+        alias="PS_CHECKOUT_DATABASE_URL",
+    )
+    migration_db_url: str = Field(
+        default="postgresql+asyncpg://mig_checkout:changeme@localhost:5432/artiq",
+        alias="PS_CHECKOUT_MIGRATION_DATABASE_URL",
     )
     db_pool_size: int = 2
 
