@@ -2,74 +2,74 @@ version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
     groups:
       actions: { patterns: ["*"] }
 
   - package-ecosystem: "npm"
     directory: "/services/web"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
     groups:
       web-deps: { patterns: ["*"] }
 
   - package-ecosystem: "pip"
     directory: "/services/api-gateway"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/mandate"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/catalog"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/shopping-agent"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/checkout"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/paypal-adapter"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/tracking"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/resolution"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/triage-ai"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "pip"
     directory: "/services/audit"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
 
   - package-ecosystem: "docker"
     directory: "/services/api-gateway"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/mandate"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/catalog"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/shopping-agent"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/checkout"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/paypal-adapter"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/tracking"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/resolution"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/triage-ai"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
   - package-ecosystem: "docker"
     directory: "/services/audit"
-    schedule: { interval: "weekly" }
+    schedule: { interval: "monthly" }
