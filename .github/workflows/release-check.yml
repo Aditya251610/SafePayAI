@@ -1,0 +1,46 @@
+name: release-check
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: LICENSE exists
+        run: test -f LICENSE
+
+      - name: README has required sections
+        run: |
+          for phrase in "sandbox" "simulated" "run" "license"; do
+            grep -qi "$phrase" README.md || { echo "README missing: $phrase"; exit 1; }
+          done
+
+      - name: no forbidden claims
+        run: |
+          pattern='PayPal-backed|PayPal verified|legally binding|fraud-proof|injection-proof|compliant with'
+          if grep -rniE "$pattern" --include="*.md" --include="*.tsx" --include="*.ts" --include="*.py" . ; then
+            echo "Forbidden claim phrase found"; exit 1
+          fi
+
+      - name: no TODO/FIXME in README
+        run: ! grep -niE "TODO|FIXME" README.md
+
+      - name: .env not tracked
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v '\.env\.example$'; then
+            echo ".env file is tracked"; exit 1
+          fi
+
+      - name: gitleaks full history
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml

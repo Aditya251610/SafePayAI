@@ -1,0 +1,20 @@
+title = "safepayai gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "paypal-client-secret-like"
+description = "String shaped like a PayPal sandbox client secret"
+regex = '''E[A-Za-z0-9_-]{60,80}'''
+tags = ["paypal", "secret"]
+
+[allowlist]
+description = "placeholders and test fixtures only"
+paths = [
+  '''\.env\.example$''',
+]
+regexes = [
+  '''changeme''',
+  '''FAKE_[A-Z0-9_]+''',
+]

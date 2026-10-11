@@ -1,0 +1,173 @@
+name: ci-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api-gateway: ${{ steps.filter.outputs.api-gateway }}
+      mandate: ${{ steps.filter.outputs.mandate }}
+      catalog: ${{ steps.filter.outputs.catalog }}
+      shopping-agent: ${{ steps.filter.outputs.shopping-agent }}
+      checkout: ${{ steps.filter.outputs.checkout }}
+      paypal-adapter: ${{ steps.filter.outputs.paypal-adapter }}
+      tracking: ${{ steps.filter.outputs.tracking }}
+      resolution: ${{ steps.filter.outputs.resolution }}
+      triage-ai: ${{ steps.filter.outputs.triage-ai }}
+      audit: ${{ steps.filter.outputs.audit }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api-gateway:
+              - 'services/api-gateway/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            mandate:
+              - 'services/mandate/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            catalog:
+              - 'services/catalog/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            shopping-agent:
+              - 'services/shopping-agent/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            checkout:
+              - 'services/checkout/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            paypal-adapter:
+              - 'services/paypal-adapter/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            tracking:
+              - 'services/tracking/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            resolution:
+              - 'services/resolution/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            triage-ai:
+              - 'services/triage-ai/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            audit:
+              - 'services/audit/**'
+              - 'libs/**'
+              - 'contracts/**'
+              - 'pyproject.toml'
+            web:
+              - 'services/web/**'
+
+  api-gateway:
+    needs: changes
+    if: needs.changes.outputs.api-gateway == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: api-gateway }
+
+  mandate:
+    needs: changes
+    if: needs.changes.outputs.mandate == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: mandate }
+
+  catalog:
+    needs: changes
+    if: needs.changes.outputs.catalog == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: catalog }
+
+  shopping-agent:
+    needs: changes
+    if: needs.changes.outputs.shopping-agent == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: shopping-agent }
+
+  checkout:
+    needs: changes
+    if: needs.changes.outputs.checkout == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: checkout }
+
+  paypal-adapter:
+    needs: changes
+    if: needs.changes.outputs.paypal-adapter == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: paypal-adapter }
+
+  tracking:
+    needs: changes
+    if: needs.changes.outputs.tracking == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: tracking }
+
+  resolution:
+    needs: changes
+    if: needs.changes.outputs.resolution == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: resolution }
+
+  triage-ai:
+    needs: changes
+    if: needs.changes.outputs.triage-ai == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: triage-ai }
+
+  audit:
+    needs: changes
+    if: needs.changes.outputs.audit == 'true'
+    uses: ./.github/workflows/ci-python-service.yml
+    with: { slug: audit }
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    uses: ./.github/workflows/ci-web.yml
+
+  gate:
+    runs-on: ubuntu-latest
+    needs:
+      - api-gateway
+      - mandate
+      - catalog
+      - shopping-agent
+      - checkout
+      - paypal-adapter
+      - tracking
+      - resolution
+      - triage-ai
+      - audit
+      - web
+    if: always()
+    steps:
+      - name: fail if any required job failed
+        run: |
+          if echo "${{ toJSON(needs) }}" | grep -q '"result":"failure"'; then
+            echo "A required job failed"
+            exit 1
+          fi
+          echo "ci-gate passed"

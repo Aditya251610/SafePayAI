@@ -1,0 +1,75 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    groups:
+      actions: { patterns: ["*"] }
+
+  - package-ecosystem: "npm"
+    directory: "/services/web"
+    schedule: { interval: "weekly" }
+    groups:
+      web-deps: { patterns: ["*"] }
+
+  - package-ecosystem: "pip"
+    directory: "/services/api-gateway"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/mandate"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/catalog"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/shopping-agent"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/checkout"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/paypal-adapter"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/tracking"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/resolution"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/triage-ai"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "pip"
+    directory: "/services/audit"
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "docker"
+    directory: "/services/api-gateway"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/mandate"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/catalog"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/shopping-agent"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/checkout"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/paypal-adapter"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/tracking"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/resolution"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/triage-ai"
+    schedule: { interval: "weekly" }
+  - package-ecosystem: "docker"
+    directory: "/services/audit"
+    schedule: { interval: "weekly" }

@@ -1,0 +1,29 @@
+name: ci-contracts
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/**'
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-openapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npx --yes @redocly/cli@latest lint contracts/openapi/*.yaml
+      - name: validate event schemas are valid JSON Schema
+        run: |
+          for f in contracts/events/schemas/*.json; do
+            [ -e "$f" ] || continue
+            python3 -c "import json,sys; json.load(open('$f'))" || exit 1
+          done

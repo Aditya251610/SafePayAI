@@ -1,0 +1,19 @@
+name: keepwarm
+
+on:
+  schedule:
+    - cron: "*/10 8-22 * * *"  # every 10 min, 08:00-22:00 UTC, see deployment-zero-cost.md budget math
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/warmup.sh
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}

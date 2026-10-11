@@ -1,0 +1,40 @@
+name: deps
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 7 * * 1"  # weekly, Monday 07:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  python-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        slug:
+          [api-gateway, mandate, catalog, shopping-agent, checkout, paypal-adapter, tracking, resolution, triage-ai, audit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: |
+          cd services/${{ matrix.slug }}
+          uv export --no-hashes > /tmp/reqs.txt || true
+          [ -s /tmp/reqs.txt ] && uvx pip-audit -r /tmp/reqs.txt || echo "no lockfile yet, skipping"
+
+  web-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - run: pnpm install --frozen-lockfile || echo "no lockfile yet, skipping"
+      - run: pnpm audit --prod || true
