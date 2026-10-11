@@ -18,7 +18,12 @@ node_modules/
 secrets/
 *.tfstate*
 spike/
-.claude/settings.local.json
+
+# internal planning/agent config, never pushed to the public repo
+.claude/
+CLAUDE.md
+.clauderules
+.claudeignore
 .coverage
 htmlcov/
 dist/
