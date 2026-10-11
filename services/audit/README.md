@@ -10,9 +10,10 @@ recompute the chain; verify would then pass. Only an external head anchor (`GET 
 committed to `docs/anchors.txt`) exposes a rewrite older than the anchor. See spec.md
 sec 11 for the full honest-limits list. Never claim "immutable" or "tamper-proof".
 
-Wave 4 status: contracts + skeleton only. Every route except `/healthz` and `/readyz`
-returns `501 Not Implemented`. The append algorithm, verify engine, and canonicalization
-module land in Wave 5.
+Wave 5 status: real logic landed — JCS canonicalization, hash-chain append
+(advisory-lock serialized, idempotent on `event_id`), `/verify` (gapless-seq + hash
+recompute + anchor check), optional Ed25519 head signing, NDJSON export. 36 tests
+(unit + integration against real Postgres).
 
 ## Run locally
 
@@ -23,7 +24,8 @@ uv run uvicorn app.main:app --reload
 ## Test
 
 ```bash
-uv run pytest
+uv run pytest tests/unit -q            # no DB
+uv run pytest tests/integration -q     # needs a real Postgres (docker compose up -d postgres)
 ```
 
 ## Migrate
