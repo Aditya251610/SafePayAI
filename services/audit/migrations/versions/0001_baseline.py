@@ -78,9 +78,9 @@ def _jcs_bytes(obj: dict) -> bytes:
     full unicode/number-edge-case handling is Wave 5's app/chain/canonical.py; this is
     not a reimplementation of that module, just enough to seed a correct genesis hash.
     """
-    return json.dumps(
-        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def _row_hash(prev_hash: str, canonical: bytes) -> str:
@@ -147,20 +147,36 @@ def upgrade() -> None:
 
     # Indexing per spec.md sec 9 (grid filters, role scoping, fork-guard lookups).
     op.create_index(
-        "ix_entries_mandate_id", "entries", ["mandate_id", "seq"], unique=False,
-        schema=SCHEMA, postgresql_where=sa.text("mandate_id IS NOT NULL"),
+        "ix_entries_mandate_id",
+        "entries",
+        ["mandate_id", "seq"],
+        unique=False,
+        schema=SCHEMA,
+        postgresql_where=sa.text("mandate_id IS NOT NULL"),
     )
     op.create_index(
-        "ix_entries_order_id", "entries", ["order_id", "seq"], unique=False,
-        schema=SCHEMA, postgresql_where=sa.text("order_id IS NOT NULL"),
+        "ix_entries_order_id",
+        "entries",
+        ["order_id", "seq"],
+        unique=False,
+        schema=SCHEMA,
+        postgresql_where=sa.text("order_id IS NOT NULL"),
     )
     op.create_index(
-        "ix_entries_case_id", "entries", ["case_id", "seq"], unique=False,
-        schema=SCHEMA, postgresql_where=sa.text("case_id IS NOT NULL"),
+        "ix_entries_case_id",
+        "entries",
+        ["case_id", "seq"],
+        unique=False,
+        schema=SCHEMA,
+        postgresql_where=sa.text("case_id IS NOT NULL"),
     )
     op.create_index(
-        "ix_entries_buyer_id", "entries", ["buyer_id", "seq"], unique=False,
-        schema=SCHEMA, postgresql_where=sa.text("buyer_id IS NOT NULL"),
+        "ix_entries_buyer_id",
+        "entries",
+        ["buyer_id", "seq"],
+        unique=False,
+        schema=SCHEMA,
+        postgresql_where=sa.text("buyer_id IS NOT NULL"),
     )
     op.create_index(
         "ix_entries_event_type", "entries", ["event_type", "seq"], unique=False, schema=SCHEMA
@@ -172,9 +188,7 @@ def upgrade() -> None:
         unique=False,
         schema=SCHEMA,
     )
-    op.create_index(
-        "ix_entries_request_id", "entries", ["request_id"], unique=False, schema=SCHEMA
-    )
+    op.create_index("ix_entries_request_id", "entries", ["request_id"], unique=False, schema=SCHEMA)
 
     # --- audit.verify_runs (spec.md sec 2.2, informational, NOT hashed) ---
     op.create_table(

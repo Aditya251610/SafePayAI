@@ -25,27 +25,45 @@ def nfc(value: str) -> str:
     return unicodedata.normalize("NFC", value)
 
 
-def validate_free_text(value: str, field: str, max_chars: int, *, allow_empty: bool = False) -> str:
+def validate_free_text(
+    value: str, field: str, max_chars: int, *, allow_empty: bool = False
+) -> str:
     """Trims, NFC-normalizes and validates free text per spec.md section 3.4.
 
     Raises MandateError 422 VALIDATION_ERROR (never echoes the offending text).
     """
     if not isinstance(value, str):
-        raise MandateError(422, "VALIDATION_ERROR", "invalid text field", {"field": field})
+        raise MandateError(
+            422, "VALIDATION_ERROR", "invalid text field", {"field": field}
+        )
     text = nfc(value).strip()
     if not text and not allow_empty:
-        raise MandateError(422, "VALIDATION_ERROR", "field must not be empty", {"field": field})
+        raise MandateError(
+            422, "VALIDATION_ERROR", "field must not be empty", {"field": field}
+        )
     if len(text) > max_chars:
         raise MandateError(422, "VALIDATION_ERROR", "field too long", {"field": field})
     for ch in text:
         if ch in ("\n", "\r", "\t"):
-            raise MandateError(422, "VALIDATION_ERROR", "field contains line-break characters", {"field": field})
+            raise MandateError(
+                422,
+                "VALIDATION_ERROR",
+                "field contains line-break characters",
+                {"field": field},
+            )
         if unicodedata.category(ch) in _REJECTED_CATEGORIES:
-            raise MandateError(422, "VALIDATION_ERROR", "field contains disallowed characters", {"field": field})
+            raise MandateError(
+                422,
+                "VALIDATION_ERROR",
+                "field contains disallowed characters",
+                {"field": field},
+            )
     try:
         text.encode("utf-8", "strict")
     except UnicodeEncodeError as exc:
-        raise MandateError(422, "VALIDATION_ERROR", "field contains invalid unicode", {"field": field}) from exc
+        raise MandateError(
+            422, "VALIDATION_ERROR", "field contains invalid unicode", {"field": field}
+        ) from exc
     return text
 
 
@@ -114,7 +132,9 @@ MANDATE_HMAC_DOMAIN = b"mw.mandate.v1"
 GRANT_HMAC_DOMAIN = b"mw.grant.v1"
 
 
-def compute_hmac(key: bytes, domain: bytes, hash_bytes: bytes, buyer_id: str, nonce: str) -> str:
+def compute_hmac(
+    key: bytes, domain: bytes, hash_bytes: bytes, buyer_id: str, nonce: str
+) -> str:
     mac = hmac_mod.new(key, digestmod=hashlib.sha256)
     mac.update(domain)
     mac.update(b"\x00")
@@ -126,6 +146,13 @@ def compute_hmac(key: bytes, domain: bytes, hash_bytes: bytes, buyer_id: str, no
     return mac.hexdigest()
 
 
-def verify_hmac(key: bytes, domain: bytes, hash_bytes: bytes, buyer_id: str, nonce: str, expected_hex: str) -> bool:
+def verify_hmac(
+    key: bytes,
+    domain: bytes,
+    hash_bytes: bytes,
+    buyer_id: str,
+    nonce: str,
+    expected_hex: str,
+) -> bool:
     computed = compute_hmac(key, domain, hash_bytes, buyer_id, nonce)
     return hmac_mod.compare_digest(computed, expected_hex)

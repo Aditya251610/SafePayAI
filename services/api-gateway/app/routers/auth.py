@@ -109,6 +109,10 @@ async def demo_session(
         )
     ).first()
     await db.commit()
+    if row is None:
+        raise HTTPException(
+            status_code=500, detail="failed to create demo session user"
+        )
     user_id, epoch = str(row[0]), row[1]
 
     raw_sid, expires_at = await create_session(
@@ -138,7 +142,9 @@ async def login(
 ) -> dict:
     ip = _client_ip(request, settings)
     key = f"auth-login:{ip}:{body.handle}"
-    allowed, retry_after = limiter.check(key, AUTH_LOGIN_RATE_LIMIT, AUTH_LOGIN_WINDOW_S)
+    allowed, retry_after = limiter.check(
+        key, AUTH_LOGIN_RATE_LIMIT, AUTH_LOGIN_WINDOW_S
+    )
     if not allowed:
         return _rate_limited(response, retry_after)
 
@@ -207,13 +213,17 @@ async def me(principal: Principal = Depends(require_session)) -> dict:
         "role": principal.role,
         "auth_method": "session",
         "display_name": principal.display_name,
-        "session_expires_at": expires_at.isoformat() if isinstance(expires_at, datetime) else None,
+        "session_expires_at": expires_at.isoformat()
+        if isinstance(expires_at, datetime)
+        else None,
     }
 
 
 @router.get("/csrf")
 async def csrf(
-    response: Response, purpose: str = "general", principal: Principal = Depends(require_session)
+    response: Response,
+    purpose: str = "general",
+    principal: Principal = Depends(require_session),
 ) -> dict:
     response.status_code = 501
     return {

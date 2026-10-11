@@ -19,7 +19,9 @@ def _not_implemented(response: Response, path: str) -> dict:
 
 
 @router.get("/buyer-home")
-async def buyer_home(response: Response, principal: Principal = Depends(require_buyer)) -> dict:
+async def buyer_home(
+    response: Response, principal: Principal = Depends(require_buyer)
+) -> dict:
     return _not_implemented(response, "GET /api/bff/buyer-home")
 
 
@@ -31,5 +33,7 @@ async def order_detail(
 
 
 @router.get("/merchant-queue")
-async def merchant_queue(response: Response, principal: Principal = Depends(require_staff)) -> dict:
+async def merchant_queue(
+    response: Response, principal: Principal = Depends(require_staff)
+) -> dict:
     return _not_implemented(response, "GET /api/bff/merchant-queue")

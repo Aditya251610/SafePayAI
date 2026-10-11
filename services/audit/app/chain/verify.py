@@ -91,14 +91,18 @@ async def verify_chain(
 
     while last_seq < head_seq:
         rows = (
-            await session.execute(
-                text(
-                    f"SELECT {_ENTRY_COLUMNS} FROM entries"
-                    " WHERE seq > :last AND seq <= :head ORDER BY seq LIMIT :chunk"
-                ),
-                {"last": last_seq, "head": head_seq, "chunk": chunk_size},
+            (
+                await session.execute(
+                    text(
+                        f"SELECT {_ENTRY_COLUMNS} FROM entries"
+                        " WHERE seq > :last AND seq <= :head ORDER BY seq LIMIT :chunk"
+                    ),
+                    {"last": last_seq, "head": head_seq, "chunk": chunk_size},
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         if not rows:
             break
 
@@ -106,20 +110,33 @@ async def verify_chain(
             seq = row["seq"]
             if seq != expected_seq:
                 return VerifyResult(
-                    ok=False, reason="SEQ_GAP", first_bad_seq=seq, checked=checked,
-                    head_seq=head_seq, duration_ms=_elapsed_ms(),
+                    ok=False,
+                    reason="SEQ_GAP",
+                    first_bad_seq=seq,
+                    checked=checked,
+                    head_seq=head_seq,
+                    duration_ms=_elapsed_ms(),
                 )
 
             if seq == 1:
                 if row["event_type"] != "CHAIN_GENESIS" or row["prev_hash"] != GENESIS_PREV_HASH:
                     return VerifyResult(
-                        ok=False, reason="GENESIS_MISSING", first_bad_seq=seq, checked=checked,
-                        head_seq=head_seq, duration_ms=_elapsed_ms(),
+                        ok=False,
+                        reason="GENESIS_MISSING",
+                        first_bad_seq=seq,
+                        checked=checked,
+                        head_seq=head_seq,
+                        duration_ms=_elapsed_ms(),
                     )
             elif row["prev_hash"] != prev_hash:
                 return VerifyResult(
-                    ok=False, reason="PREV_MISMATCH", first_bad_seq=seq, expected=prev_hash,
-                    found=row["prev_hash"], checked=checked, head_seq=head_seq,
+                    ok=False,
+                    reason="PREV_MISMATCH",
+                    first_bad_seq=seq,
+                    expected=prev_hash,
+                    found=row["prev_hash"],
+                    checked=checked,
+                    head_seq=head_seq,
                     duration_ms=_elapsed_ms(),
                 )
 
@@ -128,8 +145,13 @@ async def verify_chain(
             recomputed = compute_row_hash(row["prev_hash"], canonical_bytes)
             if recomputed != row["row_hash"]:
                 return VerifyResult(
-                    ok=False, reason="HASH_MISMATCH", first_bad_seq=seq, expected=recomputed,
-                    found=row["row_hash"], checked=checked, head_seq=head_seq,
+                    ok=False,
+                    reason="HASH_MISMATCH",
+                    first_bad_seq=seq,
+                    expected=recomputed,
+                    found=row["row_hash"],
+                    checked=checked,
+                    head_seq=head_seq,
                     duration_ms=_elapsed_ms(),
                 )
 
@@ -137,21 +159,33 @@ async def verify_chain(
                 parsed = json.loads(canonical_text)
             except ValueError:
                 return VerifyResult(
-                    ok=False, reason="HASH_MISMATCH", first_bad_seq=seq, checked=checked,
-                    head_seq=head_seq, duration_ms=_elapsed_ms(),
+                    ok=False,
+                    reason="HASH_MISMATCH",
+                    first_bad_seq=seq,
+                    checked=checked,
+                    head_seq=head_seq,
+                    duration_ms=_elapsed_ms(),
                 )
 
             payload_col = _as_dict(row["payload"])
             if parsed.get("payload") != payload_col:
                 return VerifyResult(
-                    ok=False, reason="PAYLOAD_MISMATCH", first_bad_seq=seq, checked=checked,
-                    head_seq=head_seq, duration_ms=_elapsed_ms(),
+                    ok=False,
+                    reason="PAYLOAD_MISMATCH",
+                    first_bad_seq=seq,
+                    checked=checked,
+                    head_seq=head_seq,
+                    duration_ms=_elapsed_ms(),
                 )
 
             if parsed.get("chain_id") != expected_chain_id or row["chain_id"] != expected_chain_id:
                 return VerifyResult(
-                    ok=False, reason="CHAIN_ID_MISMATCH", first_bad_seq=seq, checked=checked,
-                    head_seq=head_seq, duration_ms=_elapsed_ms(),
+                    ok=False,
+                    reason="CHAIN_ID_MISMATCH",
+                    first_bad_seq=seq,
+                    checked=checked,
+                    head_seq=head_seq,
+                    duration_ms=_elapsed_ms(),
                 )
 
             prev_hash = row["row_hash"]
@@ -173,7 +207,7 @@ async def verify_chain(
                     text("SELECT row_hash FROM entries WHERE seq = :seq"), {"seq": anchor_seq}
                 )
             ).first()
-            anchor_ok = bool(anchor_row) and anchor_row[0] == anchor_hash
+            anchor_ok = anchor_row is not None and anchor_row[0] == anchor_hash
             anchor_info = {"checked": True, "ok": anchor_ok}
             if not anchor_ok:
                 anchor_reason = "ANCHOR_HASH_MISMATCH"

@@ -16,17 +16,23 @@ def _not_implemented(response: Response, path: str) -> dict:
 
 
 @router.get("/status")
-async def status(response: Response, principal: Principal = Depends(require_session)) -> dict:
+async def status(
+    response: Response, principal: Principal = Depends(require_session)
+) -> dict:
     return _not_implemented(response, "GET /api/ops/status")
 
 
 @router.post("/freeze")
 async def freeze(
-    body: FreezeRequest, response: Response, principal: Principal = Depends(require_operator)
+    body: FreezeRequest,
+    response: Response,
+    principal: Principal = Depends(require_operator),
 ) -> dict:
     return _not_implemented(response, "POST /api/ops/freeze")
 
 
 @router.post("/tick")
-async def tick(response: Response, x_tick_secret: str | None = Header(default=None)) -> dict:
+async def tick(
+    response: Response, x_tick_secret: str | None = Header(default=None)
+) -> dict:
     return _not_implemented(response, "POST /api/ops/tick")

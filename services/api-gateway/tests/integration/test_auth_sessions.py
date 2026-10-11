@@ -58,7 +58,9 @@ async def test_login_wrong_password_401(app_client, make_user):
     assert resp.json()["error"] == "UNAUTHENTICATED"
 
 
-async def test_login_unknown_handle_401_same_error_as_wrong_password(app_client, make_user):
+async def test_login_unknown_handle_401_same_error_as_wrong_password(
+    app_client, make_user
+):
     await make_user(
         handle="merchant-3",
         role="merchant",
@@ -72,7 +74,11 @@ async def test_login_unknown_handle_401_same_error_as_wrong_password(app_client,
         "/api/auth/login", json={"handle": "no-such-handle", "password": "nope"}
     )
     assert wrong_password.status_code == unknown_handle.status_code == 401
-    assert wrong_password.json()["error"] == unknown_handle.json()["error"] == "UNAUTHENTICATED"
+    assert (
+        wrong_password.json()["error"]
+        == unknown_handle.json()["error"]
+        == "UNAUTHENTICATED"
+    )
 
 
 async def test_logout_invalidates_session(app_client, make_user):

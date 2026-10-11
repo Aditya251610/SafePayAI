@@ -9,7 +9,7 @@ from app import mandate_logic, repo
 from app.crypto import GRANT_HMAC_DOMAIN, canon_hash, verify_hmac
 from app.deps import Principal, get_session, verify_internal_jwt
 from app.errors import MandateError
-from app.settings import get_bare_secrets, get_settings
+from app.settings import BareSecrets, Settings, get_bare_secrets, get_settings
 
 router = APIRouter(tags=["grants"])
 
@@ -23,13 +23,17 @@ async def _grant_view(session: AsyncSession, grant_row: dict) -> dict:
     bare_secrets = get_bare_secrets()
     mandate_row = await repo.get_mandate_row(session, str(grant_row["mandate_id"]))
     spend_row = await repo.get_spend_row(session, str(grant_row["mandate_id"]))
-    revocation_row = await repo.get_revocation_row(session, str(grant_row["mandate_id"]))
+    revocation_row = await repo.get_revocation_row(
+        session, str(grant_row["mandate_id"])
+    )
 
     grant_integrity_ok = _verify_grant_hmac(grant_row, settings, bare_secrets)
     mandate_integrity_ok = False
     mandate_status = "INVALID"
-    if mandate_row is not None:
-        mandate_integrity_ok, _ = repo.verify_integrity(mandate_row, spend_row, settings, bare_secrets)
+    if mandate_row is not None and spend_row is not None:
+        mandate_integrity_ok, _ = repo.verify_integrity(
+            mandate_row, spend_row, settings, bare_secrets
+        )
         if mandate_integrity_ok:
             mandate_status = mandate_logic.derive_status(
                 revoked=revocation_row is not None,
@@ -59,9 +63,15 @@ async def _grant_view(session: AsyncSession, grant_row: dict) -> dict:
     }
 
 
-def _verify_grant_hmac(grant_row: dict, settings, bare_secrets) -> bool:
+def _verify_grant_hmac(
+    grant_row: dict, settings: Settings, bare_secrets: BareSecrets
+) -> bool:
     terms_hash = canon_hash(
-        {"mandate_id": str(grant_row["mandate_id"]), "mandate_hash": grant_row["mandate_hash"], "terms": grant_row["terms"]}
+        {
+            "mandate_id": str(grant_row["mandate_id"]),
+            "mandate_hash": grant_row["mandate_hash"],
+            "terms": grant_row["terms"],
+        }
     )
     if terms_hash != grant_row["terms_hash"]:
         return False
@@ -69,7 +79,14 @@ def _verify_grant_hmac(grant_row: dict, settings, bare_secrets) -> bool:
     if key is None:
         return False
     hash_bytes = bytes.fromhex(terms_hash)
-    return verify_hmac(key, GRANT_HMAC_DOMAIN, hash_bytes, grant_row["buyer_id"], str(grant_row["order_id"]), grant_row["grant_hmac"])
+    return verify_hmac(
+        key,
+        GRANT_HMAC_DOMAIN,
+        hash_bytes,
+        grant_row["buyer_id"],
+        str(grant_row["order_id"]),
+        grant_row["grant_hmac"],
+    )
 
 
 @router.get("/grants")
@@ -81,7 +98,9 @@ async def list_grants(
 ) -> dict:
     response.headers["Cache-Control"] = "no-store"
     if not order_id:
-        raise MandateError(400, "VALIDATION_ERROR", "order_id is required", {"field": "order_id"})
+        raise MandateError(
+            400, "VALIDATION_ERROR", "order_id is required", {"field": "order_id"}
+        )
     async with session.begin():
         grant_row = await repo.get_grant_by_order(session, order_id)
         if grant_row is None:

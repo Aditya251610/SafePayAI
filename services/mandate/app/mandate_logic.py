@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from app.crypto import canon_hash, nfc, sha256_hex, validate_free_text
 from app.errors import MandateError
 from app.schemas.terms import MandateTermsInput
+from app.settings import Settings
 
 CANON_VERSION = "canon.v1"
 SCHEMA_VERSION = "mandate.v1"
@@ -36,11 +37,18 @@ BANNED_PHRASES = (
 
 def parse_utc_timestamp(value: str, field: str) -> datetime:
     if not isinstance(value, str) or not TIMESTAMP_RE.match(value):
-        raise MandateError(422, "VALIDATION_ERROR", "timestamp must be YYYY-MM-DDTHH:MM:SSZ", {"field": field})
+        raise MandateError(
+            422,
+            "VALIDATION_ERROR",
+            "timestamp must be YYYY-MM-DDTHH:MM:SSZ",
+            {"field": field},
+        )
     try:
         return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except ValueError as exc:
-        raise MandateError(422, "VALIDATION_ERROR", "invalid timestamp", {"field": field}) from exc
+        raise MandateError(
+            422, "VALIDATION_ERROR", "invalid timestamp", {"field": field}
+        ) from exc
 
 
 def format_utc_timestamp(dt: datetime) -> str:
@@ -52,57 +60,136 @@ class NormalizedTerms:
     as_dict: dict
 
 
-def normalize_terms(input_terms: MandateTermsInput, settings, *, now: datetime) -> dict:
+def normalize_terms(
+    input_terms: MandateTermsInput, settings: Settings, *, now: datetime
+) -> dict:
     """Validates and materializes defaults. Raises MandateError on any violation."""
     if input_terms.currency != settings.currency:
-        raise MandateError(422, "UNSUPPORTED_CURRENCY", "unsupported currency", {"field": "currency"})
+        raise MandateError(
+            422, "UNSUPPORTED_CURRENCY", "unsupported currency", {"field": "currency"}
+        )
 
-    if input_terms.max_total_minor <= 0 or input_terms.max_total_minor > settings.max_total_ceiling_minor:
-        raise MandateError(422, "TERMS_OUT_OF_BOUNDS", "max_total_minor out of bounds", {"field": "max_total_minor"})
+    if (
+        input_terms.max_total_minor <= 0
+        or input_terms.max_total_minor > settings.max_total_ceiling_minor
+    ):
+        raise MandateError(
+            422,
+            "TERMS_OUT_OF_BOUNDS",
+            "max_total_minor out of bounds",
+            {"field": "max_total_minor"},
+        )
 
-    max_qty = input_terms.max_qty_per_line if input_terms.max_qty_per_line is not None else settings.default_max_qty_per_line
+    max_qty = (
+        input_terms.max_qty_per_line
+        if input_terms.max_qty_per_line is not None
+        else settings.default_max_qty_per_line
+    )
     if max_qty < 1 or max_qty > settings.max_qty_per_line_ceiling:
-        raise MandateError(422, "TERMS_OUT_OF_BOUNDS", "max_qty_per_line out of bounds", {"field": "max_qty_per_line"})
+        raise MandateError(
+            422,
+            "TERMS_OUT_OF_BOUNDS",
+            "max_qty_per_line out of bounds",
+            {"field": "max_qty_per_line"},
+        )
 
-    if not input_terms.merchant_allowlist or len(input_terms.merchant_allowlist) > settings.max_merchants:
-        raise MandateError(422, "TERMS_OUT_OF_BOUNDS", "merchant_allowlist size out of bounds", {"field": "merchant_allowlist"})
+    if (
+        not input_terms.merchant_allowlist
+        or len(input_terms.merchant_allowlist) > settings.max_merchants
+    ):
+        raise MandateError(
+            422,
+            "TERMS_OUT_OF_BOUNDS",
+            "merchant_allowlist size out of bounds",
+            {"field": "merchant_allowlist"},
+        )
     seen_ids: set[str] = set()
     merchants: list[dict] = []
     for entry in input_terms.merchant_allowlist:
         if not MERCHANT_ID_RE.match(entry.merchant_id):
-            raise MandateError(422, "VALIDATION_ERROR", "invalid merchant_id", {"field": "merchant_allowlist.merchant_id"})
+            raise MandateError(
+                422,
+                "VALIDATION_ERROR",
+                "invalid merchant_id",
+                {"field": "merchant_allowlist.merchant_id"},
+            )
         if entry.merchant_id in seen_ids:
-            raise MandateError(422, "VALIDATION_ERROR", "duplicate merchant_id", {"field": "merchant_allowlist.merchant_id"})
+            raise MandateError(
+                422,
+                "VALIDATION_ERROR",
+                "duplicate merchant_id",
+                {"field": "merchant_allowlist.merchant_id"},
+            )
         seen_ids.add(entry.merchant_id)
-        display_name = validate_free_text(entry.display_name, "merchant_allowlist.display_name", 64)
-        merchants.append({"merchant_id": entry.merchant_id, "display_name": display_name})
+        display_name = validate_free_text(
+            entry.display_name, "merchant_allowlist.display_name", 64
+        )
+        merchants.append(
+            {"merchant_id": entry.merchant_id, "display_name": display_name}
+        )
     merchants.sort(key=lambda m: m["merchant_id"])
 
-    intent_text = validate_free_text(input_terms.intent_text, "intent_text", settings.intent_max_chars)
+    intent_text = validate_free_text(
+        input_terms.intent_text, "intent_text", settings.intent_max_chars
+    )
 
     expires_dt = parse_utc_timestamp(input_terms.expires_at, "expires_at")
     min_ok = now + timedelta(seconds=settings.min_expiry_seconds)
     max_ok = now + timedelta(seconds=settings.max_expiry_seconds)
     if not (min_ok <= expires_dt <= max_ok):
-        raise MandateError(422, "TERMS_OUT_OF_BOUNDS", "expires_at out of bounds", {"field": "expires_at"})
+        raise MandateError(
+            422,
+            "TERMS_OUT_OF_BOUNDS",
+            "expires_at out of bounds",
+            {"field": "expires_at"},
+        )
 
     kinds = sorted(set(input_terms.protection.kinds_covered))
     if not kinds or any(k not in KNOWN_KINDS for k in kinds):
-        raise MandateError(422, "VALIDATION_ERROR", "invalid kinds_covered", {"field": "protection.kinds_covered"})
+        raise MandateError(
+            422,
+            "VALIDATION_ERROR",
+            "invalid kinds_covered",
+            {"field": "protection.kinds_covered"},
+        )
     max_refund = input_terms.protection.max_refund_minor
-    if max_refund <= 0 or max_refund > input_terms.max_total_minor or max_refund > settings.refund_cap_ceiling_minor:
-        raise MandateError(422, "TERMS_OUT_OF_BOUNDS", "max_refund_minor out of bounds", {"field": "protection.max_refund_minor"})
+    if (
+        max_refund <= 0
+        or max_refund > input_terms.max_total_minor
+        or max_refund > settings.refund_cap_ceiling_minor
+    ):
+        raise MandateError(
+            422,
+            "TERMS_OUT_OF_BOUNDS",
+            "max_refund_minor out of bounds",
+            {"field": "protection.max_refund_minor"},
+        )
     deliver_by = input_terms.protection.deliver_by_days
     if not (settings.deliver_by_days_min <= deliver_by <= settings.deliver_by_days_max):
-        raise MandateError(422, "TERMS_OUT_OF_BOUNDS", "deliver_by_days out of bounds", {"field": "protection.deliver_by_days"})
+        raise MandateError(
+            422,
+            "TERMS_OUT_OF_BOUNDS",
+            "deliver_by_days out of bounds",
+            {"field": "protection.deliver_by_days"},
+        )
 
     revoke_effect = input_terms.revoke_effect or REVOKE_EFFECT
     if revoke_effect != REVOKE_EFFECT:
-        raise MandateError(422, "VALIDATION_ERROR", "unsupported revoke_effect", {"field": "revoke_effect"})
+        raise MandateError(
+            422,
+            "VALIDATION_ERROR",
+            "unsupported revoke_effect",
+            {"field": "revoke_effect"},
+        )
 
     policy_version = input_terms.policy_version or settings.policy_version
     if policy_version != settings.policy_version:
-        raise MandateError(409, "POLICY_VERSION_MISMATCH", "policy_version mismatch", {"field": "policy_version"})
+        raise MandateError(
+            409,
+            "POLICY_VERSION_MISMATCH",
+            "policy_version mismatch",
+            {"field": "policy_version"},
+        )
 
     return {
         "currency": input_terms.currency,
@@ -146,7 +233,10 @@ def _kinds_words(kinds: list[str]) -> str:
 
 def render_text(normalized: dict) -> str:
     """render.v1: pure function of normalized terms only (spec.md section 4)."""
-    merchants_str = "; ".join(f"{m['display_name']} ({m['merchant_id']})" for m in normalized["merchant_allowlist"])
+    merchants_str = "; ".join(
+        f"{m['display_name']} ({m['merchant_id']})"
+        for m in normalized["merchant_allowlist"]
+    )
     protection = normalized["protection"]
     sentences = [
         "DEMO MANDATE - sandbox only, not a legal agreement.",
@@ -255,7 +345,9 @@ def evaluate_cart(
     hard_blocks: list[dict] = []
 
     if not integrity_ok:
-        return EvaluateResult("BLOCK", [{"code": "MANDATE_INTEGRITY_FAILED", "details": {}}], [])
+        return EvaluateResult(
+            "BLOCK", [{"code": "MANDATE_INTEGRITY_FAILED", "details": {}}], []
+        )
 
     if status == "revoked":
         hard_blocks.append({"code": "MANDATE_REVOKED", "details": {}})
@@ -265,21 +357,49 @@ def evaluate_cart(
         hard_blocks.append({"code": "MANDATE_EXHAUSTED", "details": {}})
 
     allowed_ids = {m["merchant_id"] for m in merchant_allowlist}
-    offending_merchants = sorted({line["merchant_id"] for line in cart["lines"] if line["merchant_id"] not in allowed_ids})
+    offending_merchants = sorted(
+        {
+            line["merchant_id"]
+            for line in cart["lines"]
+            if line["merchant_id"] not in allowed_ids
+        }
+    )
     if offending_merchants:
-        hard_blocks.append({"code": "MERCHANT_NOT_ALLOWED", "details": {"merchant_ids": offending_merchants}})
+        hard_blocks.append(
+            {
+                "code": "MERCHANT_NOT_ALLOWED",
+                "details": {"merchant_ids": offending_merchants},
+            }
+        )
 
     total_minor = cart["total_minor"]
     if total_minor > remaining_minor:
-        hard_blocks.append({"code": "OVER_CAP", "details": {"total_minor": total_minor, "remaining_minor": remaining_minor}})
+        hard_blocks.append(
+            {
+                "code": "OVER_CAP",
+                "details": {
+                    "total_minor": total_minor,
+                    "remaining_minor": remaining_minor,
+                },
+            }
+        )
 
-    unknown_skus = sorted({line["sku"] for line in cart["lines"] if not line["sku_known"]})
+    unknown_skus = sorted(
+        {line["sku"] for line in cart["lines"] if not line["sku_known"]}
+    )
     if unknown_skus:
         hard_blocks.append({"code": "UNKNOWN_SKU", "details": {"skus": unknown_skus}})
 
-    qty_over = sorted({line["sku"] for line in cart["lines"] if line["qty"] > max_qty_per_line})
+    qty_over = sorted(
+        {line["sku"] for line in cart["lines"] if line["qty"] > max_qty_per_line}
+    )
     if qty_over:
-        hard_blocks.append({"code": "QTY_CAP", "details": {"skus": qty_over, "max_qty_per_line": max_qty_per_line}})
+        hard_blocks.append(
+            {
+                "code": "QTY_CAP",
+                "details": {"skus": qty_over, "max_qty_per_line": max_qty_per_line},
+            }
+        )
 
     if cart["currency"] != currency:
         hard_blocks.append({"code": "CURRENCY_MISMATCH", "details": {}})
@@ -288,18 +408,23 @@ def evaluate_cart(
         {
             line["sku"]
             for line in cart["lines"]
-            if line.get("stated_unit_minor") is not None and line["stated_unit_minor"] != line["unit_minor"]
+            if line.get("stated_unit_minor") is not None
+            and line["stated_unit_minor"] != line["unit_minor"]
         }
     )
     if price_mismatch:
-        hard_blocks.append({"code": "PRICE_MISMATCH", "details": {"skus": price_mismatch}})
+        hard_blocks.append(
+            {"code": "PRICE_MISMATCH", "details": {"skus": price_mismatch}}
+        )
 
     arithmetic_bad = False
     for line in cart["lines"]:
         if line["line_minor"] != line["qty"] * line["unit_minor"]:
             arithmetic_bad = True
             break
-    if not arithmetic_bad and total_minor != sum(line["line_minor"] for line in cart["lines"]):
+    if not arithmetic_bad and total_minor != sum(
+        line["line_minor"] for line in cart["lines"]
+    ):
         arithmetic_bad = True
     if arithmetic_bad:
         hard_blocks.append({"code": "CART_ARITHMETIC_MISMATCH", "details": {}})
@@ -322,7 +447,11 @@ def check_malformed_cart(cart: dict) -> None:
     seen: set[str] = set()
     for line in cart["lines"]:
         if line["sku"] in seen:
-            raise MandateError(422, "MALFORMED_CART", "duplicate sku in cart", {"sku": line["sku"]})
+            raise MandateError(
+                422, "MALFORMED_CART", "duplicate sku in cart", {"sku": line["sku"]}
+            )
         seen.add(line["sku"])
         if line["qty"] < 1:
-            raise MandateError(422, "MALFORMED_CART", "qty must be >= 1", {"sku": line["sku"]})
+            raise MandateError(
+                422, "MALFORMED_CART", "qty must be >= 1", {"sku": line["sku"]}
+            )

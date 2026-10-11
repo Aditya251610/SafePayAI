@@ -1,6 +1,8 @@
 """Integration-only fixtures: real Postgres (test-container pattern), app client,
-db helpers. Expects `PS_APIGATEWAY_TEST_DATABASE_URL` (defaults to a local
-throwaway Postgres on 55432, matching CI's `postgres:16` service container)."""
+db helpers. Expects `PS_APIGATEWAY_TEST_DATABASE_URL`, defaulting to port 5432 -
+matching the `postgres:16` service container ci-python-service.yml actually starts
+(and every other service's test convention). An earlier draft of this file defaulted
+to 55432 under a mistaken assumption about CI's port; fixed."""
 
 from __future__ import annotations
 
@@ -14,7 +16,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 TEST_DATABASE_URL = os.environ.get(
     "PS_APIGATEWAY_TEST_DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:55432/postgres",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres",
 )
 
 
@@ -43,7 +45,9 @@ async def db_engine():
 async def _clean_tables(db_engine, _db_env):
     async with db_engine.begin() as conn:
         await conn.execute(
-            text('TRUNCATE "gateway"."sessions", "gateway"."csrf_uses", "gateway"."users" CASCADE')
+            text(
+                'TRUNCATE "gateway"."sessions", "gateway"."csrf_uses", "gateway"."users" CASCADE'
+            )
         )
     yield
 
@@ -56,7 +60,9 @@ async def app_client():
     # https:// base_url so Secure cookies the gateway sets are actually stored and
     # replayed by httpx's cookie jar across requests in a test (Secure cookies are
     # dropped for http:// by stdlib cookiejar semantics).
-    async with AsyncClient(transport=transport, base_url="https://testserver") as client:
+    async with AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
         yield client
 
 

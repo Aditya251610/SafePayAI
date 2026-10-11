@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -21,6 +22,7 @@ from app.crypto import (
 )
 from app.errors import MandateError
 from app.mandate_logic import build_mandate_canonical_object
+from app.settings import BareSecrets, Settings
 
 EVENT_NAMESPACE = uuid.UUID("5a1d3b2e-0000-4000-8000-000000000001")
 
@@ -67,7 +69,7 @@ async def insert_outbox_event(
     )
 
 
-def to_jsonb_text(payload: dict):
+def to_jsonb_text(payload: dict) -> str:
     import json
 
     return json.dumps(payload)
@@ -96,7 +98,9 @@ async def get_mandate_row(session: AsyncSession, mandate_id: str) -> dict | None
 
 async def get_revocation_row(session: AsyncSession, mandate_id: str) -> dict | None:
     result = await session.execute(
-        text("SELECT mandate_id, revoked_at, reason_code, actor_ref FROM mandate.revocations WHERE mandate_id = :id"),
+        text(
+            "SELECT mandate_id, revoked_at, reason_code, actor_ref FROM mandate.revocations WHERE mandate_id = :id"
+        ),
         {"id": mandate_id},
     )
     row = result.mappings().first()
@@ -115,11 +119,17 @@ async def get_spend_row(session: AsyncSession, mandate_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-async def lock_spend_row(session: AsyncSession, mandate_id: str, settings) -> dict:
+async def lock_spend_row(
+    session: AsyncSession, mandate_id: str, settings: Settings
+) -> dict:
     """Takes the mandate's row lock (spec.md section 7.3). Caller must already be
     inside a transaction (`async with session.begin():`)."""
-    await session.execute(text(f"SET LOCAL lock_timeout = {int(settings.lock_timeout_ms)}"))
-    await session.execute(text(f"SET LOCAL statement_timeout = {int(settings.statement_timeout_ms)}"))
+    await session.execute(
+        text(f"SET LOCAL lock_timeout = {int(settings.lock_timeout_ms)}")
+    )
+    await session.execute(
+        text(f"SET LOCAL statement_timeout = {int(settings.statement_timeout_ms)}")
+    )
     try:
         result = await session.execute(
             text(
@@ -129,7 +139,9 @@ async def lock_spend_row(session: AsyncSession, mandate_id: str, settings) -> di
             {"id": mandate_id},
         )
     except OperationalError as exc:
-        raise MandateError(503, "LOCK_TIMEOUT", "lock acquisition timed out", {}) from exc
+        raise MandateError(
+            503, "LOCK_TIMEOUT", "lock acquisition timed out", {}
+        ) from exc
     row = result.mappings().first()
     if row is None:
         raise MandateError(404, "MANDATE_NOT_FOUND", "mandate not found", {})
@@ -141,7 +153,9 @@ async def lock_spend_row(session: AsyncSession, mandate_id: str, settings) -> di
 # ---------------------------------------------------------------------------
 
 
-def key_bytes_for(key_id: str, settings, bare_secrets) -> bytes | None:
+def key_bytes_for(
+    key_id: str, settings: Settings, bare_secrets: BareSecrets
+) -> bytes | None:
     if key_id == settings.hmac_key_id and bare_secrets.mandate_hmac_key:
         return bare_secrets.mandate_hmac_key.encode("utf-8")
     if (
@@ -182,7 +196,12 @@ class IntegrityResult:
         }
 
 
-def verify_integrity_detailed(mandate_row: dict, spend_row: dict | None, settings, bare_secrets) -> IntegrityResult:
+def verify_integrity_detailed(
+    mandate_row: dict,
+    spend_row: dict | None,
+    settings: Settings,
+    bare_secrets: BareSecrets,
+) -> IntegrityResult:
     res = IntegrityResult()
     if mandate_row["schema"] != "mandate.v1":
         res.failed_check = "SCHEMA_UNKNOWN"
@@ -208,7 +227,9 @@ def verify_integrity_detailed(mandate_row: dict, spend_row: dict | None, setting
         screen_text_hash_value=mandate_row["screen_text_hash"],
     )
     rebuilt_bytes = canonical_json_bytes(rebuilt)
-    res.canonical_matches = rebuilt_bytes == mandate_row["canonical_json"].encode("utf-8")
+    res.canonical_matches = rebuilt_bytes == mandate_row["canonical_json"].encode(
+        "utf-8"
+    )
     if not res.canonical_matches:
         res.failed_check = "CANONICAL_MISMATCH"
         return res
@@ -219,19 +240,28 @@ def verify_integrity_detailed(mandate_row: dict, spend_row: dict | None, setting
         return res
 
     key = key_bytes_for(mandate_row["hmac_key_id"], settings, bare_secrets)
-    res.key_known = key is not None
-    if not res.key_known:
+    if key is None:
+        res.key_known = False
         res.failed_check = "KEY_UNKNOWN"
         return res
+    res.key_known = True
     hash_bytes = bytes.fromhex(rebuilt_hash)
     res.hmac_valid = verify_hmac(
-        key, MANDATE_HMAC_DOMAIN, hash_bytes, mandate_row["buyer_id"], mandate_row["nonce"], mandate_row["hmac"]
+        key,
+        MANDATE_HMAC_DOMAIN,
+        hash_bytes,
+        mandate_row["buyer_id"],
+        mandate_row["nonce"],
+        mandate_row["hmac"],
     )
     if not res.hmac_valid:
         res.failed_check = "HMAC_INVALID"
         return res
 
-    res.spend_row_consistent = spend_row is None or spend_row["max_total_minor"] == mandate_row["max_total_minor"]
+    res.spend_row_consistent = (
+        spend_row is None
+        or spend_row["max_total_minor"] == mandate_row["max_total_minor"]
+    )
     if not res.spend_row_consistent:
         res.failed_check = "SPEND_ROW_INCONSISTENT"
         return res
@@ -239,7 +269,12 @@ def verify_integrity_detailed(mandate_row: dict, spend_row: dict | None, setting
     return res
 
 
-def verify_integrity(mandate_row: dict, spend_row: dict | None, settings, bare_secrets) -> tuple[bool, str | None]:
+def verify_integrity(
+    mandate_row: dict,
+    spend_row: dict | None,
+    settings: Settings,
+    bare_secrets: BareSecrets,
+) -> tuple[bool, str | None]:
     res = verify_integrity_detailed(mandate_row, spend_row, settings, bare_secrets)
     return res.ok, res.failed_check
 
@@ -249,22 +284,33 @@ def verify_integrity(mandate_row: dict, spend_row: dict | None, settings, bare_s
 # ---------------------------------------------------------------------------
 
 
-async def idempotency_lookup(session: AsyncSession, scope: str, key: str) -> dict | None:
+async def idempotency_lookup(
+    session: AsyncSession, scope: str, key: str
+) -> dict | None:
     result = await session.execute(
-        text("SELECT scope, key, request_hash, response FROM mandate.idempotency_keys WHERE scope = :scope AND key = :key"),
+        text(
+            "SELECT scope, key, request_hash, response FROM mandate.idempotency_keys WHERE scope = :scope AND key = :key"
+        ),
         {"scope": scope, "key": key},
     )
     row = result.mappings().first()
     return dict(row) if row else None
 
 
-async def idempotency_store(session: AsyncSession, scope: str, key: str, request_hash: str, response: dict) -> None:
+async def idempotency_store(
+    session: AsyncSession, scope: str, key: str, request_hash: str, response: dict
+) -> None:
     await session.execute(
         text(
             "INSERT INTO mandate.idempotency_keys (scope, key, request_hash, response) "
             "VALUES (:scope, :key, :request_hash, :response)"
         ),
-        {"scope": scope, "key": key, "request_hash": request_hash, "response": to_jsonb_text(response)},
+        {
+            "scope": scope,
+            "key": key,
+            "request_hash": request_hash,
+            "response": to_jsonb_text(response),
+        },
     )
 
 
@@ -283,17 +329,32 @@ def request_hash_of(payload: dict) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def insert_nonce(session: AsyncSession, nonce_hash: str, buyer_id: str, purpose: str, digest: str, ttl_seconds: int) -> None:
+async def insert_nonce(
+    session: AsyncSession,
+    nonce_hash: str,
+    buyer_id: str,
+    purpose: str,
+    digest: str,
+    ttl_seconds: int,
+) -> None:
     await session.execute(
         text(
             "INSERT INTO mandate.nonces (nonce_hash, buyer_id, purpose, terms_digest, expires_at) "
             "VALUES (:nonce_hash, :buyer_id, :purpose, :digest, now() + make_interval(secs => :ttl))"
         ),
-        {"nonce_hash": nonce_hash, "buyer_id": buyer_id, "purpose": purpose, "digest": digest, "ttl": ttl_seconds},
+        {
+            "nonce_hash": nonce_hash,
+            "buyer_id": buyer_id,
+            "purpose": purpose,
+            "digest": digest,
+            "ttl": ttl_seconds,
+        },
     )
 
 
-async def check_nonce_valid(session: AsyncSession, nonce_hash: str, buyer_id: str, purpose: str, digest: str) -> None:
+async def check_nonce_valid(
+    session: AsyncSession, nonce_hash: str, buyer_id: str, purpose: str, digest: str
+) -> None:
     """Read-only pre-check; the atomic consume happens via `consume_nonce` after the
     mandate row exists (nonce_uses.mandate_id has an FK to mandates)."""
     result = await session.execute(
@@ -301,17 +362,31 @@ async def check_nonce_valid(session: AsyncSession, nonce_hash: str, buyer_id: st
             "SELECT 1 FROM mandate.nonces WHERE nonce_hash = :nonce_hash AND buyer_id = :buyer_id "
             "AND purpose = :purpose AND terms_digest = :digest AND expires_at > now()"
         ),
-        {"nonce_hash": nonce_hash, "buyer_id": buyer_id, "purpose": purpose, "digest": digest},
+        {
+            "nonce_hash": nonce_hash,
+            "buyer_id": buyer_id,
+            "purpose": purpose,
+            "digest": digest,
+        },
     )
     if result.first() is None:
-        raise MandateError(409, "NONCE_INVALID", "nonce is invalid, expired, or does not match terms", {})
+        raise MandateError(
+            409,
+            "NONCE_INVALID",
+            "nonce is invalid, expired, or does not match terms",
+            {},
+        )
 
 
-async def consume_nonce(session: AsyncSession, nonce_hash: str, mandate_id: str) -> None:
+async def consume_nonce(
+    session: AsyncSession, nonce_hash: str, mandate_id: str
+) -> None:
     """INSERT-only consumption; PK violation = replay (data-architecture grant model)."""
     try:
         await session.execute(
-            text("INSERT INTO mandate.nonce_uses (nonce_hash, mandate_id) VALUES (:nonce_hash, :mandate_id)"),
+            text(
+                "INSERT INTO mandate.nonce_uses (nonce_hash, mandate_id) VALUES (:nonce_hash, :mandate_id)"
+            ),
             {"nonce_hash": nonce_hash, "mandate_id": mandate_id},
         )
     except IntegrityError as exc:
@@ -329,18 +404,26 @@ RESERVATION_COLUMNS = """
 """
 
 
-async def get_reservation_row(session: AsyncSession, reservation_id: str) -> dict | None:
+async def get_reservation_row(
+    session: AsyncSession, reservation_id: str
+) -> dict | None:
     result = await session.execute(
-        text(f"SELECT {RESERVATION_COLUMNS} FROM mandate.spend_reservations WHERE reservation_id = :id"),
+        text(
+            f"SELECT {RESERVATION_COLUMNS} FROM mandate.spend_reservations WHERE reservation_id = :id"
+        ),
         {"id": reservation_id},
     )
     row = result.mappings().first()
     return dict(row) if row else None
 
 
-async def get_reservation_by_order(session: AsyncSession, mandate_id: str, order_id: str) -> dict | None:
+async def get_reservation_by_order(
+    session: AsyncSession, mandate_id: str, order_id: str
+) -> dict | None:
     result = await session.execute(
-        text(f"SELECT {RESERVATION_COLUMNS} FROM mandate.spend_reservations WHERE mandate_id = :m AND order_id = :o"),
+        text(
+            f"SELECT {RESERVATION_COLUMNS} FROM mandate.spend_reservations WHERE mandate_id = :m AND order_id = :o"
+        ),
         {"m": mandate_id, "o": order_id},
     )
     row = result.mappings().first()
@@ -378,19 +461,29 @@ async def insert_reservation(
     )
 
 
-async def set_reservation_state(session: AsyncSession, reservation_id: str, state: str, **fields) -> None:
+async def set_reservation_state(
+    session: AsyncSession, reservation_id: str, state: str, **fields: Any
+) -> None:
     assignments = ["state = :state", "updated_at = now()"]
     params: dict = {"state": state, "id": reservation_id}
     for key, value in fields.items():
         assignments.append(f"{key} = :{key}")
         params[key] = value
     await session.execute(
-        text(f"UPDATE mandate.spend_reservations SET {', '.join(assignments)} WHERE reservation_id = :id"),
+        text(
+            f"UPDATE mandate.spend_reservations SET {', '.join(assignments)} WHERE reservation_id = :id"
+        ),
         params,
     )
 
 
-async def adjust_spend(session: AsyncSession, mandate_id: str, *, spent_delta: int = 0, reserved_delta: int = 0) -> None:
+async def adjust_spend(
+    session: AsyncSession,
+    mandate_id: str,
+    *,
+    spent_delta: int = 0,
+    reserved_delta: int = 0,
+) -> None:
     await session.execute(
         text(
             """
@@ -402,7 +495,11 @@ async def adjust_spend(session: AsyncSession, mandate_id: str, *, spent_delta: i
             WHERE mandate_id = :id
             """
         ),
-        {"id": mandate_id, "spent_delta": spent_delta, "reserved_delta": reserved_delta},
+        {
+            "id": mandate_id,
+            "spent_delta": spent_delta,
+            "reserved_delta": reserved_delta,
+        },
     )
 
 
@@ -416,23 +513,37 @@ GRANT_COLUMNS = """
 """
 
 
-async def insert_grant(session: AsyncSession, **fields) -> None:
+async def insert_grant(session: AsyncSession, **fields: Any) -> None:
     columns = [
-        "grant_id", "mandate_id", "order_id", "capture_id", "buyer_id", "mandate_hash",
-        "terms", "terms_hash", "captured_amount_minor", "captured_at", "grant_hmac", "hmac_key_id",
+        "grant_id",
+        "mandate_id",
+        "order_id",
+        "capture_id",
+        "buyer_id",
+        "mandate_hash",
+        "terms",
+        "terms_hash",
+        "captured_amount_minor",
+        "captured_at",
+        "grant_hmac",
+        "hmac_key_id",
     ]
     params = dict(fields)
     params["terms"] = to_jsonb_text(fields["terms"])
     placeholders = ", ".join(f":{c}" for c in columns)
     await session.execute(
-        text(f"INSERT INTO mandate.protection_grants ({', '.join(columns)}) VALUES ({placeholders})"),
+        text(
+            f"INSERT INTO mandate.protection_grants ({', '.join(columns)}) VALUES ({placeholders})"
+        ),
         params,
     )
 
 
 async def get_grant_by_order(session: AsyncSession, order_id: str) -> dict | None:
     result = await session.execute(
-        text(f"SELECT {GRANT_COLUMNS} FROM mandate.protection_grants WHERE order_id = :id"),
+        text(
+            f"SELECT {GRANT_COLUMNS} FROM mandate.protection_grants WHERE order_id = :id"
+        ),
         {"id": order_id},
     )
     row = result.mappings().first()
@@ -441,7 +552,9 @@ async def get_grant_by_order(session: AsyncSession, order_id: str) -> dict | Non
 
 async def get_grant_by_id(session: AsyncSession, grant_id: str) -> dict | None:
     result = await session.execute(
-        text(f"SELECT {GRANT_COLUMNS} FROM mandate.protection_grants WHERE grant_id = :id"),
+        text(
+            f"SELECT {GRANT_COLUMNS} FROM mandate.protection_grants WHERE grant_id = :id"
+        ),
         {"id": grant_id},
     )
     row = result.mappings().first()

@@ -87,7 +87,9 @@ def upgrade() -> None:
             ua_hash text
         )
     ''')
-    op.execute(f'CREATE INDEX IF NOT EXISTS idx_sessions_user ON "{SCHEMA}"."sessions"(user_id)')
+    op.execute(
+        f'CREATE INDEX IF NOT EXISTS idx_sessions_user ON "{SCHEMA}"."sessions"(user_id)'
+    )
 
     op.execute(f'''
         CREATE TABLE "{SCHEMA}"."csrf_uses" (

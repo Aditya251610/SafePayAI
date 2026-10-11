@@ -37,14 +37,24 @@ def rsa_keypairs():
     current_private, current_public = _generate_rsa_pem_pair()
     previous_private, previous_public = _generate_rsa_pem_pair()
     return {
-        "current": {"kid": "k1", "private_pem": current_private, "public_pem": current_public},
-        "previous": {"kid": "k0", "private_pem": previous_private, "public_pem": previous_public},
+        "current": {
+            "kid": "k1",
+            "private_pem": current_private,
+            "public_pem": current_public,
+        },
+        "previous": {
+            "kid": "k0",
+            "private_pem": previous_private,
+            "public_pem": previous_public,
+        },
     }
 
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch, rsa_keypairs):
-    monkeypatch.setenv("PS_APIGATEWAY_SIGNING_KEY_PEM", rsa_keypairs["current"]["private_pem"])
+    monkeypatch.setenv(
+        "PS_APIGATEWAY_SIGNING_KEY_PEM", rsa_keypairs["current"]["private_pem"]
+    )
     monkeypatch.setenv("PS_APIGATEWAY_SIGNING_KID", rsa_keypairs["current"]["kid"])
     monkeypatch.setenv(
         "PS_APIGATEWAY_PREVIOUS_PUBLIC_KEYS",

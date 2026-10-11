@@ -42,11 +42,14 @@ def _load_trusted_issuers(settings: Settings) -> dict[str, dict[str, dict[str, s
     raw = settings.trusted_issuers
     if raw:
         candidate = Path(raw)
+        parsed: dict[str, dict[str, dict[str, str]]]
         if candidate.exists():
-            return json.loads(candidate.read_text())
-        return json.loads(raw)
+            parsed = json.loads(candidate.read_text())
+        else:
+            parsed = json.loads(raw)
+        return parsed
     if _FIXTURE_PATH.exists():
-        data = json.loads(_FIXTURE_PATH.read_text())
+        data: dict[str, dict[str, dict[str, str]]] = json.loads(_FIXTURE_PATH.read_text())
         data.pop("_comment", None)
         return data
     return {}

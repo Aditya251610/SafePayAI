@@ -30,7 +30,14 @@ SCHEMA = "mandate"
 MIGRATION_ROLE = "mig_mandate"
 RUNTIME_ROLE = "svc_mandate"
 
-IMMUTABLE_TABLES = ("mandates", "revocations", "nonces", "nonce_uses", "protection_grants", "mandate_attestations")
+IMMUTABLE_TABLES = (
+    "mandates",
+    "revocations",
+    "nonces",
+    "nonce_uses",
+    "protection_grants",
+    "mandate_attestations",
+)
 
 
 def upgrade() -> None:
@@ -79,7 +86,9 @@ def upgrade() -> None:
             UNIQUE (nonce)
         )
     ''')
-    op.execute(f'CREATE INDEX IF NOT EXISTS idx_mandates_buyer ON "{SCHEMA}"."mandates"(buyer_id, created_at DESC)')
+    op.execute(
+        f'CREATE INDEX IF NOT EXISTS idx_mandates_buyer ON "{SCHEMA}"."mandates"(buyer_id, created_at DESC)'
+    )
 
     op.execute(f'''
         CREATE TABLE "{SCHEMA}"."revocations" (
@@ -121,7 +130,9 @@ def upgrade() -> None:
             UNIQUE (mandate_id, order_id)
         )
     ''')
-    op.execute(f'CREATE INDEX IF NOT EXISTS idx_spend_res_mandate_state ON "{SCHEMA}"."spend_reservations"(mandate_id, state)')
+    op.execute(
+        f'CREATE INDEX IF NOT EXISTS idx_spend_res_mandate_state ON "{SCHEMA}"."spend_reservations"(mandate_id, state)'
+    )
 
     op.execute(f'''
         CREATE TABLE "{SCHEMA}"."protection_grants" (
@@ -140,7 +151,9 @@ def upgrade() -> None:
             created_at timestamptz NOT NULL DEFAULT now()
         )
     ''')
-    op.execute(f'CREATE INDEX IF NOT EXISTS idx_grants_mandate ON "{SCHEMA}"."protection_grants"(mandate_id)')
+    op.execute(
+        f'CREATE INDEX IF NOT EXISTS idx_grants_mandate ON "{SCHEMA}"."protection_grants"(mandate_id)'
+    )
 
     op.execute(f'''
         CREATE TABLE "{SCHEMA}"."nonces" (
@@ -187,7 +200,9 @@ def upgrade() -> None:
             next_attempt_at timestamptz
         )
     ''')
-    op.execute(f'CREATE INDEX IF NOT EXISTS idx_outbox_next_attempt ON "{SCHEMA}"."outbox"(next_attempt_at)')
+    op.execute(
+        f'CREATE INDEX IF NOT EXISTS idx_outbox_next_attempt ON "{SCHEMA}"."outbox"(next_attempt_at)'
+    )
 
     op.execute(f'''
         CREATE TABLE "{SCHEMA}"."mandate_attestations" (

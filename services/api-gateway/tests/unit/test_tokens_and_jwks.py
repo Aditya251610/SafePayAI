@@ -122,7 +122,10 @@ def test_deny_expired_token():
         "sid": None,
     }
     token = jwt.encode(
-        claims, signing_key.private_key_pem, algorithm="RS256", headers={"kid": signing_key.kid}
+        claims,
+        signing_key.private_key_pem,
+        algorithm="RS256",
+        headers={"kid": signing_key.kid},
     )
     key = _jwk_lookup(build_jwks_document(settings), signing_key.kid)
     with pytest.raises(jwt.ExpiredSignatureError):
@@ -212,7 +215,9 @@ def test_token_signed_with_previous_kid_still_verifies_during_overlap(rsa_keypai
         "scope": [],
         "sid": None,
     }
-    token = jwt.encode(claims, prev["private_pem"], algorithm="RS256", headers={"kid": prev["kid"]})
+    token = jwt.encode(
+        claims, prev["private_pem"], algorithm="RS256", headers={"kid": prev["kid"]}
+    )
     key = _jwk_lookup(build_jwks_document(settings), prev["kid"])
     assert key is not None
     out = jwt.decode(token, key=key, algorithms=["RS256"], audience="catalog")

@@ -15,61 +15,101 @@ updates:
   - package-ecosystem: "pip"
     directory: "/services/api-gateway"
     schedule: { interval: "monthly" }
+    groups:
+      api_gateway_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/mandate"
     schedule: { interval: "monthly" }
+    groups:
+      mandate_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/catalog"
     schedule: { interval: "monthly" }
+    groups:
+      catalog_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/shopping-agent"
     schedule: { interval: "monthly" }
+    groups:
+      shopping_agent_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/checkout"
     schedule: { interval: "monthly" }
+    groups:
+      checkout_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/paypal-adapter"
     schedule: { interval: "monthly" }
+    groups:
+      paypal_adapter_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/tracking"
     schedule: { interval: "monthly" }
+    groups:
+      tracking_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/resolution"
     schedule: { interval: "monthly" }
+    groups:
+      resolution_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/triage-ai"
     schedule: { interval: "monthly" }
+    groups:
+      triage_ai_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/audit"
     schedule: { interval: "monthly" }
+    groups:
+      audit_deps: { patterns: ["*"] }
 
   - package-ecosystem: "docker"
     directory: "/services/api-gateway"
     schedule: { interval: "monthly" }
+    groups:
+      api_gateway_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/mandate"
     schedule: { interval: "monthly" }
+    groups:
+      mandate_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/catalog"
     schedule: { interval: "monthly" }
+    groups:
+      catalog_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/shopping-agent"
     schedule: { interval: "monthly" }
+    groups:
+      shopping_agent_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/checkout"
     schedule: { interval: "monthly" }
+    groups:
+      checkout_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/paypal-adapter"
     schedule: { interval: "monthly" }
+    groups:
+      paypal_adapter_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/tracking"
     schedule: { interval: "monthly" }
+    groups:
+      tracking_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/resolution"
     schedule: { interval: "monthly" }
+    groups:
+      resolution_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/triage-ai"
     schedule: { interval: "monthly" }
+    groups:
+      triage_ai_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/audit"
     schedule: { interval: "monthly" }
+    groups:
+      audit_docker: { patterns: ["*"] }

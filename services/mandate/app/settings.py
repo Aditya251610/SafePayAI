@@ -21,7 +21,9 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://svc_mandate:password@localhost:5432/artiq"
     db_pool_size: int = 2
-    migration_database_url: str = "postgresql+asyncpg://mig_mandate:password@localhost:5432/artiq"
+    migration_database_url: str = (
+        "postgresql+asyncpg://mig_mandate:password@localhost:5432/artiq"
+    )
 
     hmac_key_id: str = "k1"
     hmac_key_id_previous: str | None = None

@@ -59,9 +59,7 @@ async def test_concurrent_batch_append_also_gapless(client) -> None:
         make_envelope(event_id=str(uuid.uuid4()), order_id=f"ord_batch_concurrent_{i}")
         for i in range(10)
     ]
-    resp = await client.post(
-        "/internal/events/batch", json={"events": events}, headers=headers
-    )
+    resp = await client.post("/internal/events/batch", json={"events": events}, headers=headers)
     assert resp.status_code == 200
     results = resp.json()["results"]
     seqs = sorted(r["seq"] for r in results)

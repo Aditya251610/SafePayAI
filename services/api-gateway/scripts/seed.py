@@ -60,11 +60,13 @@ SEED_USERS = [
 
 
 async def main() -> None:
-    database_url = os.environ.get("PS_APIGATEWAY_MIGRATION_DATABASE_URL") or os.environ.get(
-        "PS_APIGATEWAY_DATABASE_URL"
-    )
+    database_url = os.environ.get(
+        "PS_APIGATEWAY_MIGRATION_DATABASE_URL"
+    ) or os.environ.get("PS_APIGATEWAY_DATABASE_URL")
     if not database_url:
-        raise SystemExit("PS_APIGATEWAY_DATABASE_URL (or _MIGRATION_DATABASE_URL) is not set")
+        raise SystemExit(
+            "PS_APIGATEWAY_DATABASE_URL (or _MIGRATION_DATABASE_URL) is not set"
+        )
 
     engine = create_async_engine(database_url)
     async with engine.begin() as conn:
@@ -72,7 +74,9 @@ async def main() -> None:
             password = os.environ.get(env_var)
             if not password:
                 if required:
-                    raise SystemExit(f"{env_var} is not set (required to seed {handle!r})")
+                    raise SystemExit(
+                        f"{env_var} is not set (required to seed {handle!r})"
+                    )
                 print(f"skipping {handle!r}: {env_var} not set")
                 continue
 

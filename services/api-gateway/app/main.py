@@ -38,7 +38,11 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     # HTTPExceptions we didn't construct (e.g. FastAPI's own 404 for an unmatched
     # route) fall back to a generic code derived from the status.
     detail = str(exc.detail)
-    code = detail if detail.isupper() else ("NOT_FOUND" if exc.status_code == 404 else "HTTP_ERROR")
+    code = (
+        detail
+        if detail.isupper()
+        else ("NOT_FOUND" if exc.status_code == 404 else "HTTP_ERROR")
+    )
     return JSONResponse(
         status_code=exc.status_code,
         content={

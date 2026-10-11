@@ -86,7 +86,11 @@ async def require_session(
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
 
-    if expires_at < now or row["disabled_at"] is not None or row["epoch"] != row["user_epoch"]:
+    if (
+        expires_at < now
+        or row["disabled_at"] is not None
+        or row["epoch"] != row["user_epoch"]
+    ):
         clear_session_cookie(response, settings)
         raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
 
@@ -109,13 +113,17 @@ async def require_buyer(principal: Principal = Depends(require_session)) -> Prin
     return principal
 
 
-async def require_merchant(principal: Principal = Depends(require_session)) -> Principal:
+async def require_merchant(
+    principal: Principal = Depends(require_session),
+) -> Principal:
     if principal.role != "merchant":
         raise HTTPException(status_code=403, detail="FORBIDDEN")
     return principal
 
 
-async def require_operator(principal: Principal = Depends(require_session)) -> Principal:
+async def require_operator(
+    principal: Principal = Depends(require_session),
+) -> Principal:
     if principal.role != "operator":
         raise HTTPException(status_code=403, detail="FORBIDDEN")
     return principal
