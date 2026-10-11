@@ -1,0 +1,40 @@
+name: changelog
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: "!contains(github.event.head_commit.message, 'chore: regenerate changelog')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: install git-cliff
+        run: |
+          curl -sSL https://github.com/orhun/git-cliff/releases/download/v2.14.2/git-cliff-2.14.2-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C /tmp
+          sudo mv /tmp/git-cliff-2.14.2/git-cliff /usr/local/bin/git-cliff
+
+      - name: regenerate CHANGELOG.md
+        run: git-cliff --output CHANGELOG.md
+
+      - name: commit if changed
+        run: |
+          if git diff --quiet CHANGELOG.md; then
+            echo "CHANGELOG.md already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore: regenerate changelog [skip ci]"
+          git push
