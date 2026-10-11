@@ -51,6 +51,11 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
+          # Also creates a `safepayai` database alongside the always-present `postgres`
+          # one, matching docker-compose.yml's POSTGRES_DB (audit's own test conftest
+          # connects to `safepayai`, same as local Profile A dev - every other service
+          # uses the default `postgres` database, which still exists either way).
+          POSTGRES_DB: safepayai
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready
