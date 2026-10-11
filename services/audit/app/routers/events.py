@@ -110,7 +110,7 @@ async def append_events_batch(
 ) -> JSONResponse:
     if len(body.events) > settings.batch_max:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"error": "batch_too_large", "detail": "exceeds PS_AUDIT_BATCH_MAX"},
         )
 

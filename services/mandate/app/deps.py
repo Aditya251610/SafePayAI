@@ -34,7 +34,8 @@ def _trusted_issuer_keys(settings: Settings) -> dict[str, str]:
     if not settings.trusted_issuers:
         return {}
     try:
-        return json.loads(settings.trusted_issuers)
+        parsed: dict[str, str] = json.loads(settings.trusted_issuers)
+        return parsed
     except ValueError:
         return {}
 
@@ -62,7 +63,10 @@ async def verify_internal_jwt(
             if key is None:
                 raise HTTPException(status_code=401, detail="unknown signing key")
             claims = jwt.decode(
-                token, key, algorithms=["EdDSA", "RS256"], audience=settings.internal_jwt_audience
+                token,
+                key,
+                algorithms=["EdDSA", "RS256"],
+                audience=settings.internal_jwt_audience,
             )
         elif settings.internal_jwks_url:
             client = jwt.PyJWKClient(settings.internal_jwks_url)
@@ -74,7 +78,9 @@ async def verify_internal_jwt(
                 audience=settings.internal_jwt_audience,
             )
         else:
-            raise HTTPException(status_code=401, detail="no trusted issuer configuration")
+            raise HTTPException(
+                status_code=401, detail="no trusted issuer configuration"
+            )
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="invalid internal token") from exc
 
@@ -88,13 +94,17 @@ async def verify_internal_jwt(
     )
 
 
-async def require_buyer(principal: Principal = Depends(verify_internal_jwt)) -> Principal:
+async def require_buyer(
+    principal: Principal = Depends(verify_internal_jwt),
+) -> Principal:
     if principal.role != "buyer":
         raise HTTPException(status_code=403, detail="ROLE_NOT_ALLOWED")
     return principal
 
 
-async def require_service_caller(principal: Principal = Depends(verify_internal_jwt)) -> Principal:
+async def require_service_caller(
+    principal: Principal = Depends(verify_internal_jwt),
+) -> Principal:
     if not principal.sub.startswith("svc:"):
         raise HTTPException(status_code=403, detail="CALLER_NOT_ALLOWED")
     return principal

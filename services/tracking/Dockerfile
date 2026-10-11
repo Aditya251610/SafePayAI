@@ -1,10 +1,12 @@
+# Build context MUST be the repo root (see docker-compose.yml build.context and
+# .github/workflows/ci-python-service.yml), not this directory: this service depends on the
+# shared `libs/common` workspace package, and uv needs every workspace member's pyproject.toml
+# present (even ones it won't install) to resolve the lockfile.
 FROM python:3.12-slim AS base
-WORKDIR /app
+WORKDIR /workspace
 RUN pip install --no-cache-dir uv
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --frozen --no-dev || uv sync --no-dev
-COPY app ./app
-COPY migrations ./migrations
-COPY alembic.ini ./
+COPY . .
+RUN uv sync --frozen --no-dev --package ps-tracking
+WORKDIR /workspace/services/tracking
 EXPOSE 8000
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "--project", "/workspace", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -28,8 +28,12 @@ RUNTIME_ROLE = "svc_mandate"
 
 
 def upgrade() -> None:
-    op.execute(f'GRANT USAGE, SELECT ON SEQUENCE "{SCHEMA}"."outbox_seq_seq" TO "{RUNTIME_ROLE}"')
+    op.execute(
+        f'GRANT USAGE, SELECT ON SEQUENCE "{SCHEMA}"."outbox_seq_seq" TO "{RUNTIME_ROLE}"'
+    )
 
 
 def downgrade() -> None:
-    op.execute(f'REVOKE USAGE, SELECT ON SEQUENCE "{SCHEMA}"."outbox_seq_seq" FROM "{RUNTIME_ROLE}"')
+    op.execute(
+        f'REVOKE USAGE, SELECT ON SEQUENCE "{SCHEMA}"."outbox_seq_seq" FROM "{RUNTIME_ROLE}"'
+    )

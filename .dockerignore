@@ -1,0 +1,26 @@
+# Build context is the repo root for every service Dockerfile (uv workspace members need each
+# other's pyproject.toml present to resolve). Exclude secrets and anything that bloats the
+# context or could leak into an image layer.
+.env
+.env.*
+!.env.example
+.git
+.claude
+spike
+node_modules
+__pycache__
+*.pyc
+.venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.next
+.turbo
+.vercel
+dist
+build
+*.egg-info
+.DS_Store
+.idea
+.vscode
+*.log

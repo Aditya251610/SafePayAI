@@ -42,7 +42,9 @@ def _remaining(max_total: int, spent: int, reserved: int) -> int:
     return max_total - spent - reserved
 
 
-def _owner_view(mandate_row: dict, spend_row: dict, status: str, revocation_row: dict | None) -> dict:
+def _owner_view(
+    mandate_row: dict, spend_row: dict, status: str, revocation_row: dict | None
+) -> dict:
     body = {
         "mandate_id": str(mandate_row["mandate_id"]),
         "buyer_id": mandate_row["buyer_id"],
@@ -64,7 +66,11 @@ def _owner_view(mandate_row: dict, spend_row: dict, status: str, revocation_row:
         "hmac_key_id": mandate_row["hmac_key_id"],
         "spent_minor": spend_row["spent_minor"],
         "reserved_minor": spend_row["reserved_minor"],
-        "remaining_minor": _remaining(spend_row["max_total_minor"], spend_row["spent_minor"], spend_row["reserved_minor"]),
+        "remaining_minor": _remaining(
+            spend_row["max_total_minor"],
+            spend_row["spent_minor"],
+            spend_row["reserved_minor"],
+        ),
         "created_at": mandate_row["created_at"].strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     if revocation_row:
@@ -94,10 +100,14 @@ def _invalid_view(mandate_row: dict) -> dict:
     }
 
 
-async def _emit_expired_if_needed(session: AsyncSession, mandate_row: dict, status: str) -> None:
+async def _emit_expired_if_needed(
+    session: AsyncSession, mandate_row: dict, status: str
+) -> None:
     if status != "expired":
         return
-    event_id = repo.deterministic_event_id(str(mandate_row["mandate_id"]), "mandate.expired")
+    event_id = repo.deterministic_event_id(
+        str(mandate_row["mandate_id"]), "mandate.expired"
+    )
     await repo.insert_outbox_event(
         session,
         event_type="mandate.expired",
@@ -111,13 +121,21 @@ async def _emit_expired_if_needed(session: AsyncSession, mandate_row: dict, stat
     )
 
 
-async def _emit_integrity_failed_if_needed(session: AsyncSession, mandate_id: str, check: str, key_id: str) -> None:
+async def _emit_integrity_failed_if_needed(
+    session: AsyncSession, mandate_id: str, check: str | None, key_id: str
+) -> None:
+    # `check` is None only if verify_integrity's own invariant (failed_check is set whenever
+    # integrity_ok is False) is ever violated - record that distinctly rather than crash.
     event_id = repo.deterministic_event_id(mandate_id, "mandate.integrity_failed")
     await repo.insert_outbox_event(
         session,
         event_type="mandate.integrity_failed",
         mandate_id=mandate_id,
-        payload={"mandate_id": mandate_id, "check": check, "key_id": key_id},
+        payload={
+            "mandate_id": mandate_id,
+            "check": check or "UNKNOWN_FAILED_CHECK",
+            "key_id": key_id,
+        },
         event_id=event_id,
     )
 
@@ -139,12 +157,21 @@ async def preview_mandate(
     digest_input["screen_text_hash"] = text_hash
     digest = mandate_logic.terms_digest(digest_input)
 
-    raw_nonce = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("ascii").rstrip("=")
+    raw_nonce = (
+        base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("ascii").rstrip("=")
+    )
     nonce_hash = sha256_hex(raw_nonce.encode("ascii"))
     buyer_id = _actor_id(principal)
 
     async with session.begin():
-        await repo.insert_nonce(session, nonce_hash, buyer_id, "mandate_sign", digest, settings.nonce_ttl_seconds)
+        await repo.insert_nonce(
+            session,
+            nonce_hash,
+            buyer_id,
+            "mandate_sign",
+            digest,
+            settings.nonce_ttl_seconds,
+        )
 
     nonce_expires_at = now + timedelta(seconds=settings.nonce_ttl_seconds)
     return {
@@ -172,12 +199,21 @@ async def sign_mandate(
     if not settings.signing_enabled:
         raise MandateError(503, "SIGNING_DISABLED", "signing is currently disabled", {})
     if not idempotency_key:
-        raise MandateError(400, "VALIDATION_ERROR", "Idempotency-Key header is required", {"field": "Idempotency-Key"})
+        raise MandateError(
+            400,
+            "VALIDATION_ERROR",
+            "Idempotency-Key header is required",
+            {"field": "Idempotency-Key"},
+        )
 
     buyer_id = _actor_id(principal)
     scope = f"{buyer_id}|POST /mandates"
     request_hash = repo.request_hash_of(
-        {"terms": body.terms.model_dump(), "screen_text_hash": body.screen_text_hash, "nonce": body.nonce}
+        {
+            "terms": body.terms.model_dump(),
+            "screen_text_hash": body.screen_text_hash,
+            "nonce": body.nonce,
+        }
     )
 
     now = repo.now_utc()
@@ -185,7 +221,12 @@ async def sign_mandate(
     screen_text = mandate_logic.render_text(normalized)
     text_hash = mandate_logic.screen_text_hash(screen_text)
     if text_hash != body.screen_text_hash:
-        raise MandateError(422, "SCREEN_TEXT_MISMATCH", "screen text hash does not match re-rendered terms", {})
+        raise MandateError(
+            422,
+            "SCREEN_TEXT_MISMATCH",
+            "screen text hash does not match re-rendered terms",
+            {},
+        )
 
     digest_input = dict(normalized)
     digest_input["screen_text_hash"] = text_hash
@@ -196,11 +237,19 @@ async def sign_mandate(
         existing = await repo.idempotency_lookup(session, scope, idempotency_key)
         if existing is not None:
             if existing["request_hash"] != request_hash:
-                raise MandateError(409, "IDEMPOTENCY_KEY_REUSED", "idempotency key reused with a different request", {})
+                raise MandateError(
+                    409,
+                    "IDEMPOTENCY_KEY_REUSED",
+                    "idempotency key reused with a different request",
+                    {},
+                )
             response.headers["Idempotent-Replay"] = "true"
-            return existing["response"]
+            cached_response: dict = existing["response"]
+            return cached_response
 
-        await repo.check_nonce_valid(session, nonce_hash, buyer_id, "mandate_sign", digest)
+        await repo.check_nonce_valid(
+            session, nonce_hash, buyer_id, "mandate_sign", digest
+        )
 
         mandate_id = str(uuid.uuid4())
         created_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -219,7 +268,9 @@ async def sign_mandate(
         key = repo.key_bytes_for(key_id, settings, bare_secrets)
         if key is None:
             raise MandateError(503, "NOT_READY", "signing key unavailable", {})
-        hmac_hex = compute_hmac(key, MANDATE_HMAC_DOMAIN, bytes.fromhex(mandate_hash), buyer_id, body.nonce)
+        hmac_hex = compute_hmac(
+            key, MANDATE_HMAC_DOMAIN, bytes.fromhex(mandate_hash), buyer_id, body.nonce
+        )
 
         try:
             await session.execute(
@@ -236,31 +287,35 @@ async def sign_mandate(
                      :policy_version, :nonce, :render_version, :screen_text_hash, :canonical_json,
                      :mandate_hash, :hmac, 'HMAC-SHA256', :hmac_key_id, :signed_at, :created_at)
                 """
-            ),
-            {
-                "mandate_id": mandate_id,
-                "buyer_id": buyer_id,
-                "schema": mandate_logic.SCHEMA_VERSION,
-                "currency": normalized["currency"],
-                "max_total_minor": normalized["max_total_minor"],
-                "max_qty_per_line": normalized["max_qty_per_line"],
-                "merchant_allowlist": repo.to_jsonb_text(normalized["merchant_allowlist"]),
-                "intent_text": normalized["intent_text"],
-                "expires_at": mandate_logic.parse_utc_timestamp(normalized["expires_at"], "expires_at"),
-                "protection": repo.to_jsonb_text(normalized["protection"]),
-                "revoke_effect": normalized["revoke_effect"],
-                "policy_version": normalized["policy_version"],
-                "nonce": body.nonce,
-                "render_version": mandate_logic.RENDER_VERSION,
-                "screen_text_hash": text_hash,
-                "canonical_json": canonical_text,
-                "mandate_hash": mandate_hash,
-                "hmac": hmac_hex,
-                "hmac_key_id": key_id,
-                "signed_at": now,
-                "created_at": now,
-            },
-        )
+                ),
+                {
+                    "mandate_id": mandate_id,
+                    "buyer_id": buyer_id,
+                    "schema": mandate_logic.SCHEMA_VERSION,
+                    "currency": normalized["currency"],
+                    "max_total_minor": normalized["max_total_minor"],
+                    "max_qty_per_line": normalized["max_qty_per_line"],
+                    "merchant_allowlist": repo.to_jsonb_text(
+                        normalized["merchant_allowlist"]
+                    ),
+                    "intent_text": normalized["intent_text"],
+                    "expires_at": mandate_logic.parse_utc_timestamp(
+                        normalized["expires_at"], "expires_at"
+                    ),
+                    "protection": repo.to_jsonb_text(normalized["protection"]),
+                    "revoke_effect": normalized["revoke_effect"],
+                    "policy_version": normalized["policy_version"],
+                    "nonce": body.nonce,
+                    "render_version": mandate_logic.RENDER_VERSION,
+                    "screen_text_hash": text_hash,
+                    "canonical_json": canonical_text,
+                    "mandate_hash": mandate_hash,
+                    "hmac": hmac_hex,
+                    "hmac_key_id": key_id,
+                    "signed_at": now,
+                    "created_at": now,
+                },
+            )
         except IntegrityError as exc:
             # The only UNIQUE constraint on mandates besides the mandate_id PK is
             # UNIQUE(nonce) - mandate_id is a fresh uuid4, so any IntegrityError here
@@ -292,7 +347,9 @@ async def sign_mandate(
                 "nonce": body.nonce,
                 "max_total_minor": normalized["max_total_minor"],
                 "currency": normalized["currency"],
-                "merchant_ids": [m["merchant_id"] for m in normalized["merchant_allowlist"]],
+                "merchant_ids": [
+                    m["merchant_id"] for m in normalized["merchant_allowlist"]
+                ],
                 "expires_at": normalized["expires_at"],
                 "protection": normalized["protection"],
                 "revoke_effect": normalized["revoke_effect"],
@@ -325,7 +382,9 @@ async def sign_mandate(
             "remaining_minor": normalized["max_total_minor"],
             "created_at": created_at,
         }
-        await repo.idempotency_store(session, scope, idempotency_key, request_hash, response_body)
+        await repo.idempotency_store(
+            session, scope, idempotency_key, request_hash, response_body
+        )
 
     return response_body
 
@@ -352,7 +411,13 @@ async def list_mandates(
         items = []
         for row in rows:
             spend_row = await repo.get_spend_row(session, str(row["mandate_id"]))
-            revocation_row = await repo.get_revocation_row(session, str(row["mandate_id"]))
+            if spend_row is None:
+                raise MandateError(
+                    500, "DATA_INCONSISTENCY", "mandate has no spend row", {}
+                )
+            revocation_row = await repo.get_revocation_row(
+                session, str(row["mandate_id"])
+            )
             status = mandate_logic.derive_status(
                 revoked=revocation_row is not None,
                 expires_at=row["expires_at"],
@@ -364,11 +429,15 @@ async def list_mandates(
     return {"items": items}
 
 
-async def _load_mandate_context(session: AsyncSession, mandate_id: str) -> tuple[dict, dict, dict | None]:
+async def _load_mandate_context(
+    session: AsyncSession, mandate_id: str
+) -> tuple[dict, dict, dict | None]:
     mandate_row = await repo.get_mandate_row(session, mandate_id)
     if mandate_row is None:
         raise MandateError(404, "MANDATE_NOT_FOUND", "mandate not found", {})
     spend_row = await repo.get_spend_row(session, mandate_id)
+    if spend_row is None:
+        raise MandateError(500, "DATA_INCONSISTENCY", "mandate has no spend row", {})
     revocation_row = await repo.get_revocation_row(session, mandate_id)
     return mandate_row, spend_row, revocation_row
 
@@ -384,14 +453,22 @@ async def get_mandate(
     settings = get_settings()
     bare_secrets = get_bare_secrets()
     async with session.begin():
-        mandate_row, spend_row, revocation_row = await _load_mandate_context(session, mandate_id)
-        is_owner = principal.role == "buyer" and mandate_row["buyer_id"] == _actor_id(principal)
+        mandate_row, spend_row, revocation_row = await _load_mandate_context(
+            session, mandate_id
+        )
+        is_owner = principal.role == "buyer" and mandate_row["buyer_id"] == _actor_id(
+            principal
+        )
         if principal.role == "buyer" and not is_owner:
             raise MandateError(404, "MANDATE_NOT_FOUND", "mandate not found", {})
 
-        integrity_ok, failed_check = repo.verify_integrity(mandate_row, spend_row, settings, bare_secrets)
+        integrity_ok, failed_check = repo.verify_integrity(
+            mandate_row, spend_row, settings, bare_secrets
+        )
         if not integrity_ok:
-            await _emit_integrity_failed_if_needed(session, mandate_id, failed_check, mandate_row["hmac_key_id"])
+            await _emit_integrity_failed_if_needed(
+                session, mandate_id, failed_check, mandate_row["hmac_key_id"]
+            )
             return _invalid_view(mandate_row)
 
         status = mandate_logic.derive_status(
@@ -421,13 +498,21 @@ async def get_mandate_terms(
     settings = get_settings()
     bare_secrets = get_bare_secrets()
     async with session.begin():
-        mandate_row, spend_row, revocation_row = await _load_mandate_context(session, mandate_id)
-        if principal.role == "buyer" and mandate_row["buyer_id"] != _actor_id(principal):
+        mandate_row, spend_row, revocation_row = await _load_mandate_context(
+            session, mandate_id
+        )
+        if principal.role == "buyer" and mandate_row["buyer_id"] != _actor_id(
+            principal
+        ):
             raise MandateError(404, "MANDATE_NOT_FOUND", "mandate not found", {})
 
-        integrity_ok, failed_check = repo.verify_integrity(mandate_row, spend_row, settings, bare_secrets)
+        integrity_ok, failed_check = repo.verify_integrity(
+            mandate_row, spend_row, settings, bare_secrets
+        )
         if not integrity_ok:
-            await _emit_integrity_failed_if_needed(session, mandate_id, failed_check, mandate_row["hmac_key_id"])
+            await _emit_integrity_failed_if_needed(
+                session, mandate_id, failed_check, mandate_row["hmac_key_id"]
+            )
             integrity_label = "FAILED"
         else:
             integrity_label = "OK"
@@ -448,7 +533,11 @@ async def get_mandate_terms(
         }
         terms_hash = sha256_hex(
             canonical_json_bytes(
-                {"mandate_id": mandate_id, "mandate_hash": mandate_row["mandate_hash"], "terms": terms_obj}
+                {
+                    "mandate_id": mandate_id,
+                    "mandate_hash": mandate_row["mandate_hash"],
+                    "terms": terms_obj,
+                }
             )
         )
         return {
@@ -475,10 +564,16 @@ async def get_mandate_summary(
     settings = get_settings()
     bare_secrets = get_bare_secrets()
     async with session.begin():
-        mandate_row, spend_row, revocation_row = await _load_mandate_context(session, mandate_id)
-        integrity_ok, failed_check = repo.verify_integrity(mandate_row, spend_row, settings, bare_secrets)
+        mandate_row, spend_row, revocation_row = await _load_mandate_context(
+            session, mandate_id
+        )
+        integrity_ok, failed_check = repo.verify_integrity(
+            mandate_row, spend_row, settings, bare_secrets
+        )
         if not integrity_ok:
-            await _emit_integrity_failed_if_needed(session, mandate_id, failed_check, mandate_row["hmac_key_id"])
+            await _emit_integrity_failed_if_needed(
+                session, mandate_id, failed_check, mandate_row["hmac_key_id"]
+            )
             return _invalid_view(mandate_row)
         status = mandate_logic.derive_status(
             revoked=revocation_row is not None,
@@ -492,9 +587,15 @@ async def get_mandate_summary(
             "mandate_id": mandate_id,
             "status": status,
             "currency": mandate_row["currency"],
-            "merchant_ids": [m["merchant_id"] for m in mandate_row["merchant_allowlist"]],
+            "merchant_ids": [
+                m["merchant_id"] for m in mandate_row["merchant_allowlist"]
+            ],
             "max_qty_per_line": mandate_row["max_qty_per_line"],
-            "remaining_minor": _remaining(spend_row["max_total_minor"], spend_row["spent_minor"], spend_row["reserved_minor"]),
+            "remaining_minor": _remaining(
+                spend_row["max_total_minor"],
+                spend_row["spent_minor"],
+                spend_row["reserved_minor"],
+            ),
             "spent_minor": spend_row["spent_minor"],
             "reserved_minor": spend_row["reserved_minor"],
             "expires_at": mandate_row["expires_at"].strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -513,15 +614,25 @@ async def verify_mandate(
     settings = get_settings()
     bare_secrets = get_bare_secrets()
     async with session.begin():
-        mandate_row, spend_row, _revocation_row = await _load_mandate_context(session, mandate_id)
-        if principal.role == "buyer" and mandate_row["buyer_id"] != _actor_id(principal):
+        mandate_row, spend_row, _revocation_row = await _load_mandate_context(
+            session, mandate_id
+        )
+        if principal.role == "buyer" and mandate_row["buyer_id"] != _actor_id(
+            principal
+        ):
             raise MandateError(404, "MANDATE_NOT_FOUND", "mandate not found", {})
-        if principal.role not in ("buyer", "reviewer") and not principal.sub.startswith("svc:"):
+        if principal.role not in ("buyer", "reviewer") and not principal.sub.startswith(
+            "svc:"
+        ):
             raise MandateError(403, "ROLE_NOT_ALLOWED", "role not allowed", {})
 
-        result = repo.verify_integrity_detailed(mandate_row, spend_row, settings, bare_secrets)
+        result = repo.verify_integrity_detailed(
+            mandate_row, spend_row, settings, bare_secrets
+        )
         if not result.ok:
-            await _emit_integrity_failed_if_needed(session, mandate_id, result.failed_check, mandate_row["hmac_key_id"])
+            await _emit_integrity_failed_if_needed(
+                session, mandate_id, result.failed_check, mandate_row["hmac_key_id"]
+            )
         return {
             "mandate_id": mandate_id,
             "integrity": "OK" if result.ok else "FAILED",
@@ -564,7 +675,9 @@ async def revoke_mandate(
             return {
                 "mandate_id": mandate_id,
                 "status": "revoked",
-                "revoked_at": revocation_row["revoked_at"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "revoked_at": revocation_row["revoked_at"].strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
                 "released_reservations": released_count,
                 "revoke_effect": mandate_row["revoke_effect"],
                 "earned_protection_unchanged": True,
@@ -579,7 +692,11 @@ async def revoke_mandate(
             text(
                 "INSERT INTO mandate.revocations (mandate_id, reason_code, actor_ref) VALUES (:id, :reason, :actor)"
             ),
-            {"id": mandate_id, "reason": body.reason_code, "actor": _actor_id(principal)},
+            {
+                "id": mandate_id,
+                "reason": body.reason_code,
+                "actor": _actor_id(principal),
+            },
         )
 
         reserved_result = await session.execute(
@@ -591,8 +708,15 @@ async def revoke_mandate(
         )
         reserved_rows = reserved_result.mappings().all()
         for r in reserved_rows:
-            await repo.set_reservation_state(session, str(r["reservation_id"]), "RELEASED", release_reason="MANDATE_REVOKED")
-            await repo.adjust_spend(session, mandate_id, reserved_delta=-r["amount_minor"])
+            await repo.set_reservation_state(
+                session,
+                str(r["reservation_id"]),
+                "RELEASED",
+                release_reason="MANDATE_REVOKED",
+            )
+            await repo.adjust_spend(
+                session, mandate_id, reserved_delta=-r["amount_minor"]
+            )
 
         revoked_event_id = repo.deterministic_event_id(mandate_id, "mandate.revoked")
         await repo.insert_outbox_event(
@@ -636,10 +760,16 @@ async def evaluate_mandate(
     mandate_logic.check_malformed_cart(cart)
 
     async with session.begin():
-        mandate_row, spend_row, revocation_row = await _load_mandate_context(session, mandate_id)
-        integrity_ok, failed_check = repo.verify_integrity(mandate_row, spend_row, settings, bare_secrets)
+        mandate_row, spend_row, revocation_row = await _load_mandate_context(
+            session, mandate_id
+        )
+        integrity_ok, failed_check = repo.verify_integrity(
+            mandate_row, spend_row, settings, bare_secrets
+        )
         if not integrity_ok:
-            await _emit_integrity_failed_if_needed(session, mandate_id, failed_check, mandate_row["hmac_key_id"])
+            await _emit_integrity_failed_if_needed(
+                session, mandate_id, failed_check, mandate_row["hmac_key_id"]
+            )
 
         now = repo.now_utc()
         status = mandate_logic.derive_status(
@@ -649,7 +779,11 @@ async def evaluate_mandate(
             max_total_minor=mandate_row["max_total_minor"],
             now=now,
         )
-        remaining = _remaining(spend_row["max_total_minor"], spend_row["spent_minor"], spend_row["reserved_minor"])
+        remaining = _remaining(
+            spend_row["max_total_minor"],
+            spend_row["spent_minor"],
+            spend_row["reserved_minor"],
+        )
         result = mandate_logic.evaluate_cart(
             integrity_ok=integrity_ok,
             status=status,

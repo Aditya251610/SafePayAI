@@ -10,7 +10,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import text
+from sqlalchemy import CursorResult, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.settings import Settings
@@ -101,7 +101,8 @@ async def delete_session(db: AsyncSession, raw_sid: str | None) -> None:
         return
     sid_hash = hash_sid(raw_sid)
     await db.execute(
-        text('DELETE FROM "gateway"."sessions" WHERE sid_hash = :sid_hash'), {"sid_hash": sid_hash}
+        text('DELETE FROM "gateway"."sessions" WHERE sid_hash = :sid_hash'),
+        {"sid_hash": sid_hash},
     )
     await db.commit()
 
@@ -149,7 +150,9 @@ async def purge_expired(db: AsyncSession) -> int:
     """Lazy purge of expired sessions and expired ephemeral buyers with no session
     left (spec.md section 4.2). Best-effort, called opportunistically; not wired to
     a scheduler in Wave 5."""
-    result = await db.execute(text('DELETE FROM "gateway"."sessions" WHERE expires_at < now()'))
+    result = await db.execute(
+        text('DELETE FROM "gateway"."sessions" WHERE expires_at < now()')
+    )
     await db.execute(
         text(
             """
@@ -160,6 +163,7 @@ async def purge_expired(db: AsyncSession) -> int:
         )
     )
     await db.commit()
+    assert isinstance(result, CursorResult)
     return result.rowcount or 0
 
 

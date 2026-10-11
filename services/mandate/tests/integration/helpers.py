@@ -11,16 +11,24 @@ def sample_terms(**overrides) -> dict:
         "merchant_allowlist": [{"merchant_id": "shop-a", "display_name": "Shop A"}],
         "intent_text": "birthday gift for a runner",
         "expires_at": "2026-11-01T12:00:00Z",
-        "protection": {"kinds_covered": ["LATE", "LOST"], "max_refund_minor": 5000, "deliver_by_days": 7},
+        "protection": {
+            "kinds_covered": ["LATE", "LOST"],
+            "max_refund_minor": 5000,
+            "deliver_by_days": 7,
+        },
     }
     terms.update(overrides)
     return terms
 
 
-async def preview_and_sign(client, buyer_token: str, idempotency_key: str, **term_overrides) -> dict:
+async def preview_and_sign(
+    client, buyer_token: str, idempotency_key: str, **term_overrides
+) -> dict:
     headers = {"Authorization": f"Bearer {buyer_token}"}
     preview_resp = await client.post(
-        "/mandates/preview", json={"terms": sample_terms(**term_overrides)}, headers=headers
+        "/mandates/preview",
+        json={"terms": sample_terms(**term_overrides)},
+        headers=headers,
     )
     assert preview_resp.status_code == 200, preview_resp.text
     preview = preview_resp.json()

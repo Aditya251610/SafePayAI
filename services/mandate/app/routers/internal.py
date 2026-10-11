@@ -19,7 +19,10 @@ router = APIRouter(prefix="/internal", tags=["internal"])
 
 def _require_tick_secret(x_tick_secret: str | None) -> None:
     secrets = get_bare_secrets()
-    if not secrets.internal_tick_secret or x_tick_secret != secrets.internal_tick_secret:
+    if (
+        not secrets.internal_tick_secret
+        or x_tick_secret != secrets.internal_tick_secret
+    ):
         raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
 
 
@@ -47,7 +50,9 @@ async def sweep(
             )
         )
         for row in expired_rows.mappings().all():
-            event_id = repo.deterministic_event_id(str(row["mandate_id"]), "mandate.expired")
+            event_id = repo.deterministic_event_id(
+                str(row["mandate_id"]), "mandate.expired"
+            )
             await repo.insert_outbox_event(
                 session,
                 event_type="mandate.expired",
@@ -69,8 +74,15 @@ async def sweep(
             )
         )
         for row in stale.mappings().all():
-            await repo.set_reservation_state(session, str(row["reservation_id"]), "RELEASED", release_reason="TTL_EXPIRED")
-            await repo.adjust_spend(session, str(row["mandate_id"]), reserved_delta=-row["amount_minor"])
+            await repo.set_reservation_state(
+                session,
+                str(row["reservation_id"]),
+                "RELEASED",
+                release_reason="TTL_EXPIRED",
+            )
+            await repo.adjust_spend(
+                session, str(row["mandate_id"]), reserved_delta=-row["amount_minor"]
+            )
             reservations_released += 1
 
         stuck = await session.execute(

@@ -35,7 +35,9 @@ class UpstreamNotConfigured(RuntimeError):
     pass
 
 
-def get_upstream_client(service: str, settings: Settings | None = None) -> httpx.AsyncClient:
+def get_upstream_client(
+    service: str, settings: Settings | None = None
+) -> httpx.AsyncClient:
     settings = settings or get_settings()
     if service not in UPSTREAM_SETTINGS_ATTR:
         raise UpstreamNotConfigured(f"unknown upstream service {service!r}")

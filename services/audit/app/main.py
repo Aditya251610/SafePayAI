@@ -8,8 +8,9 @@ into the error envelope from service-skeleton-conventions.md sec 4:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -23,7 +24,7 @@ _STATUS_CODES = {
     status.HTTP_403_FORBIDDEN: "forbidden",
     status.HTTP_404_NOT_FOUND: "not_found",
     status.HTTP_409_CONFLICT: "conflict",
-    status.HTTP_422_UNPROCESSABLE_ENTITY: "validation_error",
+    status.HTTP_422_UNPROCESSABLE_CONTENT: "validation_error",
     status.HTTP_429_TOO_MANY_REQUESTS: "rate_limited",
     status.HTTP_501_NOT_IMPLEMENTED: "not_implemented",
     status.HTTP_503_SERVICE_UNAVAILABLE: "db_unavailable",
@@ -48,7 +49,9 @@ def create_app() -> FastAPI:
     app = FastAPI(title="SafePayAI Audit Service", version="0.1.0")
 
     @app.middleware("http")
-    async def request_id_middleware(request: Request, call_next):
+    async def request_id_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         request.state.request_id = request_id
         response = await call_next(request)
@@ -79,7 +82,7 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={"error": "validation_error", "detail": exc.errors(), "request_id": request_id},
         )
 

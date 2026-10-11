@@ -21,6 +21,7 @@ import json
 from dataclasses import dataclass
 
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from jwt.algorithms import RSAAlgorithm
 
 from app.settings import Settings
@@ -58,12 +59,19 @@ def load_previous_public_keys(settings: Settings) -> list[SigningKey]:
     if not settings.previous_public_keys:
         return []
     raw = json.loads(settings.previous_public_keys)
-    return [SigningKey(kid=item["kid"], public_key_pem=item["public_key_pem"]) for item in raw]
+    return [
+        SigningKey(kid=item["kid"], public_key_pem=item["public_key_pem"])
+        for item in raw
+    ]
 
 
 def _jwk_for_public_pem(kid: str, public_key_pem: str) -> dict:
     public_key = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
-    jwk = json.loads(RSAAlgorithm(RSAAlgorithm.SHA256).to_jwk(public_key))
+    if not isinstance(public_key, RSAPublicKey):
+        raise TypeError(
+            f"signing key {kid} is not an RSA key (only RS256 is supported)"
+        )
+    jwk: dict = json.loads(RSAAlgorithm(RSAAlgorithm.SHA256).to_jwk(public_key))
     jwk["kid"] = kid
     jwk["alg"] = "RS256"
     jwk["use"] = "sig"

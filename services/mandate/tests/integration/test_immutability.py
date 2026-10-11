@@ -24,11 +24,14 @@ async def test_svc_mandate_cannot_delete_mandates_row(client, buyer_token, svc_c
     mandate = await preview_and_sign(client, buyer_token(), str(uuid.uuid4()))
     with pytest.raises(asyncpg.PostgresError):
         await svc_conn.execute(
-            "DELETE FROM mandate.mandates WHERE mandate_id = $1", uuid.UUID(mandate["mandate_id"])
+            "DELETE FROM mandate.mandates WHERE mandate_id = $1",
+            uuid.UUID(mandate["mandate_id"]),
         )
 
 
-async def test_svc_mandate_cannot_change_mandate_spend_ceiling(client, buyer_token, svc_conn):
+async def test_svc_mandate_cannot_change_mandate_spend_ceiling(
+    client, buyer_token, svc_conn
+):
     mandate = await preview_and_sign(client, buyer_token(), str(uuid.uuid4()))
     with pytest.raises(asyncpg.PostgresError):
         await svc_conn.execute(

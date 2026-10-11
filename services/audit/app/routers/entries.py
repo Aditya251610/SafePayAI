@@ -44,7 +44,8 @@ def _summary(event_type: str) -> str:
 def _payload_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, str):
         try:
-            return json.loads(value)
+            parsed: dict[str, Any] = json.loads(value)
+            return parsed
         except ValueError:
             return {}
     return value or {}

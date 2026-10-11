@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     port: int = 8000
 
-    database_url: str = "postgresql+asyncpg://svc_apigateway:password@localhost:5432/artiq"
+    database_url: str = (
+        "postgresql+asyncpg://svc_apigateway:password@localhost:5432/artiq"
+    )
     migration_database_url: str = (
         "postgresql+asyncpg://mig_apigateway:password@localhost:5432/artiq"
     )

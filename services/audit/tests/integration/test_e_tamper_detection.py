@@ -74,9 +74,7 @@ async def test_payload_mismatch_detected_when_only_copy_column_edited(
     assert body["reason"] in ("HASH_MISMATCH", "PAYLOAD_MISMATCH")
 
 
-async def test_seq_gap_detected_after_row_deletion(
-    client, owner_conn: asyncpg.Connection
-) -> None:
+async def test_seq_gap_detected_after_row_deletion(client, owner_conn: asyncpg.Connection) -> None:
     token = mint_token("checkout")
     headers = {"Authorization": f"Bearer {token}"}
 

@@ -8,7 +8,9 @@ import uuid
 from tests.integration.helpers import preview_and_sign, sample_cart
 
 
-async def test_revoke_releases_reserved_and_blocks_later_authorize(client, buyer_token, service_token):
+async def test_revoke_releases_reserved_and_blocks_later_authorize(
+    client, buyer_token, service_token
+):
     buyer = buyer_token()
     svc = service_token()
     mandate = await preview_and_sign(client, buyer, str(uuid.uuid4()))
@@ -17,7 +19,13 @@ async def test_revoke_releases_reserved_and_blocks_later_authorize(client, buyer
 
     reserve = await client.post(
         f"/mandates/{mandate_id}/reservations",
-        json={"order_id": order_id, "amount_minor": 2500, "currency": "USD", "proposal_hash": "h" * 10, "cart": sample_cart()},
+        json={
+            "order_id": order_id,
+            "amount_minor": 2500,
+            "currency": "USD",
+            "proposal_hash": "h" * 10,
+            "cart": sample_cart(),
+        },
         headers={"Authorization": f"Bearer {svc}"},
     )
     assert reserve.status_code == 201, reserve.text
@@ -38,7 +46,10 @@ async def test_revoke_releases_reserved_and_blocks_later_authorize(client, buyer
         headers={"Authorization": f"Bearer {svc}"},
     )
     assert authorize.status_code == 409
-    assert authorize.json()["error"]["code"] in ("MANDATE_REVOKED", "INVALID_RESERVATION_STATE")
+    assert authorize.json()["error"]["code"] in (
+        "MANDATE_REVOKED",
+        "INVALID_RESERVATION_STATE",
+    )
 
 
 async def test_revoke_is_idempotent_no_second_event(client, buyer_token):
@@ -61,7 +72,9 @@ async def test_revoke_is_idempotent_no_second_event(client, buyer_token):
     assert first.json()["revoked_at"] == second.json()["revoked_at"]
 
 
-async def test_revoke_after_capture_does_not_block_commit_and_grant_stands(client, buyer_token, service_token):
+async def test_revoke_after_capture_does_not_block_commit_and_grant_stands(
+    client, buyer_token, service_token
+):
     buyer = buyer_token()
     svc = service_token()
     mandate = await preview_and_sign(client, buyer, str(uuid.uuid4()))
@@ -112,7 +125,9 @@ async def test_revoke_after_capture_does_not_block_commit_and_grant_stands(clien
     grant_id = commit.json()["grant_id"]
     assert grant_id
 
-    grant = await client.get(f"/grants?order_id={order_id}", headers={"Authorization": f"Bearer {svc}"})
+    grant = await client.get(
+        f"/grants?order_id={order_id}", headers={"Authorization": f"Bearer {svc}"}
+    )
     assert grant.status_code == 200
     assert grant.json()["protection_in_force"] is True
     assert grant.json()["mandate_status"] == "revoked"
@@ -126,14 +141,18 @@ async def test_revoke_on_already_expired_mandate_is_noop(client, buyer_token, db
     # Status is derived at read time from expires_at (spec.md section 5) - simulate
     # time having passed by moving expires_at into the past directly in the DB
     # (trigger disabled only for this test setup step, not for the assertion itself).
-    await db_conn.execute("ALTER TABLE mandate.mandates DISABLE TRIGGER trg_mandates_immutable")
+    await db_conn.execute(
+        "ALTER TABLE mandate.mandates DISABLE TRIGGER trg_mandates_immutable"
+    )
     try:
         await db_conn.execute(
             "UPDATE mandate.mandates SET expires_at = now() - interval '1 hour' WHERE mandate_id = $1",
             uuid.UUID(mandate_id),
         )
     finally:
-        await db_conn.execute("ALTER TABLE mandate.mandates ENABLE TRIGGER trg_mandates_immutable")
+        await db_conn.execute(
+            "ALTER TABLE mandate.mandates ENABLE TRIGGER trg_mandates_immutable"
+        )
 
     revoke = await client.post(
         f"/mandates/{mandate_id}/revoke",

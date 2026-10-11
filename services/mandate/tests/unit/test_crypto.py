@@ -59,6 +59,12 @@ def test_hmac_round_trip_and_tamper_detection():
 
     key = b"test-key-material-not-a-secret-just-for-unit-tests"
     h = compute_hmac(key, MANDATE_HMAC_DOMAIN, b"\x01" * 32, "buyer-1", "nonce-abc")
-    assert verify_hmac(key, MANDATE_HMAC_DOMAIN, b"\x01" * 32, "buyer-1", "nonce-abc", h)
-    assert not verify_hmac(key, MANDATE_HMAC_DOMAIN, b"\x02" * 32, "buyer-1", "nonce-abc", h)
-    assert not verify_hmac(key, MANDATE_HMAC_DOMAIN, b"\x01" * 32, "buyer-2", "nonce-abc", h)
+    assert verify_hmac(
+        key, MANDATE_HMAC_DOMAIN, b"\x01" * 32, "buyer-1", "nonce-abc", h
+    )
+    assert not verify_hmac(
+        key, MANDATE_HMAC_DOMAIN, b"\x02" * 32, "buyer-1", "nonce-abc", h
+    )
+    assert not verify_hmac(
+        key, MANDATE_HMAC_DOMAIN, b"\x01" * 32, "buyer-2", "nonce-abc", h
+    )

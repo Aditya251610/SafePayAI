@@ -13,7 +13,11 @@ def _sample_normalized() -> dict:
         "merchant_allowlist": [{"merchant_id": "shop-a", "display_name": "Shop A"}],
         "intent_text": "birthday gift for a runner",
         "expires_at": "2026-11-01T12:00:00Z",
-        "protection": {"kinds_covered": ["LATE", "LOST"], "max_refund_minor": 5000, "deliver_by_days": 7},
+        "protection": {
+            "kinds_covered": ["LATE", "LOST"],
+            "max_refund_minor": 5000,
+            "deliver_by_days": 7,
+        },
         "revoke_effect": "FUTURE_ONLY",
         "policy_version": "policy.v1",
     }

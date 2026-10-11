@@ -21,12 +21,13 @@ from collections.abc import Iterable
 
 import jwt
 
+from app.deps import Principal
 from app.settings import Settings, get_settings
 from app.tokens.keys import load_current_signing_key
 
 
 def mint_for_upstream(
-    principal,
+    principal: Principal | None,
     *,
     audience: str,
     request_id: str,
@@ -60,7 +61,12 @@ def mint_for_upstream(
     else:
         sub = "svc:poller"
         role = None
-        act = {"actor_type": "system", "actor_id": sub, "role": None, "auth_method": auth_method}
+        act = {
+            "actor_type": "system",
+            "actor_id": sub,
+            "role": None,
+            "auth_method": auth_method,
+        }
         sid = None
 
     claims: dict = {
@@ -79,7 +85,9 @@ def mint_for_upstream(
     if mandate_id is not None:
         claims["mandate_id"] = mandate_id
 
-    return jwt.encode(claims, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid})
+    return jwt.encode(
+        claims, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid}
+    )
 
 
 def mint_system_token(

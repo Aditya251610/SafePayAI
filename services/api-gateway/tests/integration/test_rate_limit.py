@@ -52,6 +52,7 @@ async def test_rate_limit_is_keyed_by_ip_and_handle_not_global(app_client, make_
         )
 
     still_allowed = await app_client.post(
-        "/api/auth/login", json={"handle": "rl-target-b", "password": "correct-password"}
+        "/api/auth/login",
+        json={"handle": "rl-target-b", "password": "correct-password"},
     )
     assert still_allowed.status_code == 200

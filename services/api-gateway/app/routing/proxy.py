@@ -28,7 +28,13 @@ from app.settings import get_settings
 from app.tokens.mint import mint_for_upstream
 from app.upstream import UpstreamNotConfigured, get_upstream_client
 
-ALLOWED_REQUEST_HEADERS = {"content-type", "accept", "idempotency-key", "if-match", "if-none-match"}
+ALLOWED_REQUEST_HEADERS = {
+    "content-type",
+    "accept",
+    "idempotency-key",
+    "if-match",
+    "if-none-match",
+}
 ALLOWED_RESPONSE_HEADERS = {"content-type", "cache-control", "retry-after", "etag"}
 
 
@@ -72,7 +78,9 @@ async def forward(
             "request_id": request_id,
         }
 
-    headers = {k: v for k, v in request.headers.items() if k.lower() in ALLOWED_REQUEST_HEADERS}
+    headers = {
+        k: v for k, v in request.headers.items() if k.lower() in ALLOWED_REQUEST_HEADERS
+    }
 
     try:
         token = mint_for_upstream(

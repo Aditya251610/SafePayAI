@@ -24,52 +24,72 @@ services:
 
   api-gateway:
     <<: *service-defaults
-    build: ./services/api-gateway
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
     ports: ["8001:8000"]
 
   mandate:
     <<: *service-defaults
-    build: ./services/mandate
+    build:
+      context: .
+      dockerfile: services/mandate/Dockerfile
     ports: ["8002:8000"]
 
   catalog:
     <<: *service-defaults
-    build: ./services/catalog
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
     ports: ["8003:8000"]
 
   shopping-agent:
     <<: *service-defaults
-    build: ./services/shopping-agent
+    build:
+      context: .
+      dockerfile: services/shopping-agent/Dockerfile
     ports: ["8004:8000"]
 
   checkout:
     <<: *service-defaults
-    build: ./services/checkout
+    build:
+      context: .
+      dockerfile: services/checkout/Dockerfile
     ports: ["8005:8000"]
 
   paypal-adapter:
     <<: *service-defaults
-    build: ./services/paypal-adapter
+    build:
+      context: .
+      dockerfile: services/paypal-adapter/Dockerfile
     ports: ["8006:8000"]
 
   tracking:
     <<: *service-defaults
-    build: ./services/tracking
+    build:
+      context: .
+      dockerfile: services/tracking/Dockerfile
     ports: ["8007:8000"]
 
   resolution:
     <<: *service-defaults
-    build: ./services/resolution
+    build:
+      context: .
+      dockerfile: services/resolution/Dockerfile
     ports: ["8008:8000"]
 
   triage-ai:
     <<: *service-defaults
-    build: ./services/triage-ai
+    build:
+      context: .
+      dockerfile: services/triage-ai/Dockerfile
     ports: ["8009:8000"]
 
   audit:
     <<: *service-defaults
-    build: ./services/audit
+    build:
+      context: .
+      dockerfile: services/audit/Dockerfile
     ports: ["8010:8000"]
 
   web:

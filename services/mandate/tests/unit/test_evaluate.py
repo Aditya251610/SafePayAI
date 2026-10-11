@@ -52,7 +52,9 @@ def test_allow_when_no_hard_blocks():
 
 
 def test_mandate_integrity_failed_short_circuits():
-    kwargs = _base_kwargs(integrity_ok=False, status="revoked")  # even with other blocks present
+    kwargs = _base_kwargs(
+        integrity_ok=False, status="revoked"
+    )  # even with other blocks present
     result = evaluate_cart(**kwargs)
     assert result.decision == "BLOCK"
     assert result.hard_blocks == [{"code": "MANDATE_INTEGRITY_FAILED", "details": {}}]
@@ -100,7 +102,9 @@ def test_qty_cap():
     cart["lines"][0]["qty"] = 10
     cart["lines"][0]["line_minor"] = 25000
     cart["total_minor"] = 25000
-    result = evaluate_cart(**_base_kwargs(cart=cart, max_qty_per_line=5, remaining_minor=100_000))
+    result = evaluate_cart(
+        **_base_kwargs(cart=cart, max_qty_per_line=5, remaining_minor=100_000)
+    )
     assert any(b["code"] == "QTY_CAP" for b in result.hard_blocks)
 
 
@@ -143,7 +147,9 @@ def test_hard_block_order_is_fixed():
         ],
         "total_minor": 2500,
     }
-    result = evaluate_cart(**_base_kwargs(status="exhausted", remaining_minor=0, cart=cart))
+    result = evaluate_cart(
+        **_base_kwargs(status="exhausted", remaining_minor=0, cart=cart)
+    )
     codes = [b["code"] for b in result.hard_blocks]
     expected_order = [
         "MANDATE_EXHAUSTED",

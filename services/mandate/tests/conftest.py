@@ -19,7 +19,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import ASGITransport, AsyncClient
 
-ADMIN_DSN = os.environ.get("TEST_PG_ADMIN_DSN", "postgresql://postgres:postgres@localhost:5432/postgres")
+ADMIN_DSN = os.environ.get(
+    "TEST_PG_ADMIN_DSN", "postgresql://postgres:postgres@localhost:5432/postgres"
+)
 SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -82,7 +84,9 @@ async def pg_env(rsa_keypair, test_db_name):
     migration_url = _sqlalchemy_dsn(test_db_name, "postgres", "postgres")
     env = os.environ.copy()
     env["PS_MANDATE_MIGRATION_DATABASE_URL"] = migration_url
-    env["PS_MANDATE_DATABASE_URL"] = migration_url  # alembic env.py falls back to this if migration url unset
+    env["PS_MANDATE_DATABASE_URL"] = (
+        migration_url  # alembic env.py falls back to this if migration url unset
+    )
     # Blocking subprocess.run in an async fixture is deliberate here: this is one-time
     # session setup (not request-path code), and alembic's own CLI entrypoint is the
     # simplest way to drive its async env.py without nesting event loops.
@@ -94,18 +98,24 @@ async def pg_env(rsa_keypair, test_db_name):
         text=True,
         check=False,
     )
-    assert result.returncode == 0, f"alembic upgrade failed:\n{result.stdout}\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"alembic upgrade failed:\n{result.stdout}\n{result.stderr}"
+    )
 
     svc_password = "svc_mandate_test_pw"
     admin_conn = await asyncpg.connect(dsn=_asyncpg_dsn(test_db_name))
     try:
-        await admin_conn.execute(f"ALTER ROLE svc_mandate WITH PASSWORD '{svc_password}'")
+        await admin_conn.execute(
+            f"ALTER ROLE svc_mandate WITH PASSWORD '{svc_password}'"
+        )
     finally:
         await admin_conn.close()
 
     key_id = "k1"
     env_vars = {
-        "PS_MANDATE_DATABASE_URL": _sqlalchemy_dsn(test_db_name, "svc_mandate", svc_password),
+        "PS_MANDATE_DATABASE_URL": _sqlalchemy_dsn(
+            test_db_name, "svc_mandate", svc_password
+        ),
         "PS_MANDATE_MIGRATION_DATABASE_URL": migration_url,
         "MANDATE_HMAC_KEY": "a" * 48,
         "MANDATE_HMAC_KEY_PREVIOUS": "b" * 48,
@@ -118,11 +128,18 @@ async def pg_env(rsa_keypair, test_db_name):
     for k, v in env_vars.items():
         os.environ[k] = v
 
-    yield {"db_name": test_db_name, "private_pem": private_pem, "public_pem": public_pem, "key_id": key_id}
+    yield {
+        "db_name": test_db_name,
+        "private_pem": private_pem,
+        "public_pem": public_pem,
+        "key_id": key_id,
+    }
 
     admin_conn = await asyncpg.connect(dsn=ADMIN_DSN)
     try:
-        await admin_conn.execute(f'DROP DATABASE IF EXISTS "{test_db_name}" WITH (FORCE)')
+        await admin_conn.execute(
+            f'DROP DATABASE IF EXISTS "{test_db_name}" WITH (FORCE)'
+        )
     finally:
         await admin_conn.close()
 
@@ -157,7 +174,9 @@ async def svc_conn(pg_env):
     """Raw asyncpg connection as svc_mandate - the actual runtime DB role, used by
     the immutability test (DB-level grant/trigger enforcement, not app-level)."""
     conn = await asyncpg.connect(
-        dsn=_asyncpg_dsn(pg_env["db_name"], user="svc_mandate", password="svc_mandate_test_pw")
+        dsn=_asyncpg_dsn(
+            pg_env["db_name"], user="svc_mandate", password="svc_mandate_test_pw"
+        )
     )
     try:
         yield conn
@@ -208,7 +227,13 @@ def mint_token(
 @pytest.fixture
 def buyer_token(pg_env):
     def _make(buyer_id: str = "buyer-1"):
-        return mint_token(pg_env["private_pem"], pg_env["key_id"], sub=buyer_id, role="buyer", buyer_id=buyer_id)
+        return mint_token(
+            pg_env["private_pem"],
+            pg_env["key_id"],
+            sub=buyer_id,
+            role="buyer",
+            buyer_id=buyer_id,
+        )
 
     return _make
 
@@ -216,7 +241,9 @@ def buyer_token(pg_env):
 @pytest.fixture
 def service_token(pg_env):
     def _make(sub: str = "svc:checkout"):
-        return mint_token(pg_env["private_pem"], pg_env["key_id"], sub=sub, role="service")
+        return mint_token(
+            pg_env["private_pem"], pg_env["key_id"], sub=sub, role="service"
+        )
 
     return _make
 
@@ -224,7 +251,9 @@ def service_token(pg_env):
 @pytest.fixture
 def merchant_token(pg_env):
     def _make(sub: str = "merchant-1"):
-        return mint_token(pg_env["private_pem"], pg_env["key_id"], sub=sub, role="merchant")
+        return mint_token(
+            pg_env["private_pem"], pg_env["key_id"], sub=sub, role="merchant"
+        )
 
     return _make
 
@@ -232,6 +261,8 @@ def merchant_token(pg_env):
 @pytest.fixture
 def reviewer_token(pg_env):
     def _make(sub: str = "reviewer-1"):
-        return mint_token(pg_env["private_pem"], pg_env["key_id"], sub=sub, role="reviewer")
+        return mint_token(
+            pg_env["private_pem"], pg_env["key_id"], sub=sub, role="reviewer"
+        )
 
     return _make

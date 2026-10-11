@@ -117,7 +117,9 @@ async def proxy_mandate_revoke(
 
 @router.get("/catalog/items")
 async def proxy_catalog_items(
-    request: Request, response: Response, principal: Principal = Depends(require_session)
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_session),
 ) -> Any:
     return await forward(
         request,
@@ -132,7 +134,10 @@ async def proxy_catalog_items(
 
 @router.get("/catalog/items/{sku}")
 async def proxy_catalog_item(
-    sku: str, request: Request, response: Response, principal: Principal = Depends(require_session)
+    sku: str,
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_session),
 ) -> Any:
     return await forward(
         request,
@@ -433,7 +438,10 @@ async def proxy_resolution_offer_accept(
 
 @router.post("/resolution/approvals/{token}/consent")
 async def proxy_resolution_approval_consent(
-    token: str, request: Request, response: Response, principal: Principal = Depends(require_buyer)
+    token: str,
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_buyer),
 ) -> Any:
     return await forward(
         request,
@@ -474,7 +482,9 @@ async def proxy_resolution_merchant_action(
 
 @router.get("/audit/entries")
 async def proxy_audit_entries(
-    request: Request, response: Response, principal: Principal = Depends(require_session)
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_session),
 ) -> Any:
     return await forward(
         request,
@@ -489,7 +499,9 @@ async def proxy_audit_entries(
 
 @router.get("/audit/verify")
 async def proxy_audit_verify(
-    request: Request, response: Response, principal: Principal = Depends(require_session)
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_session),
 ) -> Any:
     return await forward(
         request,

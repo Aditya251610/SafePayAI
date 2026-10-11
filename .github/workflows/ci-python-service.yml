@@ -89,6 +89,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
-          context: services/${{ inputs.slug }}
+          context: .
+          file: services/${{ inputs.slug }}/Dockerfile
           push: false
           tags: ps-${{ inputs.slug }}:ci
