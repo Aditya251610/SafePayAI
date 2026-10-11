@@ -15,7 +15,11 @@ dependencies = [
 ]
 
 [tool.uv]
-dev-dependencies = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13"]
+# cryptography is test-only (tests/conftest.py generates RSA test keys) - it was never
+# declared and only "worked" by accident via the shared workspace venv picking it up as
+# api-gateway's transitive pyjwt[crypto] dependency. A Dependabot version bump broke that
+# coincidence and exposed this. Declared explicitly now instead of relying on it again.
+dev-dependencies = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13", "cryptography>=43"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

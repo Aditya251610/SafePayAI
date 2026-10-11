@@ -11,7 +11,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -49,6 +49,17 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    # Bug fix (Wave 5, same root cause independently found in catalog/api-gateway/audit):
+    # with version_table_schema set, Alembic creates the alembic_version table in that
+    # schema BEFORE running 0001_baseline (which actually creates the "mandate" schema),
+    # so a brand-new database fails with "schema mandate does not exist" before a single
+    # migration runs - this was silently broken in CI the whole time (mandate/integration
+    # has never actually passed there). Pre-create the schema here, idempotently;
+    # 0001_baseline's own `CREATE SCHEMA IF NOT EXISTS` is then a no-op on top of this.
+    connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"'))
+    # Commit this pre-flight DDL in its own transaction - see catalog/migrations/env.py's
+    # identical comment for why (nested SAVEPOINT rollback on close otherwise).
+    connection.commit()
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
