@@ -61,13 +61,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
       - run: cd services/${{ inputs.slug }} && uv sync --all-extras --dev
+      - name: export per-service DATABASE_URL env vars
+        # Each service reads its own PS_<SLUG>_{DATABASE_URL,MIGRATION_DATABASE_URL} (audit uses
+        # _MIGRATE_DATABASE_URL instead of _MIGRATION_DATABASE_URL) per
+        # docs/service-skeleton-conventions.md section 2 — a bare DATABASE_URL is never read by
+        # any service's settings.py, so export every plausible name pointing at the same local
+        # test Postgres rather than hardcoding one convention per service here.
+        run: |
+          SLUG_UPPER=$(echo "${{ inputs.slug }}" | tr '[:lower:]' '[:upper:]' | tr -d '-')
+          URL="postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
+          {
+            echo "PS_${SLUG_UPPER}_DATABASE_URL=${URL}"
+            echo "PS_${SLUG_UPPER}_MIGRATION_DATABASE_URL=${URL}"
+            echo "PS_${SLUG_UPPER}_MIGRATE_DATABASE_URL=${URL}"
+            echo "PS_${SLUG_UPPER}_SEED_DATABASE_URL=${URL}"
+            echo "DATABASE_URL=${URL}"
+          } >> "$GITHUB_ENV"
       - name: run migrations from scratch
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: cd services/${{ inputs.slug }} && uv run alembic upgrade head
       - run: cd services/${{ inputs.slug }} && uv run pytest tests/integration -q
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   build:
     runs-on: ubuntu-latest
