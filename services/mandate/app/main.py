@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.errors import MandateError
 from app.routers import grants, health, internal, mandates, reservations
 
 app = FastAPI(title="mandate", version="0.1.0")
@@ -27,6 +28,19 @@ app.include_router(internal.router)
 
 def _request_id(request: Request) -> str:
     return request.headers.get("X-Request-Id", str(uuid.uuid4()))
+
+
+@app.exception_handler(MandateError)
+async def mandate_error_handler(request: Request, exc: MandateError) -> JSONResponse:
+    """mandate's own richer error envelope per api.md section 3:
+    {"error":{"code","message","details"},"request_id"}."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {"code": exc.code, "message": exc.message, "details": exc.details},
+            "request_id": _request_id(request),
+        },
+    )
 
 
 @app.exception_handler(HTTPException)

@@ -32,8 +32,13 @@ def _request_id(request: Request) -> str:
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    code = "http_error" if exc.status_code != 404 else "not_found"
+    # Routes raise HTTPException(detail=<gateway error code>) (e.g. "UNAUTHENTICATED",
+    # "FORBIDDEN", "NOT_FOUND") per spec.md section 11; use that code verbatim as the
+    # `error` field so it matches the gateway's own error-code table. Framework-raised
+    # HTTPExceptions we didn't construct (e.g. FastAPI's own 404 for an unmatched
+    # route) fall back to a generic code derived from the status.
     detail = str(exc.detail)
+    code = detail if detail.isupper() else ("NOT_FOUND" if exc.status_code == 404 else "HTTP_ERROR")
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -46,7 +51,9 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     return JSONResponse(
         status_code=422,
         content={

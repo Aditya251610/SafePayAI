@@ -1,18 +1,16 @@
-"""GET /.well-known/jwks.json - stub per spec.md section 5.1 / api.md section 3.
-
-Per this agent's instructions: api-gateway's session/cookie and JWKS-serving
-endpoints are modeled per its own spec but remain Wave-4 stubs (501) like every
-other non-health route; wiring the real public-key set is Wave 5.
-"""
+"""GET /.well-known/jwks.json - real implementation (spec.md section 2 / 7 / 15)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
+
+from app.settings import Settings, get_settings
+from app.tokens.keys import build_jwks_document
 
 router = APIRouter(tags=["jwks"])
 
 
 @router.get("/.well-known/jwks.json")
-async def jwks(response: Response) -> dict:
-    response.status_code = 501
-    return {"error": "not_implemented", "detail": "GET /.well-known/jwks.json pending Wave 5"}
+async def jwks(response: Response, settings: Settings = Depends(get_settings)) -> dict:
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return build_jwks_document(settings)

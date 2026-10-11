@@ -18,9 +18,16 @@ class Item(BaseModel):
     label: str = "SIMULATED"
 
 
+class ItemDetailResponse(Item):
+    catalog_version: int
+
+
 class ItemsResponse(BaseModel):
     catalog_version: int
     items: list[Item]
+    limit: int
+    offset: int
+    has_more: bool
 
 
 class Merchant(BaseModel):

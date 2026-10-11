@@ -17,6 +17,18 @@ dependencies = [
 [tool.uv]
 dev-dependencies = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["unit: no DB, no network", "integration: real Postgres via alembic upgrade head"]
+
+[tool.ruff.lint]
+# B008 (no function calls in argument defaults) fires on every `Depends(...)` default,
+# which is the standard FastAPI dependency-injection idiom used throughout this
+# service (and already present in Wave 4's deps.py/admin.py before this change) -
+# ignored here rather than rewritten into a module-level-singleton workaround that
+# would make the routers harder to read for no safety benefit.
+extend-ignore = ["B008"]
+
 [tool.uv.sources]
 safepayai-common = { workspace = true }
 

@@ -14,18 +14,24 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.post("/seed")
-async def admin_seed(response: Response, principal: Principal = Depends(verify_internal_jwt)) -> dict:
+async def admin_seed(
+    response: Response, principal: Principal = Depends(verify_internal_jwt)
+) -> dict:
     response.status_code = 501
     return {"error": "not_implemented", "detail": "POST /admin/seed pending Wave 5"}
 
 
 @router.post("/reset")
-async def admin_reset(response: Response, principal: Principal = Depends(verify_internal_jwt)) -> dict:
+async def admin_reset(
+    response: Response, principal: Principal = Depends(verify_internal_jwt)
+) -> dict:
     response.status_code = 501
     return {"error": "not_implemented", "detail": "POST /admin/reset pending Wave 5"}
 
 
 @router.get("/fixtures")
-async def admin_fixtures(response: Response, principal: Principal = Depends(verify_internal_jwt)) -> dict:
+async def admin_fixtures(
+    response: Response, principal: Principal = Depends(verify_internal_jwt)
+) -> dict:
     response.status_code = 501
     return {"error": "not_implemented", "detail": "GET /admin/fixtures pending Wave 5"}

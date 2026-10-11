@@ -52,7 +52,9 @@ def _load_trusted_issuers(settings: Settings) -> dict[str, dict[str, dict[str, s
     return {}
 
 
-def _find_key(issuers: dict[str, dict[str, dict[str, str]]], kid: str | None) -> dict[str, str] | None:
+def _find_key(
+    issuers: dict[str, dict[str, dict[str, str]]], kid: str | None
+) -> dict[str, str] | None:
     if kid is None:
         return None
     for issuer_keys in issuers.values():
