@@ -19,16 +19,16 @@ Flagged for the paypal-adapter deployment.md owner to update that doc to match.
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 from safepayai_common.db.grants import TableGrant, apply_table_grants, create_schema_and_roles
 
 revision: str = "0001_baseline"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "paypal"
 MIGRATION_ROLE = "mig_paypal"
@@ -36,6 +36,25 @@ RUNTIME_ROLE = "svc_paypal"
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    # create_schema_and_roles (safepayai_common.db.grants) only creates the schema and
+    # grants USAGE -- it has no CREATE ROLE (audit's baseline docstring notes the same).
+    # Fixed here the same way mandate's 0001_baseline.py does: create the role first if
+    # missing (Wave 4 never did this, so a fresh DB failed with "role does not exist").
+    for role in (MIGRATION_ROLE, RUNTIME_ROLE):
+        bind.execute(
+            sa.text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+                        CREATE ROLE "{role}" NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS LOGIN;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+
     op.execute(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"')
     pg_uuid = sa.dialects.postgresql.UUID(as_uuid=True)
     jsonb = sa.dialects.postgresql.JSONB
@@ -51,8 +70,12 @@ def upgrade() -> None:
         sa.Column("paypal_http_status", sa.Integer(), nullable=True),
         sa.Column("paypal_object_id", sa.String(length=64), nullable=True),
         sa.Column("response_json_redacted", jsonb, nullable=True),
-        sa.Column("created", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         schema=SCHEMA,
     )
 
@@ -64,17 +87,23 @@ def upgrade() -> None:
         sa.Column("amount_minor", sa.BigInteger(), nullable=False),
         sa.Column("currency", sa.CHAR(length=3), nullable=False, server_default="USD"),
         sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("created", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         schema=SCHEMA,
     )
-    op.create_index("ix_paypal_refund_ledger_capture_id", "refund_ledger", ["capture_id"], schema=SCHEMA)
+    op.create_index(
+        "ix_paypal_refund_ledger_capture_id", "refund_ledger", ["capture_id"], schema=SCHEMA
+    )
 
     op.create_table(
         "ticket_nonces",
         sa.Column("tid", pg_uuid, primary_key=True),
         sa.Column("request_id", pg_uuid, nullable=False),
         sa.Column("body_hash", sa.String(length=64), nullable=False),
-        sa.Column("created", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         schema=SCHEMA,
     )
 
@@ -83,7 +112,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("money_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("frozen", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         schema=SCHEMA,
     )
 
@@ -92,10 +123,12 @@ def upgrade() -> None:
         sa.Column("seq", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column("event_id", pg_uuid, nullable=False, unique=True),
         sa.Column("type", sa.String(length=64), nullable=False),
-        sa.Column("aggregate_id", pg_uuid, nullable=True),
+        sa.Column("aggregate_id", sa.Text(), nullable=True),
         sa.Column("payload", jsonb, nullable=False),
         sa.Column("trace_id", pg_uuid, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
         schema=SCHEMA,
@@ -115,6 +148,10 @@ def upgrade() -> None:
             TableGrant("outbox", ("INSERT", "SELECT", "UPDATE")),
         ],
     )
+    # CLAUDE.md known recurring failure class: a SERIAL/BIGSERIAL PK needs
+    # GRANT USAGE ON SEQUENCE in addition to GRANT INSERT ON TABLE -- the latter does
+    # not imply the former. outbox.seq is bigserial.
+    conn.execute(sa.text(f'GRANT USAGE ON SEQUENCE "{SCHEMA}".outbox_seq_seq TO "{RUNTIME_ROLE}"'))
 
 
 def downgrade() -> None:

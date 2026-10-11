@@ -16,7 +16,7 @@ router = APIRouter(prefix="/v1", tags=["refunds"])
 @router.get("/refunds/{refund_id}", status_code=501)
 async def get_refund(
     refund_id: str,
-    _caller: Caller = Depends(require_tool_permission("get_refund")),
+    _caller: Caller = Depends(require_tool_permission("get_refund")),  # noqa: B008
 ) -> JSONResponse:
     return JSONResponse(
         status_code=501,

@@ -41,7 +41,10 @@ def _extract_caller(request: Request) -> str | None:
         jwks_client = jwt.PyJWKClient(settings.internal_jwks_url)
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         claims = jwt.decode(
-            token, signing_key.key, algorithms=["RS256", "EdDSA"], audience=settings.internal_jwt_aud
+            token,
+            signing_key.key,
+            algorithms=["RS256", "EdDSA"],
+            audience=settings.internal_jwt_aud,
         )
         return claims.get("sub")
     except jwt.PyJWTError:
@@ -56,12 +59,23 @@ async def mcp_jsonrpc(request: Request) -> JSONResponse:
     caller_sub = _extract_caller(request)
 
     if caller_sub is None:
-        return JSONResponse(status_code=401, content={"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32001, "message": "UNAUTHENTICATED"}})
+        return JSONResponse(
+            status_code=401,
+            content={
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "error": {"code": -32001, "message": "UNAUTHENTICATED"},
+            },
+        )
 
     if method == "tools/list":
         tools = _tools_for_caller(caller_sub)
         return JSONResponse(
-            content={"jsonrpc": "2.0", "id": rpc_id, "result": {"tools": [{"name": t} for t in tools]}}
+            content={
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {"tools": [{"name": t} for t in tools]},
+            }
         )
 
     if method == "tools/call":
@@ -80,7 +94,12 @@ async def mcp_jsonrpc(request: Request) -> JSONResponse:
                             "status": "REJECTED",
                             "paypal_http_status": None,
                             "data": None,
-                            "error": {"code": "NOT_PERMITTED", "message": "not permitted", "retryable": False, "paypal_name": None},
+                            "error": {
+                                "code": "NOT_PERMITTED",
+                                "message": "not permitted",
+                                "retryable": False,
+                                "paypal_name": None,
+                            },
                             "replayed": False,
                             "trace_id": str(uuid.uuid4()),
                         },
@@ -99,7 +118,12 @@ async def mcp_jsonrpc(request: Request) -> JSONResponse:
                         "status": "REJECTED",
                         "paypal_http_status": None,
                         "data": None,
-                        "error": {"code": "not_implemented", "message": f"{name} pending Wave 5", "retryable": False, "paypal_name": None},
+                        "error": {
+                            "code": "not_implemented",
+                            "message": f"{name} pending Wave 5",
+                            "retryable": False,
+                            "paypal_name": None,
+                        },
                         "replayed": False,
                         "trace_id": str(uuid.uuid4()),
                     },
@@ -110,5 +134,9 @@ async def mcp_jsonrpc(request: Request) -> JSONResponse:
 
     return JSONResponse(
         status_code=400,
-        content={"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32601, "message": "method not found"}},
+        content={
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "error": {"code": -32601, "message": "method not found"},
+        },
     )

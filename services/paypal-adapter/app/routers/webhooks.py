@@ -19,7 +19,10 @@ router = APIRouter(prefix="/v1", tags=["webhooks"])
 async def paypal_webhook(request: Request) -> JSONResponse:
     settings = get_settings()
     if not settings.webhook_enabled:
-        return JSONResponse(status_code=404, content={"error": "not_found", "detail": "disabled", "request_id": None})
+        return JSONResponse(
+            status_code=404,
+            content={"error": "not_found", "detail": "disabled", "request_id": None},
+        )
     return JSONResponse(
         status_code=501,
         content=not_implemented_envelope("webhook handling pending Wave 5", str(uuid.uuid4())),
