@@ -2,10 +2,16 @@ name: deps
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    paths:
+      - "**/pyproject.toml"
+      - "**/uv.lock"
+      - "services/web/package.json"
+      - "services/web/pnpm-lock.yaml"
   schedule:
     - cron: "0 7 * * 1"  # weekly, Monday 07:00 UTC
+  # No push-to-main trigger (same reasoning as secrets.yml: a merge just re-runs what the PR
+  # already ran). Path-filtered on PR so a docs-only or app-logic-only change doesn't spin up
+  # 11 audit jobs for nothing; the weekly cron still covers drift between dependency changes.
 
 permissions:
   contents: read
