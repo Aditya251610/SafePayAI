@@ -16,6 +16,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Scaffold monorepo workspace and 11 service skeletons
 - Implement real business logic for mandate, catalog, api-gateway, and audit (Wave 5A)
 - Implement paypal-adapter Wave 5B (token cache, orders, captures, ledger)
+- Implement checkout order flow and shopping-agent eval harness (Wave 5B)
 
 ### Bug Fixes
 
@@ -40,4 +41,5 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Remove .claude internal docs/config from the public repo
 - Reduce CI/Dependabot noise and add CHANGELOG.md
 - Auto-generate CHANGELOG.md via git-cliff
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
