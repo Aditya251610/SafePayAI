@@ -19,6 +19,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Implement checkout order flow and shopping-agent eval harness (Wave 5B)
 - Implement tracking shipment detector and resolution refund policy engine (Wave 5B)
 - Wire shopping-agent live LLM calls for propose and intent-fit
+- Implement triage-ai classify/draft/brief (Wave 5C)
 
 ### Bug Fixes
 
@@ -43,6 +44,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Remove .claude internal docs/config from the public repo
 - Reduce CI/Dependabot noise and add CHANGELOG.md
 - Auto-generate CHANGELOG.md via git-cliff
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
