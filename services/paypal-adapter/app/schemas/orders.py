@@ -34,14 +34,26 @@ class CaptureOrderRequest(BaseModel):
 
 
 class RefundCaptureRequest(BaseModel):
+    """Body for POST /captures/{capture_id}/refund.
+
+    Matches resolution's actual Wave 5B client exactly (services/resolution/app/clients.py
+    `refund_capture`): `{request_id, invoice_id, amount_minor, currency, ticket}`, with the
+    ticket carried in the body rather than (or in addition to) the `X-Authorization-Ticket`
+    header -- resolution's client sends it in the body, so the router accepts either.
+    `mandate_id`/`proposal_hash` stay optional for forward-compat with api.md section 5.7's
+    fuller example payload; they are not required by this Wave's verification (full ticket
+    HMAC verification is deferred, same as create_order/capture_order).
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
-    mandate_id: str = Field(pattern=ID_PATTERN)
-    proposal_hash: str
     amount_minor: int = Field(ge=1)
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     invoice_id: str | None = Field(default=None, pattern=ID_PATTERN)
+    ticket: str | None = None
+    mandate_id: str | None = Field(default=None, pattern=ID_PATTERN)
+    proposal_hash: str | None = None
 
 
 class AddTrackingRequest(BaseModel):

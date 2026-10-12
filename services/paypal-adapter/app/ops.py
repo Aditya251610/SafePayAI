@@ -234,7 +234,7 @@ async def _resolve_existing(
             "request_id reused with a different body",
             http_status=409,
         )
-    if row.state == "IN_FLIGHT":
+    if row.state in ("IN_FLIGHT", "IN_PROGRESS_REMOTE"):
         return _envelope(ok=False, status="IN_PROGRESS", trace_id=trace_id, replayed=False)
     if row.state == "UNKNOWN":
         return _envelope(ok=False, status="UNKNOWN", trace_id=trace_id, replayed=False)
@@ -475,3 +475,317 @@ async def capture_order(
         trace_id=trace_id,
     )
     return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=201, data=data)
+
+
+def _capture_id_from_links(links: list[dict[str, Any]]) -> str | None:
+    for link in links:
+        if link.get("rel") == "up":
+            href = str(link.get("href", "")).rstrip("/")
+            return href.rsplit("/", 1)[-1] or None
+    return None
+
+
+async def refund_capture(
+    session: AsyncSession,
+    client: PayPalClient,
+    settings: Settings,
+    *,
+    caller: str,
+    capture_id: str,
+    request_id: str,
+    invoice_id: str | None,
+    amount_minor: int,
+    currency: str,
+    ticket: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    """POST /captures/{capture_id}/refund (spec.md s7, api.md 5.7).
+
+    CLAUDE.md money-path rule: never trust the caller's amount_minor without checking it
+    against our own ledger's recorded capture amount -- `ledger.get_capture_ledger_row`
+    (our own capture_order record, not PayPal's live response, per spec C13's documented
+    fallback: derive from our own data, rely on PayPal's 422 as backstop) is the source of
+    truth for `captured_amount_minor`; `ledger.sum_committed_refunds` is the source of truth
+    for what has already been committed against it. `ticket` is accepted but (like
+    create_order/capture_order in this Wave) full HMAC verification is deferred -- only
+    presence is required by the caller (router dependency / body fallback).
+    """
+    del ticket  # presence-only check happens in the router; kept as an explicit param here
+    # so a future HMAC-verification pass has an obvious single call site to extend.
+    await _check_money_enabled(settings, trace_id)
+
+    if amount_minor > settings.refund_max_minor:
+        raise OpError(
+            "REJECTED",
+            "AMOUNT_OVER_CEILING",
+            "amount exceeds PS_PAYPALADAPTER_REFUND_MAX_MINOR",
+            http_status=400,
+        )
+
+    body_for_hash = {
+        "op": "refund_capture",
+        "capture_id": capture_id,
+        "invoice_id": invoice_id,
+        "amount_minor": amount_minor,
+        "currency": currency,
+    }
+    body_hash = ledger.body_sha256(body_for_hash)
+
+    won = await ledger.insert_in_flight(
+        session, request_id=request_id, op="refund_capture", caller=caller, body_hash=body_hash
+    )
+    if not won:
+        return await _resolve_existing(session, request_id, body_hash, trace_id)
+
+    capture_row = await ledger.get_capture_ledger_row(session, capture_id)
+    if capture_row is None:
+        await ledger.mark_done(
+            session,
+            request_id,
+            state="DONE_REJECTED",
+            paypal_http_status=None,
+            paypal_object_id=capture_id,
+            response_json_redacted=None,
+        )
+        raise OpError(
+            "REJECTED",
+            "NOT_FOUND",
+            "capture not recorded in our own ledger",
+            http_status=404,
+        )
+
+    if currency != capture_row.currency:
+        await ledger.mark_done(
+            session,
+            request_id,
+            state="DONE_REJECTED",
+            paypal_http_status=None,
+            paypal_object_id=capture_id,
+            response_json_redacted=None,
+        )
+        raise OpError(
+            "REJECTED",
+            "CURRENCY_UNSUPPORTED",
+            "currency does not match the capture",
+            http_status=400,
+        )
+
+    already_committed = await ledger.sum_committed_refunds(session, capture_id)
+    refundable_remaining = capture_row.amount_minor - already_committed
+    if amount_minor > refundable_remaining:
+        await ledger.mark_done(
+            session,
+            request_id,
+            state="DONE_REJECTED",
+            paypal_http_status=None,
+            paypal_object_id=capture_id,
+            response_json_redacted=None,
+        )
+        raise OpError(
+            "REJECTED",
+            "REFUND_AMOUNT_EXCEEDED",
+            f"amount_minor {amount_minor} exceeds derived refundable_remaining "
+            f"{refundable_remaining}",
+            http_status=409,
+        )
+
+    reservation_id = f"pending:{request_id}"
+    await ledger.insert_refund_reservation(
+        session,
+        refund_id=reservation_id,
+        request_id=request_id,
+        capture_id=capture_id,
+        amount_minor=amount_minor,
+        currency=currency,
+        status="PENDING",
+    )
+
+    try:
+        raw = await client.refund_capture(
+            capture_id,
+            request_id=request_id,
+            amount_minor=amount_minor,
+            currency=currency,
+            invoice_id=invoice_id,
+        )
+    except PayPalAuthError:
+        await ledger.update_refund_status(session, refund_id=reservation_id, status="FAILED")
+        await ledger.mark_done(
+            session,
+            request_id,
+            state="DONE_REJECTED",
+            paypal_http_status=503,
+            paypal_object_id=capture_id,
+            response_json_redacted=None,
+        )
+        raise OpError(
+            "REJECTED", "UPSTREAM_AUTH_FAILED", "PayPal authentication failed", http_status=503
+        ) from None
+    except PayPalUpstreamError as exc:
+        # spec.md section 7's table: 409 on write -> ledger IN_PROGRESS_REMOTE, status
+        # IN_PROGRESS (never blind-retry a refund -- reconcile via GET/POST /reconcile).
+        if exc.status_code == 409:
+            await ledger.mark_done(
+                session,
+                request_id,
+                state="IN_PROGRESS_REMOTE",
+                paypal_http_status=409,
+                paypal_object_id=capture_id,
+                response_json_redacted=None,
+            )
+            return _envelope(
+                ok=False, status="IN_PROGRESS", trace_id=trace_id, paypal_http_status=409
+            )
+        if exc.status_code is None or exc.status_code == 429 or exc.status_code >= 500:
+            # Ambiguous outcome: do NOT release the reservation (CLAUDE.md: a timeout/5xx
+            # means UNKNOWN, not FAILED -- caller must reconcile, never blind-retry).
+            await ledger.mark_done(
+                session,
+                request_id,
+                state="UNKNOWN",
+                paypal_http_status=exc.status_code,
+                paypal_object_id=capture_id,
+                response_json_redacted=None,
+            )
+            raise OpError(
+                "UNKNOWN", "UPSTREAM_UNAVAILABLE", "PayPal unavailable", http_status=504
+            ) from None
+        await ledger.update_refund_status(session, refund_id=reservation_id, status="FAILED")
+        code = "UPSTREAM_REJECTED"
+        if exc.paypal_name == "REFUND_AMOUNT_EXCEEDED":
+            code = "REFUND_AMOUNT_EXCEEDED"
+        elif exc.paypal_name == "DUPLICATE_INVOICE_ID":
+            code = "DUPLICATE_INVOICE_ID"
+        await ledger.mark_done(
+            session,
+            request_id,
+            state="DONE_REJECTED",
+            paypal_http_status=exc.status_code,
+            paypal_object_id=capture_id,
+            response_json_redacted=None,
+        )
+        raise OpError("REJECTED", code, "PayPal rejected the refund", http_status=422) from None
+
+    refund_id = raw.get("id") or reservation_id
+    status = raw.get("status") or "PENDING"
+    data = {
+        "refund_id": refund_id,
+        "status": status,
+        "amount_minor": amount_minor,
+        "currency": currency,
+        "capture_id": capture_id,
+    }
+    final_ledger_status = "COMPLETED" if status == "COMPLETED" else "PENDING"
+    await ledger.finalize_refund(
+        session,
+        reservation_id=reservation_id,
+        final_refund_id=refund_id,
+        status=final_ledger_status,
+    )
+    await ledger.mark_done(
+        session,
+        request_id,
+        state="DONE_OK",
+        paypal_http_status=201,
+        paypal_object_id=refund_id,
+        response_json_redacted=data,
+    )
+    await ledger.insert_outbox_event(
+        session,
+        event_id=str(uuid.uuid4()),
+        event_type="paypal.call_recorded",
+        aggregate_id=capture_id,
+        payload={
+            "op": "refund_capture",
+            "request_id": request_id,
+            "capture_id": capture_id,
+            "refund_id": refund_id,
+            "status": status,
+        },
+        trace_id=trace_id,
+    )
+    return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=201, data=data)
+
+
+async def get_refund(
+    session: AsyncSession, client: PayPalClient, refund_id: str, *, trace_id: str
+) -> dict[str, Any]:
+    """GET /refunds/{refund_id} (api.md 5.8). Our own refund_ledger is the fast (<20ms)
+    source of truth when we minted the refund; falls back to a live PayPal lookup for a
+    refund_id we don't recognize (e.g. reconciling something outside our own ledger)."""
+    row = await ledger.get_refund_ledger_row(session, refund_id)
+    if row is not None:
+        data = {
+            "refund_id": row.refund_id,
+            "status": row.status,
+            "amount_minor": row.amount_minor,
+            "currency": row.currency,
+            "capture_id": row.capture_id,
+        }
+        return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=200, data=data)
+
+    try:
+        raw = await client.get_refund(refund_id)
+    except PayPalAuthError as exc:
+        raise OpError(
+            "REJECTED", "UPSTREAM_AUTH_FAILED", "PayPal authentication failed", http_status=503
+        ) from exc
+    except PayPalUpstreamError as exc:
+        if exc.status_code == 404:
+            raise OpError("REJECTED", "NOT_FOUND", "refund not found", http_status=404) from exc
+        if exc.status_code is None or exc.status_code >= 500:
+            raise OpError(
+                "REJECTED",
+                "UPSTREAM_UNAVAILABLE",
+                "PayPal unavailable",
+                http_status=502,
+                retryable=True,
+            ) from exc
+        raise OpError(
+            "REJECTED", "UPSTREAM_REJECTED", "PayPal rejected the request", http_status=422
+        ) from exc
+
+    amount = raw.get("amount") or {}
+    data = {
+        "refund_id": raw.get("id"),
+        "status": raw.get("status"),
+        "amount_minor": _minor_from_value(amount.get("value")),
+        "currency": amount.get("currency_code"),
+        "capture_id": _capture_id_from_links(raw.get("links") or []),
+    }
+    return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=200, data=data)
+
+
+async def reconcile(session: AsyncSession, request_id: str, *, trace_id: str) -> dict[str, Any]:
+    """POST /reconcile/{request_id} (api.md section 6/spec.md s6): idempotent replay lookup
+    against our own ledger -- never re-calls PayPal, never mutates state. UNKNOWN/IN_FLIGHT/
+    IN_PROGRESS_REMOTE are returned as-is so the caller keeps polling rather than retrying."""
+    row = await ledger.get_ledger_row(session, request_id)
+    if row is None:
+        raise OpError("REJECTED", "NOT_FOUND", "unknown request_id", http_status=404)
+    if row.state in ("IN_FLIGHT", "IN_PROGRESS_REMOTE"):
+        return _envelope(ok=False, status="IN_PROGRESS", trace_id=trace_id, replayed=False)
+    if row.state == "UNKNOWN":
+        return _envelope(ok=False, status="UNKNOWN", trace_id=trace_id, replayed=False)
+    if row.state == "DONE_REJECTED":
+        return _envelope(
+            ok=False,
+            status="REJECTED",
+            trace_id=trace_id,
+            paypal_http_status=row.paypal_http_status,
+            error={
+                "code": "UPSTREAM_REJECTED",
+                "message": "see original call",
+                "retryable": False,
+                "paypal_name": None,
+            },
+            replayed=True,
+        )
+    return _envelope(
+        ok=True,
+        status="OK",
+        trace_id=trace_id,
+        paypal_http_status=row.paypal_http_status,
+        data=row.response_json_redacted,
+        replayed=True,
+    )

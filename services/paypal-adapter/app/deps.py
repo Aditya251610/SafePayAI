@@ -48,15 +48,17 @@ def _trusted_issuer_keys(settings: Settings) -> dict[str, str]:
         return {}
 
 
-async def require_internal_jwt(
-    authorization: str | None = Header(default=None),
-    settings: Settings = Depends(get_settings),
-) -> Caller:
-    """Deny by default: missing/invalid token, unknown kid, wrong aud/exp -> 401."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
-    token = authorization.removeprefix("Bearer ").strip()
+class _AuthUnavailable(Exception):
+    """Internal signal: no verification key material configured at all (503, not 401)."""
 
+
+def verify_internal_jwt(token: str, settings: Settings) -> dict[str, Any] | None:
+    """Shared verification used by both the REST dependency below and the MCP handler
+    (app/mcp.py `_extract_caller`) -- one code path for caller identity, same dual-mode
+    support (static trusted-issuer map first, JWKS fallback) in both places. Returns the
+    decoded claims, or None on any verification failure (including "no key material
+    configured" -- 401, treated the same as "invalid" from a caller's perspective; MCP has
+    no 503 semantics to distinguish it)."""
     issuer_keys = _trusted_issuer_keys(settings)
     try:
         if issuer_keys:
@@ -64,7 +66,7 @@ async def require_internal_jwt(
             kid = unverified.get("kid")
             key = issuer_keys.get(kid) if kid else None
             if key is None:
-                raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
+                return None
             claims = jwt.decode(
                 token,
                 key,
@@ -81,9 +83,26 @@ async def require_internal_jwt(
                 audience=settings.internal_jwt_aud,
             )
         else:
-            raise HTTPException(status_code=503, detail="UPSTREAM_AUTH_FAILED")
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=401, detail="UNAUTHENTICATED") from exc
+            raise _AuthUnavailable
+    except jwt.PyJWTError:
+        return None
+    return dict(claims)
+
+
+async def require_internal_jwt(
+    authorization: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> Caller:
+    """Deny by default: missing/invalid token, unknown kid, wrong aud/exp -> 401."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        claims = verify_internal_jwt(token, settings)
+    except _AuthUnavailable as exc:
+        raise HTTPException(status_code=503, detail="UPSTREAM_AUTH_FAILED") from exc
+    if claims is None:
+        raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
     return Caller(sub=claims.get("sub", ""))
 
 
