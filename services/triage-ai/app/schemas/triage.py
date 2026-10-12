@@ -13,7 +13,15 @@ from pydantic import BaseModel, ConfigDict, Field
 Category = Literal["LATE", "LOST", "DAMAGED", "WRONG_ITEM", "NOT_AS_DESCRIBED", "OTHER"]
 Route = Literal["PROCEED", "HUMAN_REVIEW"]
 Source = Literal["live", "cached", "template", "rules"]
-ShipStatus = Literal["LABEL_CREATED", "SHIPPED", "IN_TRANSIT", "DELAYED", "DELIVERED", "LOST_FLAGGED", "UNKNOWN"]
+ShipStatus = Literal[
+    "LABEL_CREATED",
+    "SHIPPED",
+    "IN_TRANSIT",
+    "DELAYED",
+    "DELIVERED",
+    "LOST_FLAGGED",
+    "UNKNOWN",
+]
 
 
 class TimelineEvent(BaseModel):
@@ -32,7 +40,9 @@ class OrderFacts(BaseModel):
     demo_now: datetime
     state: str = Field(max_length=40)
     item_titles: list[str] = Field(default_factory=list, max_length=5)
-    amount_minor: int | None = Field(default=None, ge=0)  # /brief only; ignored elsewhere
+    amount_minor: int | None = Field(
+        default=None, ge=0
+    )  # /brief only; ignored elsewhere
     currency: Literal["USD"] | None = None
 
 
@@ -79,7 +89,12 @@ class DraftRequest(BaseModel):
     trace_id: str
     audience: Literal["buyer", "merchant"]
     category: Category
-    outcome: Literal["REFUND_OFFER_INSIDE_TERMS", "APPROVAL_REQUESTED", "UNDER_REVIEW", "INFO_REQUEST"]
+    outcome: Literal[
+        "REFUND_OFFER_INSIDE_TERMS",
+        "APPROVAL_REQUESTED",
+        "UNDER_REVIEW",
+        "INFO_REQUEST",
+    ]
     order_ref: str
 
 
@@ -87,7 +102,9 @@ class DraftResponse(BaseModel):
     triage_id: UUID
     subject: str = Field(max_length=80)
     body: str = Field(max_length=600)
-    placeholders_used: list[Literal["{amount}", "{order_ref}", "{date}", "{buyer_name}"]] = Field(default_factory=list)
+    placeholders_used: list[
+        Literal["{amount}", "{order_ref}", "{date}", "{buyer_name}"]
+    ] = Field(default_factory=list)
     gate: Literal["PASSED", "REJECTED_USED_TEMPLATE"]
     gate_hits: list[str] = Field(default_factory=list)
     provenance: Provenance

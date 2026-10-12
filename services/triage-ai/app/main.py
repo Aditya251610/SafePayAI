@@ -28,11 +28,16 @@ def _envelope(error: str, detail: str, request_id: str | None) -> dict:
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     request_id = request.headers.get("X-Request-Id")
     code = "not_implemented" if exc.status_code == 501 else "http_error"
-    return JSONResponse(status_code=exc.status_code, content=_envelope(code, str(exc.detail), request_id))
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_envelope(code, str(exc.detail), request_id),
+    )
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     request_id = request.headers.get("X-Request-Id")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

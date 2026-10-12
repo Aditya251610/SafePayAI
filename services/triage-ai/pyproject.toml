@@ -12,16 +12,37 @@ dependencies = [
   "httpx>=0.28.1",
   "pyjwt>=2.15.1",
   "safepayai-common",
+  "google-genai>=1.0.0",
+  "openai>=1.50.0",
 ]
 # Service-specific deps per conventions doc section 7 (ADR-010: LLM services add the
-# provider SDKs) — added now so Wave 5 can wire them without a pyproject change, but no
-# provider SDK calls exist yet in app/llm_provider.py (NotImplementedError stubs only).
+# provider SDKs). google-genai: Gemini's current unified SDK (llm-integration-spec.md
+# section 1). openai: used as a thin OpenAI-compatible client against Groq's base_url, not
+# Groq's own SDK (same section) - real Gemini/Groq calls now live in app/llm_provider.py.
 
 [tool.uv]
 dev-dependencies = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = ["unit: no DB, no network", "integration: real Postgres via alembic upgrade head"]
+
+[tool.ruff.lint]
+# B008 (no function calls in argument defaults) fires on every `Depends(...)` default, the
+# standard FastAPI dependency-injection idiom used throughout this service.
+extend-ignore = ["B008"]
 
 [tool.uv.sources]
 safepayai-common = { workspace = true }
 
 [project.optional-dependencies]
 dev = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

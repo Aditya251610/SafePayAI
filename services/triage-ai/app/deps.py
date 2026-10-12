@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import jwt
 from fastapi import Header, HTTPException, status
+from safepayai_common.auth.jwt import verify_service_token
 
 from app.settings import settings
-from safepayai_common.auth.jwt import verify_service_token
 
 
 def _jwks_client() -> jwt.PyJWKClient:
@@ -20,9 +20,13 @@ def _jwks_client() -> jwt.PyJWKClient:
     return jwt.PyJWKClient(url)
 
 
-async def require_resolution_caller(authorization: str | None = Header(default=None)) -> dict:
+async def require_resolution_caller(
+    authorization: str | None = Header(default=None),
+) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="UNAUTHENTICATED")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="UNAUTHENTICATED"
+        )
     token = authorization.removeprefix("Bearer ")
     try:
         claims = verify_service_token(
@@ -32,10 +36,16 @@ async def require_resolution_caller(authorization: str | None = Header(default=N
             trusted_issuers=["api-gateway", "resolution"],
         )
     except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="UNAUTHENTICATED") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="UNAUTHENTICATED"
+        ) from exc
 
-    allowed_callers = {c.strip() for c in settings.internal_allowed_callers.split(",") if c.strip()}
+    allowed_callers = {
+        c.strip() for c in settings.internal_allowed_callers.split(",") if c.strip()
+    }
     caller = claims.get("sub")
     if allowed_callers and caller not in allowed_callers:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="FORBIDDEN_CALLER")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="FORBIDDEN_CALLER"
+        )
     return claims
