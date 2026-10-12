@@ -329,3 +329,138 @@ async def mark_return_binding_used(session: AsyncSession, state_hash: str) -> bo
         {"state_hash": state_hash},
     )
     return int(result.rowcount) == 1  # type: ignore[attr-defined]
+
+
+async def clear_return_binding_used(session: AsyncSession, state_hash: str) -> None:
+    """spec.md section 7 step 6: NOT_APPROVED must leave the state usable for a retry --
+    clear `used_at` in the same transaction that detected the order is not yet approved."""
+    await session.execute(
+        text(
+            "UPDATE checkout.return_bindings SET used_at = NULL WHERE state_hash = :state_hash"
+        ),
+        {"state_hash": state_hash},
+    )
+
+
+async def set_return_binding_paypal_order_id(
+    session: AsyncSession, order_id: str, paypal_order_id: str
+) -> None:
+    await session.execute(
+        text(
+            "UPDATE checkout.return_bindings SET paypal_order_id = :paypal_order_id "
+            "WHERE order_id = :order_id"
+        ),
+        {"order_id": order_id, "paypal_order_id": paypal_order_id},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Captures / receipts
+# ---------------------------------------------------------------------------
+
+
+async def insert_capture(
+    session: AsyncSession,
+    *,
+    capture_id: str,
+    order_id: str,
+    amount_minor: int,
+    currency: str,
+    paypal_status: str | None,
+    custom_id: str | None,
+    invoice_id: str | None,
+    captured_at: datetime,
+) -> None:
+    await session.execute(
+        text(
+            """
+            INSERT INTO checkout.captures
+                (capture_id, order_id, amount_minor, currency, paypal_status,
+                 custom_id, invoice_id, captured_at)
+            VALUES
+                (:capture_id, :order_id, :amount_minor, :currency, :paypal_status,
+                 :custom_id, :invoice_id, :captured_at)
+            ON CONFLICT (order_id) DO NOTHING
+            """
+        ),
+        {
+            "capture_id": capture_id,
+            "order_id": order_id,
+            "amount_minor": amount_minor,
+            "currency": currency,
+            "paypal_status": paypal_status,
+            "custom_id": custom_id,
+            "invoice_id": invoice_id,
+            "captured_at": captured_at,
+        },
+    )
+
+
+async def get_capture_row(session: AsyncSession, order_id: str) -> dict | None:
+    result = await session.execute(
+        text(
+            "SELECT capture_id, order_id, amount_minor, currency, paypal_status, "
+            "custom_id, invoice_id, captured_at FROM checkout.captures "
+            "WHERE order_id = :order_id"
+        ),
+        {"order_id": order_id},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
+async def insert_receipt(
+    session: AsyncSession,
+    *,
+    order_id: str,
+    receipt_json: dict,
+    mandate_hash: str | None,
+    audit_event_id: str | None,
+    protection_window_days: int | None,
+    remaining_cap_minor: int | None,
+) -> None:
+    await session.execute(
+        text(
+            """
+            INSERT INTO checkout.receipts
+                (order_id, receipt_json, mandate_hash, audit_event_id,
+                 protection_window_days, remaining_cap_minor)
+            VALUES
+                (:order_id, :receipt_json, :mandate_hash, :audit_event_id,
+                 :protection_window_days, :remaining_cap_minor)
+            ON CONFLICT (order_id) DO NOTHING
+            """
+        ),
+        {
+            "order_id": order_id,
+            "receipt_json": to_jsonb_text(receipt_json),
+            "mandate_hash": mandate_hash,
+            "audit_event_id": audit_event_id,
+            "protection_window_days": protection_window_days,
+            "remaining_cap_minor": remaining_cap_minor,
+        },
+    )
+
+
+async def get_receipt_row(session: AsyncSession, order_id: str) -> dict | None:
+    result = await session.execute(
+        text(
+            "SELECT order_id, receipt_json, mandate_hash, audit_event_id, "
+            "protection_window_days, remaining_cap_minor, created_at "
+            "FROM checkout.receipts WHERE order_id = :order_id"
+        ),
+        {"order_id": order_id},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
+async def get_cart_checks(session: AsyncSession, cart_id: str) -> list[dict]:
+    result = await session.execute(
+        text(
+            "SELECT name, result, reason_code, detail, source FROM checkout.cart_checks "
+            "WHERE cart_id = :cart_id ORDER BY ts"
+        ),
+        {"cart_id": cart_id},
+    )
+    return [dict(r) for r in result.mappings().all()]
