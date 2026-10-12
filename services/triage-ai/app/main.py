@@ -1,7 +1,10 @@
 """triage-ai service entrypoint. Mounts routers, health/readyz, exception handlers.
 
 Wave 4 scaffold: see docs/service-skeleton-conventions.md. No business logic beyond the
-health routes. No outbound HTTP calls to other services anywhere in this app (ADR-010).
+health routes. No outbound HTTP calls to other BUSINESS services anywhere in this app
+(ADR-010) -- the one documented exception is app/routers/internal.py's outbox-relay push to
+audit (auth-gateway.md sec 3.2 explicitly grants `triage -> audit: Y(write own events)`; see
+that router's module docstring for the full flag).
 """
 
 from __future__ import annotations
@@ -12,12 +15,13 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.routers import health, triage
+from app.routers import health, internal, triage
 
 app = FastAPI(title="triage-ai", version="0.1.0")
 
 app.include_router(health.router)
 app.include_router(triage.router)
+app.include_router(internal.router)
 
 
 def _envelope(error: str, detail: str, request_id: str | None) -> dict:

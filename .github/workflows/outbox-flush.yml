@@ -1,0 +1,35 @@
+name: outbox-flush
+
+on:
+  schedule:
+    - cron: "*/5 8-22 * * *"  # every 5 min, 08:00-22:00 UTC -- hackathon-demo frequency, not
+                               # production-grade (see scripts/outbox_flush.sh header), lines
+                               # up with keepwarm.yml's window to avoid flushing a sleeping host
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flush:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: flush every producer's outbox to audit
+        run: bash scripts/outbox_flush.sh
+        env:
+          PS_MANDATE_BASE_URL: ${{ vars.PS_MANDATE_BASE_URL }}
+          PS_MANDATE_INTERNAL_TICK_SECRET: ${{ secrets.PS_MANDATE_INTERNAL_TICK_SECRET }}
+          PS_CHECKOUT_BASE_URL: ${{ vars.PS_CHECKOUT_BASE_URL }}
+          PS_CHECKOUT_INTERNAL_TICK_SECRET: ${{ secrets.PS_CHECKOUT_INTERNAL_TICK_SECRET }}
+          PS_SHOPPINGAGENT_BASE_URL: ${{ vars.PS_SHOPPINGAGENT_BASE_URL }}
+          PS_SHOPPINGAGENT_INTERNAL_TICK_SECRET: ${{ secrets.PS_SHOPPINGAGENT_INTERNAL_TICK_SECRET }}
+          PS_PAYPALADAPTER_BASE_URL: ${{ vars.PS_PAYPALADAPTER_BASE_URL }}
+          PS_PAYPALADAPTER_OUTBOX_FLUSH_SECRET: ${{ secrets.PS_PAYPALADAPTER_OUTBOX_FLUSH_SECRET }}
+          PS_TRACKING_BASE_URL: ${{ vars.PS_TRACKING_BASE_URL }}
+          PS_TRACKING_INTERNAL_TICK_SECRET: ${{ secrets.PS_TRACKING_INTERNAL_TICK_SECRET }}
+          PS_RESOLUTION_BASE_URL: ${{ vars.PS_RESOLUTION_BASE_URL }}
+          PS_RESOLUTION_TICK_SECRET: ${{ secrets.PS_RESOLUTION_TICK_SECRET }}
+          PS_TRIAGEAI_BASE_URL: ${{ vars.PS_TRIAGEAI_BASE_URL }}
+          PS_TRIAGEAI_INTERNAL_TICK_SECRET: ${{ secrets.PS_TRIAGEAI_INTERNAL_TICK_SECRET }}

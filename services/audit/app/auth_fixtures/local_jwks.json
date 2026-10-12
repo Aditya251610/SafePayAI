@@ -1,4 +1,11 @@
 {
   "_comment": "Local static trusted-issuer fixture for standalone Wave 4 runs only (service-skeleton-conventions.md sec 5: 'point it at a local static JWKS fixture if the gateway isn't implemented yet'). Shape: {issuer: {kid: {public_key, alg}}}. Empty by default -- PS_AUDIT_TRUSTED_ISSUERS (inline JSON or a file path) overrides this entirely in every real environment. Never put a real key in this file; it ships in the public repo.",
-  "local-dev-issuer": {}
+  "local-dev-issuer": {},
+  "ps-outbox-relay-dev-issuer": {
+    "ps-outbox-relay-dev": {
+      "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzmkBn0Tm8GfSXgUf2h/i\n5OWS4NwNVKzYN8BtD/31iBbvuKF2GlhRuNphuY96YE8xW23ATdt9h1GdVmwfKDRt\nIA/uw/D/FgSWjABj6u3U2L8+glyi1BxHMcyPgHKzy+E0tVpscc7J+hnDozXzkSmU\nLPI6aj7HVuAfuC3FD1VgAh4CUe5AdRPs+ST8Q5F9vpt4mpviCXDRGGaCKqP+6dkH\nFRP2XK6WMaqhGcn93N5efWaIkuStSLmROJXlebeyfWlC4HR8AIRYuxBaA4+9wI47\nlMuN/2i/cQ2A1u0h0Txg6yHcwgZ8FklKZcplsx/ihsPL0Gaj9+B/r8gmxBy5Ix3W\nqwIDAQAB\n-----END PUBLIC KEY-----\n",
+      "alg": "RS256",
+      "_comment": "Dev-only keypair shared by outbox-relay/safepayai_common.outbox (NOT a secret, matches that module's DEV_AUDIT_RELAY_PRIVATE_KEY_PEM). Every producer service signs its outbox-relay JWT with this key by default so docker-compose/CI work out of the box; a real deployment overrides PS_<SLUG>_OUTBOX_RELAY_JWT_PRIVATE_KEY per service and replaces this entry's public key / trusted-issuer config to match."
+    }
+  }
 }

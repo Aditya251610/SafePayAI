@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.routers import demo, detector, health, shipments
+from app.routers import demo, detector, health, internal, shipments
 
 app = FastAPI(title="tracking", version="0.1.0")
 
@@ -20,6 +20,7 @@ app.include_router(health.router)
 app.include_router(shipments.router)
 app.include_router(demo.router)
 app.include_router(detector.router)
+app.include_router(internal.router)
 
 
 def _envelope(error: str, detail: str, request_id: str | None) -> dict:
