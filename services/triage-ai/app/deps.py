@@ -2,8 +2,11 @@
 
 Per api.md section 0 / spec.md section 1: inbound caller allowlist is `resolution` only;
 missing/invalid/expired/wrong-aud -> 401 UNAUTHENTICATED; valid token but wrong caller ->
-403 FORBIDDEN_CALLER. No outbound calls to other services from this file or anywhere in
-this service (ADR-010 / service-map "no outbound service calls").
+403 FORBIDDEN_CALLER. No outbound calls to other services from this FILE. ADR-010's actual
+constraint is no PayPal credentials and no money-table DB access, not zero outbound calls
+anywhere -- auth-gateway.md section 3.2's matrix explicitly allows `triage -> audit` for
+this service's own outbox events (see app/routers/internal.py), the same narrow exception
+shopping-agent (the other ADR-010 LLM-key holder) already has.
 """
 
 from __future__ import annotations

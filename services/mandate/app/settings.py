@@ -10,6 +10,7 @@ the shared cron-trigger name used by /internal/* endpoints.
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from safepayai_common.outbox import DEV_AUDIT_RELAY_KID, DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
 
 
 class Settings(BaseSettings):
@@ -68,6 +69,17 @@ class Settings(BaseSettings):
     resolution_base_url: str | None = None
     inprocess_transport: bool = False
     outbox_flush_interval_seconds: int = 30
+
+    # Outbox relay (S2-06): self-issued service JWT for pushing this service's own
+    # outbox rows to audit's /internal/events/batch. Dev defaults come from
+    # safepayai_common.outbox's non-secret fixture keypair (mirrors services/audit's
+    # own local_jwks.json pattern) so docker-compose/CI work without extra setup; a real
+    # deployment overrides the private key and updates audit's PS_AUDIT_TRUSTED_ISSUERS.
+    outbox_relay_audit_base_url: str = "http://localhost:8000"
+    outbox_relay_jwt_kid: str = DEV_AUDIT_RELAY_KID
+    outbox_relay_jwt_issuer: str = "ps-mandate"
+    outbox_relay_jwt_private_key: str = DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
+    outbox_relay_batch_size: int = 100
 
 
 class BareSecrets(BaseSettings):

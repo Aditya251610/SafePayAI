@@ -7,14 +7,33 @@ Never routed by the gateway (404 externally).
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from safepayai_common.auth.jwt import ServiceJWTConfig
+from safepayai_common.outbox import OutboxRelayConfig, flush_outbox
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import repo
 from app.deps import get_session
-from app.settings import get_bare_secrets, get_settings
+from app.settings import Settings, get_bare_secrets, get_settings
 
 router = APIRouter(prefix="/internal", tags=["internal"])
+
+
+def _relay_config(settings: Settings) -> OutboxRelayConfig:
+    """S2-06: one OutboxRelayConfig per service, built from its own settings -- the relay
+    mechanics themselves live in libs/common/safepayai_common/outbox/relay.py (shared)."""
+    return OutboxRelayConfig(
+        schema="mandate",
+        producer="mandate",
+        audit_base_url=settings.outbox_relay_audit_base_url,
+        jwt=ServiceJWTConfig(
+            issuer=settings.outbox_relay_jwt_issuer,
+            audience="audit",
+            signing_key_pem=settings.outbox_relay_jwt_private_key,
+            kid=settings.outbox_relay_jwt_kid,
+        ),
+        batch_size=settings.outbox_relay_batch_size,
+    )
 
 
 def _require_tick_secret(x_tick_secret: str | None) -> None:
@@ -138,12 +157,14 @@ async def outbox_flush(
     x_tick_secret: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
+    """S2-06: actual HTTP push to audit (ADR-003 relay half). Previously this reported
+    backlog only ("libs/events has no relay implementation yet"); the relay itself now
+    lives in libs/common/safepayai_common/outbox/relay.py, shared by all 7 producers."""
     _require_tick_secret(x_tick_secret)
-    # Relay delivery (push to subscriber HTTP endpoints) is out of scope for this
-    # pass - libs/events has no relay implementation yet (README says "added
-    # alongside the first service that needs it"). This endpoint reports backlog
-    # so the cron caller / tests can observe outbox growth without a live relay.
-    async with session.begin():
-        pending = await session.execute(text("SELECT count(*) FROM mandate.outbox"))
-        pending_count = pending.scalar() or 0
-    return {"delivered": 0, "pending": pending_count}
+    settings = get_settings()
+    result = await flush_outbox(session, _relay_config(settings))
+    return {
+        "delivered": result.delivered,
+        "failed": result.failed,
+        "pending": result.pending,
+    }

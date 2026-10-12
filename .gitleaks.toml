@@ -13,6 +13,15 @@ tags = ["paypal", "secret"]
 description = "placeholders and test fixtures only"
 paths = [
   '''\.env\.example$''',
+  # Dev-only outbox-relay JWT signing key (not a secret): deliberately committed so
+  # docker-compose/CI work out of the box, mirrors the existing
+  # services/audit/app/auth_fixtures/local_jwks.json fixture pattern. Every producer
+  # service's PS_<SLUG>_OUTBOX_RELAY_JWT_PRIVATE_KEY defaults to this value; a real
+  # deployment overrides it with its own key. See the constant's own docstring in
+  # libs/common/safepayai_common/outbox/relay.py for the full rationale. Path-based
+  # (not fingerprint-based) so this survives a squash-merge's new commit SHA.
+  '''libs/common/safepayai_common/outbox/relay\.py$''',
+  '''libs/common/tests/unit/test_relay\.py$''',
 ]
 regexes = [
   '''changeme''',

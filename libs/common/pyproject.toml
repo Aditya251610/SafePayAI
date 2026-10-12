@@ -4,7 +4,15 @@ version = "0.1.0"
 requires-python = ">=3.12"
 description = "Shared cross-cutting infra (no business logic): JWT verify/mint, db grants helper, HTTP client defaults, LLM gateway interface."
 dependencies = [
-  "pyjwt>=2.9",
+  # [crypto] extra required: safepayai_common.auth.jwt.mint_service_token/verify_service_token
+  # sign/verify RS256, which needs `cryptography` installed -- CLAUDE.md "known recurring
+  # failure classes" doesn't list this one yet, but services/mandate/pyproject.toml's own
+  # dev-dependencies comment already flagged the same gap ("worked by accident via the
+  # shared workspace venv picking it up as api-gateway's transitive pyjwt[crypto]
+  # dependency... exposed when that coincidence broke"). Declaring it here, where
+  # mint/verify_service_token actually live, fixes it at the source for every service that
+  # depends on safepayai-common instead of relying on another service's extra.
+  "pyjwt[crypto]>=2.9",
   "httpx>=0.27",
   "sqlalchemy[asyncio]>=2.0",
   "pydantic>=2.9",
@@ -16,3 +24,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["safepayai_common"]
+
+[tool.uv]
+dev-dependencies = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

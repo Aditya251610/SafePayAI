@@ -8,7 +8,9 @@ ADR-010, this service holds LLM provider keys — but Wave 4 wires no real provi
 
 from __future__ import annotations
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from safepayai_common.outbox import DEV_AUDIT_RELAY_KID, DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
 
 
 class Settings(BaseSettings):
@@ -50,6 +52,17 @@ class Settings(BaseSettings):
 
     audit_push_url: str = ""
     internal_event_hmac_key: str = ""
+
+    # Outbox relay (S2-06): see mandate/app/settings.py for the full rationale comment.
+    outbox_relay_audit_base_url: str = "http://localhost:8000"
+    outbox_relay_jwt_kid: str = DEV_AUDIT_RELAY_KID
+    outbox_relay_jwt_issuer: str = "ps-triage-ai"
+    outbox_relay_jwt_private_key: str = DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
+    outbox_relay_batch_size: int = 100
+
+    # Bare-name exception (shared cron-trigger secret; conventions doc section 2) -- guards
+    # /internal/outbox/flush, which the scheduled workflow calls directly (not via JWKS).
+    internal_tick_secret: str = Field(default="", alias="INTERNAL_TICK_SECRET")
 
     log_level: str = "INFO"
 

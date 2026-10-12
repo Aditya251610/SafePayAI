@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from safepayai_common.outbox import DEV_AUDIT_RELAY_KID, DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
 
 
 class Settings(BaseSettings):
@@ -63,6 +64,13 @@ class Settings(BaseSettings):
     reconcile_grace_seconds: int = 60
     pending_poll_max_attempts: int = 5
     outbox_flush_interval_seconds: int = 30
+
+    # Outbox relay (S2-06): see mandate/app/settings.py for the full rationale comment.
+    outbox_relay_audit_base_url: str = "http://localhost:8000"
+    outbox_relay_jwt_kid: str = DEV_AUDIT_RELAY_KID
+    outbox_relay_jwt_issuer: str = "ps-checkout"
+    outbox_relay_jwt_private_key: str = DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
+    outbox_relay_batch_size: int = 100
 
     inprocess_transport: bool = False
 
