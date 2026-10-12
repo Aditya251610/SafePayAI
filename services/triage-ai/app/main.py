@@ -1,10 +1,9 @@
 """triage-ai service entrypoint. Mounts routers, health/readyz, exception handlers.
 
-Wave 4 scaffold: see docs/service-skeleton-conventions.md. No business logic beyond the
-health routes. No outbound HTTP calls to other BUSINESS services anywhere in this app
-(ADR-010) -- the one documented exception is app/routers/internal.py's outbox-relay push to
-audit (auth-gateway.md sec 3.2 explicitly grants `triage -> audit: Y(write own events)`; see
-that router's module docstring for the full flag).
+Real classify/draft/brief logic lives in app/service.py (Wave 5C). No outbound HTTP calls
+to other BUSINESS services anywhere in this app (ADR-010) -- the one documented exception is
+app/routers/internal.py's outbox-relay push to audit (auth-gateway.md sec 3.2 explicitly
+grants `triage -> audit: Y(write own events)`; see that router's module docstring).
 """
 
 from __future__ import annotations
