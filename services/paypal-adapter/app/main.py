@@ -17,7 +17,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.mcp import router as mcp_router
-from app.routers import captures, control, health, orders, reconcile, refunds, tracking, webhooks
+from app.routers import (
+    captures,
+    control,
+    health,
+    internal,
+    orders,
+    reconcile,
+    refunds,
+    tracking,
+    webhooks,
+)
 
 app = FastAPI(title="paypal-adapter", version="0.1.0")
 
@@ -32,6 +42,7 @@ app.include_router(control.router)
 app.include_router(reconcile.router)
 app.include_router(reconcile.compat_router)
 app.include_router(webhooks.router)
+app.include_router(internal.router)
 app.include_router(mcp_router)
 
 

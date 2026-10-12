@@ -6,14 +6,7 @@ INTERNAL_TICK_SECRET name (conventions doc section 2) -- this service already ha
 dedicated field for exactly this purpose (app/settings.py), so it is reused rather than
 adding a second, redundant secret. Never routed by the gateway (404 externally).
 
-NOT wired into app/main.py yet: another agent has live uncommitted work across most of this
-service's files (app/main.py, deps.py, ledger.py, ops.py, paypal_client.py, mcp.py,
-routers/{captures,reconcile,refunds}.py as of this writing) and main.py's `app.include_router`
-block is one of the files mid-edit. Per CLAUDE.md agent-dispatch and this task's explicit
-instruction to avoid clobbering another agent's in-progress work, this router is added as a
-standalone file only -- wiring it in is a one-line follow-up:
-    from app.routers import internal
-    app.include_router(internal.router)
+Wired into app/main.py's `app.include_router` block.
 """
 
 from __future__ import annotations
