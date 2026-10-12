@@ -15,6 +15,15 @@ service (including catalog and api-gateway, which also had a service-doc-specifi
 overridden to match). To keep the shared CI grants-matrix test and db_grants helper consistent
 across all 10 services, this migration uses `svc_paypal`/`mig_paypal`, not paypal_app.
 Flagged for the paypal-adapter deployment.md owner to update that doc to match.
+
+UPDATE added 2026-10-12 to the `svc_paypal` grant on `refund_ledger`: Wave 5B (this baseline)
+only ever INSERTed into refund_ledger, so UPDATE was never needed. The refund_capture/MCP
+wave's reservation-then-finalize flow (app/ledger.py `update_refund_status`/`finalize_refund`)
+UPDATEs an existing row (releasing a reservation on failure, or swapping the placeholder
+`pending:<request_id>` key for PayPal's real refund id on success) -- caught by this
+migration's own grants-matrix integration test against a real throwaway Postgres, same
+failure class as CLAUDE.md's documented "sequence grants" lesson (INSERT doesn't imply
+UPDATE either).
 """
 
 from __future__ import annotations
@@ -142,7 +151,7 @@ def upgrade() -> None:
         RUNTIME_ROLE,
         [
             TableGrant("call_ledger", ("INSERT", "SELECT", "UPDATE")),
-            TableGrant("refund_ledger", ("INSERT", "SELECT")),
+            TableGrant("refund_ledger", ("INSERT", "SELECT", "UPDATE")),
             TableGrant("ticket_nonces", ("INSERT", "SELECT")),
             TableGrant("control_flags", ("SELECT", "UPDATE")),
             TableGrant("outbox", ("INSERT", "SELECT", "UPDATE")),

@@ -197,6 +197,46 @@ class PayPalClient:
             )
         return dict(resp.json())
 
+    async def refund_capture(
+        self,
+        capture_id: str,
+        *,
+        request_id: str,
+        amount_minor: int,
+        currency: str,
+        invoice_id: str | None = None,
+    ) -> dict[str, Any]:
+        """POST /v2/payments/captures/{id}/refund (spec.md s7). Always sends an explicit
+        `amount` -- partial-refund-capable, never relies on PayPal's "full refund if amount
+        omitted" default so our own ledger amount is always what actually happened."""
+        value = f"{amount_minor // 100}.{amount_minor % 100:02d}"
+        body: dict[str, Any] = {"amount": {"currency_code": currency, "value": value}}
+        if invoice_id:
+            body["invoice_id"] = invoice_id
+        resp = await self._request(
+            "POST",
+            f"/v2/payments/captures/{capture_id}/refund",
+            json_body=body,
+            request_id=request_id,
+        )
+        if resp.status_code not in (200, 201):
+            raise PayPalUpstreamError(
+                "refund_capture failed",
+                status_code=resp.status_code,
+                paypal_name=self._error_name(resp),
+            )
+        return dict(resp.json())
+
+    async def get_refund(self, refund_id: str) -> dict[str, Any]:
+        resp = await self._request("GET", f"/v2/payments/refunds/{refund_id}")
+        if resp.status_code != 200:
+            raise PayPalUpstreamError(
+                "get_refund failed",
+                status_code=resp.status_code,
+                paypal_name=self._error_name(resp),
+            )
+        return dict(resp.json())
+
 
 _client_singleton: PayPalClient | None = None
 

@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db import SessionLocal
+from app.db import get_session_factory
 from app.settings import get_settings
 
 router = APIRouter(tags=["health"])
@@ -51,7 +51,7 @@ async def health_alias() -> dict[str, str]:
 
 @router.get("/readyz")
 async def readyz() -> JSONResponse:
-    db_ok = await _check_db(SessionLocal)
+    db_ok = await _check_db(get_session_factory())
     guard_ok = _sandbox_guard_pass()
     body = {
         "db": "ok" if db_ok else "unreachable",

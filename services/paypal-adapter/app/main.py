@@ -1,9 +1,10 @@
-"""paypal-adapter FastAPI app. Mounts REST routers, the MCP stub, health/readyz, exception
+"""paypal-adapter FastAPI app. Mounts REST routers, the MCP server, health/readyz, exception
 handlers.
 
-Wave 4 scaffold only: every money/read/write business route is a 501 stub (envelope shape
-per api.md section 2); /healthz, /health, and /readyz are real. No real PayPal calls (never
-import a PayPal SDK or call api-m.sandbox.paypal.com from this codebase in Wave 4). See
+orders/captures/refunds/reconcile are real as of Wave 5B (S1-08) + the refund_capture/MCP
+wave: create_order, get_order, capture_order, refund_capture, get_refund, reconcile all make
+real PayPal sandbox calls via app.ops/app.paypal_client, gated by call_ledger/refund_ledger
+idempotency. get_capture, add_tracking, get_tracking, webhooks remain Wave 4 501 stubs. See
 docs/service-skeleton-conventions.md and .claude/prd/services/paypal-adapter/{api,spec}.md.
 """
 
@@ -23,10 +24,13 @@ app = FastAPI(title="paypal-adapter", version="0.1.0")
 app.include_router(health.router)
 app.include_router(orders.router)
 app.include_router(captures.router)
+app.include_router(captures.compat_router)
 app.include_router(refunds.router)
+app.include_router(refunds.compat_router)
 app.include_router(tracking.router)
 app.include_router(control.router)
 app.include_router(reconcile.router)
+app.include_router(reconcile.compat_router)
 app.include_router(webhooks.router)
 app.include_router(mcp_router)
 

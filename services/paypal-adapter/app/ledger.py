@@ -113,6 +113,142 @@ async def mark_done(
     await session.commit()
 
 
+@dataclass(frozen=True)
+class CaptureLedgerRow:
+    request_id: str
+    amount_minor: int
+    currency: str
+
+
+async def get_capture_ledger_row(session: AsyncSession, capture_id: str) -> CaptureLedgerRow | None:
+    """Our own source of truth for 'what did this capture actually capture' (CLAUDE.md:
+    never trust a caller-supplied refund amount without checking our own ledger). Looks up
+    the DONE_OK capture_order row by its paypal_object_id (the capture id)."""
+    result = await session.execute(
+        text(
+            "SELECT request_id, "
+            "(response_json_redacted->>'amount_minor')::bigint AS amount_minor, "
+            "response_json_redacted->>'currency' AS currency "
+            "FROM paypal.call_ledger "
+            "WHERE op = 'capture_order' AND paypal_object_id = :capture_id AND state = 'DONE_OK'"
+        ),
+        {"capture_id": capture_id},
+    )
+    row = result.mappings().first()
+    if row is None or row["amount_minor"] is None or row["currency"] is None:
+        return None
+    return CaptureLedgerRow(
+        request_id=str(row["request_id"]),
+        amount_minor=int(row["amount_minor"]),
+        currency=str(row["currency"]),
+    )
+
+
+async def sum_committed_refunds(session: AsyncSession, capture_id: str) -> int:
+    """Sum of refund_ledger rows that count against the refundable remaining for a capture:
+    COMPLETED (final), PENDING (reserved, in flight), UNKNOWN (ambiguous PayPal outcome) --
+    deliberately conservative (fail closed against double-refund), excludes FAILED."""
+    result = await session.execute(
+        text(
+            "SELECT COALESCE(SUM(amount_minor), 0) AS total FROM paypal.refund_ledger "
+            "WHERE capture_id = :capture_id AND status IN ('PENDING', 'UNKNOWN', 'COMPLETED')"
+        ),
+        {"capture_id": capture_id},
+    )
+    row = result.mappings().first()
+    return int(row["total"]) if row else 0
+
+
+async def insert_refund_reservation(
+    session: AsyncSession,
+    *,
+    refund_id: str,
+    request_id: str,
+    capture_id: str,
+    amount_minor: int,
+    currency: str,
+    status: str,
+) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO paypal.refund_ledger "
+            "(refund_id, request_id, capture_id, amount_minor, currency, status) "
+            "VALUES (:refund_id, :request_id, :capture_id, :amount_minor, :currency, :status)"
+        ),
+        {
+            "refund_id": refund_id,
+            "request_id": request_id,
+            "capture_id": capture_id,
+            "amount_minor": amount_minor,
+            "currency": currency,
+            "status": status,
+        },
+    )
+    await session.commit()
+
+
+async def update_refund_status(session: AsyncSession, *, refund_id: str, status: str) -> None:
+    await session.execute(
+        text("UPDATE paypal.refund_ledger SET status = :status WHERE refund_id = :refund_id"),
+        {"refund_id": refund_id, "status": status},
+    )
+    await session.commit()
+
+
+async def finalize_refund(
+    session: AsyncSession,
+    *,
+    reservation_id: str,
+    final_refund_id: str,
+    status: str,
+) -> None:
+    """Replaces the placeholder reservation PK (`pending:<request_id>`) with PayPal's real
+    refund id once we have it. Falls back to leaving the reservation id in place (still
+    marked with `status`) if PayPal never returned an id (defensive; should not happen)."""
+    if not final_refund_id or final_refund_id == reservation_id:
+        await update_refund_status(session, refund_id=reservation_id, status=status)
+        return
+    await session.execute(
+        text(
+            "UPDATE paypal.refund_ledger SET refund_id = :new_id, status = :status "
+            "WHERE refund_id = :old_id"
+        ),
+        {"new_id": final_refund_id, "status": status, "old_id": reservation_id},
+    )
+    await session.commit()
+
+
+@dataclass(frozen=True)
+class RefundLedgerRow:
+    refund_id: str
+    request_id: str
+    capture_id: str
+    amount_minor: int
+    currency: str
+    status: str
+
+
+async def get_refund_ledger_row(session: AsyncSession, refund_id: str) -> RefundLedgerRow | None:
+    result = await session.execute(
+        text(
+            "SELECT refund_id, request_id, capture_id, amount_minor, currency, status "
+            "FROM paypal.refund_ledger WHERE refund_id = :refund_id"
+        ),
+        {"refund_id": refund_id},
+    )
+    row = result.mappings().first()
+    if row is None:
+        return None
+    return RefundLedgerRow(
+        refund_id=str(row["refund_id"]),
+        request_id=str(row["request_id"]),
+        capture_id=str(row["capture_id"]),
+        amount_minor=int(row["amount_minor"]),
+        currency=str(row["currency"]),
+        status=str(row["status"]),
+    )
+
+
 async def insert_outbox_event(
     session: AsyncSession,
     *,

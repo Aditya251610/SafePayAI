@@ -146,3 +146,18 @@ def checkout_token():
 @pytest.fixture
 def tracking_token():
     return mint_token("tracking")
+
+
+@pytest.fixture
+def resolution_token():
+    return mint_token("resolution")
+
+
+@pytest.fixture
+def shopping_agent_token():
+    return mint_token("shopping-agent")
+
+
+@pytest.fixture
+def triage_ai_token():
+    return mint_token("triage-ai")
