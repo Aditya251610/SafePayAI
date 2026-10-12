@@ -10,8 +10,9 @@ intent-fit lands. This is a deliberate, documented scope cut, not an oversight.
 
 from __future__ import annotations
 
+import secrets
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -326,6 +327,14 @@ async def confirm_cart(
 
     order_id = str(uuid.uuid4())
     create_request_id = str(uuid.uuid4())
+    # spec.md section 5 step 3: a random 128-bit `state` per binding (return, cancel),
+    # stored as its SHA-256 only (repo.insert_return_binding) -- the raw value only ever
+    # appears in the URL handed to PayPal/the browser, never persisted in the clear.
+    return_state = secrets.token_hex(16)
+    cancel_state = secrets.token_hex(16)
+    binding_exp = datetime.now(UTC) + timedelta(
+        seconds=settings.return_state_ttl_seconds
+    )
 
     # R4: state written BEFORE the external paypal-adapter call, same transaction.
     async with session.begin():
@@ -342,12 +351,28 @@ async def confirm_cart(
             custom_id=str(cart_row["mandate_id"]),
             invoice_id=order_id,
         )
+        await repo.insert_return_binding(
+            session,
+            state_hash=logic.sha256_hex(return_state.encode("utf-8")),
+            order_id=order_id,
+            buyer_id=buyer_id,
+            mandate_id=str(cart_row["mandate_id"]),
+            kind="return",
+            exp=binding_exp,
+        )
+        await repo.insert_return_binding(
+            session,
+            state_hash=logic.sha256_hex(cancel_state.encode("utf-8")),
+            order_id=order_id,
+            buyer_id=buyer_id,
+            mandate_id=str(cart_row["mandate_id"]),
+            kind="cancel",
+            exp=binding_exp,
+        )
 
     token = mint_outbound_token(settings, "paypal-adapter")
-    return_url = f"{settings.return_base_url}/checkout/return?state={create_request_id}"
-    cancel_url = (
-        f"{settings.return_base_url}/checkout/cancel?state={create_request_id}-cancel"
-    )
+    return_url = f"{settings.return_base_url}/checkout/return?state={return_state}"
+    cancel_url = f"{settings.return_base_url}/checkout/cancel?state={cancel_state}"
     result = await clients.create_order(
         settings,
         token,
@@ -375,6 +400,10 @@ async def confirm_cart(
                 paypal_order_id=paypal_order_id,
                 approve_url=approve_url,
             )
+            if paypal_order_id:
+                await repo.set_return_binding_paypal_order_id(
+                    session, order_id, paypal_order_id
+                )
             await repo.insert_outbox_event(
                 session,
                 event_type="order.created",
