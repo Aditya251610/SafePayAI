@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     prompt_version_cart: str = "cart.v1"
     prompt_version_fit: str = "fit.v1"
     cache_ttl_hours: int = 24
+    # PROVISIONAL stopgap only (build spec section 5): 0.6 is NOT a tuned value. Raw LLM
+    # confidence is frequently miscalibrated/compressed regardless of correctness; this
+    # floor must be re-derived from the eval harness's per-provider confidence-vs-
+    # accuracy curve (scripts/run_agent_eval.py) before it is trusted as a real gate,
+    # and re-derived again on any prompt/model version change. Never report this number
+    # as tuned until that calibration has actually been run against real API keys.
     fit_min_confidence: float = 0.6
 
     # Database (schema `agent`; role svc_agent per data-architecture.md section 4)
