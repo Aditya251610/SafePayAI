@@ -12,7 +12,14 @@ from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
-from app.eval_schemas import CartProposal
+from app.eval_schemas import CartProposal, IntentFit
+
+# Strictness order (spec.md section 5): PASS < NEEDS_BUYER_CONFIRMATION < REJECT_WITH_REASON.
+_VERDICT_RANK = {
+    "PASS": 0,
+    "NEEDS_BUYER_CONFIRMATION": 1,
+    "REJECT_WITH_REASON": 2,
+}
 
 INJECTION_PATTERNS = [
     re.compile(r"https?://", re.IGNORECASE),
@@ -122,3 +129,69 @@ def validate_cart_output(
         detail="capped qty: " + str(over_qty) if over_qty else "ok",
         accepted_lines=accepted_lines,
     )
+
+
+@dataclass
+class IntentFitOutcome:
+    schema_valid: bool
+    verdict: str
+    reason_code: str
+    reason: str
+    confidence: float
+    floored: bool  # true if a deterministic floor overrode the model's raw verdict
+    detail: str
+
+
+def validate_intent_fit_output(
+    raw: dict,
+    *,
+    min_confidence: float,
+    injection_suspected: bool = False,
+) -> IntentFitOutcome:
+    """build spec section 4 step 4 (tighten-only invariant), enforced in code, not just
+    the prompt: the verdict this function returns is NEVER less restrictive than the
+    floor implied by low confidence, injection suspicion, or schema failure. Any failure
+    here (schema-invalid output) floors at NEEDS_BUYER_CONFIRMATION, never PASS."""
+    try:
+        fit = IntentFit.model_validate(raw)
+    except ValidationError as exc:
+        return IntentFitOutcome(
+            schema_valid=False,
+            verdict="NEEDS_BUYER_CONFIRMATION",
+            reason_code="UNCLEAR",
+            reason="model output failed schema validation",
+            confidence=0.0,
+            floored=True,
+            detail=str(exc)[:500],
+        )
+
+    floor_verdict = "PASS"
+    if fit.confidence < min_confidence:
+        floor_verdict = "NEEDS_BUYER_CONFIRMATION"
+    if injection_suspected:
+        floor_verdict = "NEEDS_BUYER_CONFIRMATION"
+
+    final_verdict = tighten_only(fit.verdict, floor_verdict)
+    floored = final_verdict != fit.verdict
+
+    return IntentFitOutcome(
+        schema_valid=True,
+        verdict=final_verdict,
+        reason_code=fit.reason_code,
+        reason=fit.reason,
+        confidence=fit.confidence,
+        floored=floored,
+        detail="floored by deterministic gate" if floored else "ok",
+    )
+
+
+def tighten_only(raw_verdict: str, floor_verdict: str) -> str:
+    """Return whichever of `raw_verdict`/`floor_verdict` is MORE restrictive. Enforces
+    the tighten-only invariant in code (build spec section 4) rather than trusting the
+    model/prompt alone -- this is the actual security boundary, not prompt wording."""
+    raw_rank = _VERDICT_RANK.get(raw_verdict)
+    floor_rank = _VERDICT_RANK.get(floor_verdict)
+    if raw_rank is None or floor_rank is None:
+        # Unknown verdict value: fail closed to the most restrictive outcome.
+        return "REJECT_WITH_REASON"
+    return raw_verdict if raw_rank >= floor_rank else floor_verdict
