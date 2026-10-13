@@ -17,15 +17,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import repo
 from app.db import get_session
-from app.deps import require_idempotency_key, require_internal_jwt
+from app.deps import require_idempotency_key, require_internal_jwt, role_required
 from app.domain.policy import Decision, PolicyClass, PolicyConfig, config_from_settings
-from app.domain.proposal import Action, ApprovalTier
-from app.domain.states import CaseKind, CaseOrigin
+from app.domain.proposal import Action, ApprovalTier, hashes_match
+from app.domain.states import (
+    Actor,
+    CaseKind,
+    CaseOrigin,
+    CaseState,
+    ConcurrentModification,
+    IllegalTransition,
+)
 from app.schemas.cases import (
     AppealRequest,
+    AppealResponse,
     ApprovalConsentRequest,
+    ApprovalConsentResponse,
+    ApprovalPreviewResponse,
     CaseDetailResponse,
     MerchantActionRequest,
+    MerchantActionResponse,
     OfferAcceptRequest,
     OfferAcceptResponse,
     OfferDeclineRequest,
@@ -36,10 +47,12 @@ from app.schemas.cases import (
     ReportCaseRequest,
     ReportCaseResponse,
     ReviewDecisionRequest,
+    ReviewDecisionResponse,
     ReviewQueueItem,
     ReviewQueueResponse,
 )
 from app.settings import settings
+from app.usecases.approvals import issue_approval, lookup_approval
 from app.usecases.decide import assemble_facts_and_decide
 from app.usecases.execute_refund import execute_refund
 from app.usecases.offers import accept_offer as uc_accept_offer
@@ -47,6 +60,8 @@ from app.usecases.offers import create_offer
 from app.usecases.offers import decline_offer as uc_decline_offer
 from app.usecases.open_case import OpenCaseCommand
 from app.usecases.open_case import open_case as uc_open_case
+from app.usecases.review import decide_with_override
+from app.usecases.transitions import TransitionRequest, apply_transition
 
 router = APIRouter(tags=["cases"])
 
@@ -211,15 +226,102 @@ async def review_queue(
     return ReviewQueueResponse(items=items)
 
 
-@router.post(
-    "/cases/{case_id}/review-decision", status_code=status.HTTP_501_NOT_IMPLEMENTED
-)
+@router.post("/cases/{case_id}/review-decision")
 async def review_decision(
     case_id: str,
     body: ReviewDecisionRequest,
-    claims: dict = Depends(require_internal_jwt),
-) -> None:
-    raise _not_implemented("POST /cases/{case_id}/review-decision")
+    claims: dict = Depends(role_required("reviewer")),
+    session: AsyncSession = Depends(get_session),
+) -> ReviewDecisionResponse:
+    """api.md s3.4: the only way a HUMAN_REVIEW case ever leaves that state. PROPOSE_REFUND/
+    PROPOSE_RESHIP implement T13 (always tier APPROVE: an exception path needing buyer consent
+    via approval link, not an instant auto-accept -- deliberate, not agonized over). DECLINE/
+    CLOSE implement T14/T15 and require a written reason (422 REASON_REQUIRED)."""
+    cid = UUID(case_id)
+    case = await repo.get_case_for_update(session, cid)
+    if case is None:
+        raise HTTPException(status_code=404, detail="CASE_NOT_FOUND")
+    if CaseState(case["state"]) != CaseState.HUMAN_REVIEW:
+        raise HTTPException(status_code=409, detail="ILLEGAL_TRANSITION")
+
+    if body.decision in ("DECLINE", "CLOSE") and not (
+        body.reason and body.reason.strip()
+    ):
+        raise HTTPException(status_code=422, detail="REASON_REQUIRED")
+
+    # Auditable record of who decided and why. case_transitions.reason is typed to the
+    # ReasonCode enum via apply_transition (not free text), so reviewer_name/reason go to
+    # case_signals instead -- never lost, just not forced into the wrong column.
+    await repo.insert_case_signal(
+        session,
+        case_id=cid,
+        kind="review_decision",
+        payload={
+            "decision": body.decision,
+            "reviewer_name": body.reviewer_name,
+            "reason": body.reason,
+        },
+    )
+
+    offer_id: str | None = None
+    try:
+        if body.decision in ("PROPOSE_REFUND", "PROPOSE_RESHIP"):
+            action = (
+                Action.REFUND if body.decision == "PROPOSE_REFUND" else Action.RESHIP
+            )
+            decision = await decide_with_override(session, cid, _policy_config())
+            offer = await create_offer(
+                session, cid, decision, action, ApprovalTier.APPROVE
+            )
+            await issue_approval(session, offer)
+            offer_id = str(offer.offer_id)
+            outcome = await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=cid,
+                    expected_from=CaseState.HUMAN_REVIEW,
+                    to_state=CaseState.OFFERED,
+                    expected_version=case["version"],
+                    transition_id="T13",
+                    actor=Actor.REVIEWER,
+                    reason_code=None,
+                ),
+            )
+        elif body.decision == "DECLINE":
+            outcome = await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=cid,
+                    expected_from=CaseState.HUMAN_REVIEW,
+                    to_state=CaseState.DECLINED,
+                    expected_version=case["version"],
+                    transition_id="T14",
+                    actor=Actor.REVIEWER,
+                    reason_code=None,
+                ),
+            )
+        else:  # CLOSE
+            outcome = await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=cid,
+                    expected_from=CaseState.HUMAN_REVIEW,
+                    to_state=CaseState.CLOSED,
+                    expected_version=case["version"],
+                    transition_id="T15",
+                    actor=Actor.REVIEWER,
+                    reason_code=None,
+                ),
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (IllegalTransition, ConcurrentModification) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    await session.commit()
+    return ReviewDecisionResponse(
+        case_id=case_id, state=outcome.state.value, offer_id=offer_id
+    )
 
 
 @router.post("/offers/{offer_id}/accept")
@@ -279,40 +381,275 @@ async def decline_offer_route(
     return OfferDeclineResponse(state="DECLINED")
 
 
-@router.get("/approvals/{token}", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.get("/approvals/{token}")
 async def preview_approval(
-    token: str, claims: dict = Depends(require_internal_jwt)
-) -> None:
-    raise _not_implemented("GET /approvals/{token}")
+    token: str,
+    claims: dict = Depends(require_internal_jwt),
+    session: AsyncSession = Depends(get_session),
+) -> ApprovalPreviewResponse:
+    """api.md s3.7: pure read, no state change. 404 for any invalid/expired/revoked/consumed
+    token (no enumeration of which)."""
+    looked_up = await lookup_approval(session, token)
+    if looked_up is None:
+        raise HTTPException(status_code=404, detail="APPROVAL_NOT_FOUND")
+    if looked_up.status == "consumed":
+        raise HTTPException(status_code=404, detail="APPROVAL_REPLAY")
+    if looked_up.status == "revoked":
+        raise HTTPException(status_code=404, detail="APPROVAL_REVOKED")
+    if looked_up.expires_at is not None and looked_up.expires_at < repo.now_utc():
+        raise HTTPException(status_code=404, detail="APPROVAL_EXPIRED")
+
+    offer = await repo.get_offer(session, looked_up.proposal_id)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="APPROVAL_NOT_FOUND")
+    case = await repo.get_case(session, offer["case_id"])
+    if case is None:
+        raise HTTPException(status_code=404, detail="APPROVAL_NOT_FOUND")
+
+    summary = (
+        f"Approve a {offer['action'].lower()} of "
+        f"{offer['amount_minor'] / 100:.2f} {offer['currency']} for this order?"
+    )
+    return ApprovalPreviewResponse(
+        case_id=str(case["id"]),
+        action=offer["action"],
+        amount_minor=offer["amount_minor"],
+        currency=offer["currency"],
+        summary=summary,
+        expires_at=looked_up.expires_at.isoformat() if looked_up.expires_at else "",
+        proposal_hash=offer["proposal_hash"],
+    )
 
 
-@router.post("/approvals/{token}/consent", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/approvals/{token}/consent")
 async def consent_approval(
     token: str,
     body: ApprovalConsentRequest,
     claims: dict = Depends(require_internal_jwt),
-) -> None:
-    raise _not_implemented("POST /approvals/{token}/consent")
+    session: AsyncSession = Depends(get_session),
+) -> ApprovalConsentResponse:
+    """api.md s3.7: the buyer's tier-2 consent. Mirrors accept_offer_route (same T9, same
+    execute_refund call) -- the only difference is how the offer gets authorized (single-use
+    link token + proposal_hash, not a `sub`-owned offer id)."""
+    looked_up = await lookup_approval(session, token)
+    if looked_up is None:
+        raise HTTPException(status_code=404, detail="APPROVAL_NOT_FOUND")
+    if looked_up.status == "consumed":
+        raise HTTPException(status_code=409, detail="APPROVAL_REPLAY")
+    if looked_up.status == "revoked":
+        raise HTTPException(status_code=404, detail="APPROVAL_REVOKED")
+    if looked_up.expires_at is not None and looked_up.expires_at < repo.now_utc():
+        raise HTTPException(status_code=404, detail="APPROVAL_EXPIRED")
+    if not hashes_match(looked_up.proposal_hash, body.proposal_hash):
+        raise HTTPException(status_code=409, detail="PROPOSAL_HASH_MISMATCH")
+
+    offer = await repo.get_offer(session, looked_up.proposal_id)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="APPROVAL_NOT_FOUND")
+    case = await repo.get_case_for_update(session, offer["case_id"])
+    if case is None:
+        raise HTTPException(status_code=404, detail="APPROVAL_NOT_FOUND")
+
+    consumed = await repo.consume_approval(session, looked_up.approval_id)
+    if not consumed:
+        # Lost a race against another consent for the same link, or already consumed.
+        raise HTTPException(status_code=409, detail="APPROVAL_REPLAY")
+
+    if offer["status"] == "ACCEPTED":
+        # Replayed: the offer itself was already accepted (e.g. by a concurrent consent that
+        # won the accept race right after we won the consume race). Same case, existing state.
+        await session.commit()
+        return ApprovalConsentResponse(
+            case_id=str(case["id"]), state=case["state"], execution="DONE"
+        )
+    if offer["status"] != "ACTIVE":
+        raise HTTPException(status_code=409, detail="OFFER_NOT_ACTIVE")
+
+    won = await repo.cas_accept_offer(session, offer["id"])
+    if not won:
+        refreshed = await repo.get_offer(session, offer["id"])
+        if refreshed and refreshed["status"] == "ACCEPTED":
+            await session.commit()
+            return ApprovalConsentResponse(
+                case_id=str(case["id"]), state=case["state"], execution="DONE"
+            )
+        raise HTTPException(status_code=409, detail="OFFER_NOT_ACTIVE")
+
+    try:
+        await apply_transition(
+            session,
+            TransitionRequest(
+                case_id=case["id"],
+                expected_from=CaseState(case["state"]),
+                to_state=CaseState.APPROVED,
+                expected_version=case["version"],
+                transition_id="T9",
+                actor=Actor.BUYER,
+                reason_code=None,
+            ),
+        )
+    except (IllegalTransition, ConcurrentModification) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await session.commit()
+
+    outcome = await execute_refund(session, case["id"])
+    await session.commit()
+    return ApprovalConsentResponse(
+        case_id=str(case["id"]),
+        state=outcome.case_state,  # type: ignore[arg-type]
+        execution=outcome.execution,  # type: ignore[arg-type]
+    )
 
 
-@router.post(
-    "/cases/{case_id}/merchant-action", status_code=status.HTTP_501_NOT_IMPLEMENTED
-)
+@router.post("/cases/{case_id}/merchant-action")
 async def merchant_action(
     case_id: str,
     body: MerchantActionRequest,
-    claims: dict = Depends(require_internal_jwt),
-) -> None:
-    raise _not_implemented("POST /cases/{case_id}/merchant-action")
+    claims: dict = Depends(role_required("merchant")),
+    session: AsyncSession = Depends(get_session),
+) -> MerchantActionResponse:
+    """api.md s3.8. No amount is accepted from the client (server-computed only, money-path).
+    OVERRIDE_OFFER implements T25 (from DECLINED) or T26 (from OFFERED, self-loop supersede),
+    always tier APPROVE (merchant can propose, buyer must still consent -- T25/T26 guard).
+    CONFIRM_RESHIP implements T10."""
+    cid = UUID(case_id)
+    case = await repo.get_case_for_update(session, cid)
+    if case is None:
+        raise HTTPException(status_code=404, detail="CASE_NOT_FOUND")
+    state = CaseState(case["state"])
+
+    await repo.insert_case_signal(
+        session,
+        case_id=cid,
+        kind="merchant_shared",
+        payload={"type": body.type, "state": state.value},
+    )
+
+    if body.type == "OVERRIDE_OFFER":
+        if state not in (CaseState.DECLINED, CaseState.OFFERED):
+            raise HTTPException(status_code=409, detail="ILLEGAL_TRANSITION")
+        old_offer = await repo.get_latest_offer_for_case(session, cid)
+        transition_id = "T26" if state == CaseState.OFFERED else "T25"
+        try:
+            decision = await decide_with_override(session, cid, _policy_config())
+            new_offer = await create_offer(
+                session, cid, decision, Action.REFUND, ApprovalTier.APPROVE
+            )
+            if old_offer is not None:
+                await repo.supersede_active_offers(session, cid, new_offer.offer_id)
+                await repo.revoke_approvals_for_proposal(session, old_offer["id"])
+            await issue_approval(session, new_offer)
+            outcome = await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=cid,
+                    expected_from=state,
+                    to_state=CaseState.OFFERED,
+                    expected_version=case["version"],
+                    transition_id=transition_id,
+                    actor=Actor.MERCHANT,
+                    reason_code=None,
+                ),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (IllegalTransition, ConcurrentModification) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        await session.commit()
+        return MerchantActionResponse(
+            case_id=case_id,
+            state=outcome.state.value,
+            offer_id=str(new_offer.offer_id),
+            supersedes=str(old_offer["id"]) if old_offer else None,
+        )
+
+    # CONFIRM_RESHIP (T10): legal only while the case still holds an active/accepted RESHIP
+    # offer and is still OFFERED.
+    #
+    # Flagged for the integrator (out of this task's file scope, not silently worked around):
+    # usecases/offers.py's accept_offer() always drives T9 (OFFERED -> APPROVED) regardless of
+    # the offer's action, so a buyer "accepting" a RESHIP-action offer today leaves the case
+    # APPROVED, not OFFERED -- and this branch, written faithfully against states.py's T10
+    # (OFFERED -> RESOLVED_RESHIP), can never legally fire for that path yet. offers.py wasn't
+    # in this task's edit list, so I did not change its branching on Action there; a follow-up
+    # should make accept_offer() leave RESHIP-action offers ACCEPTED-but-case-stays-OFFERED
+    # instead of always transitioning to APPROVED.
+    if state != CaseState.OFFERED:
+        raise HTTPException(status_code=409, detail="ILLEGAL_TRANSITION")
+    offer = await repo.get_latest_offer_for_case(session, cid)
+    if (
+        offer is None
+        or offer["action"] != "RESHIP"
+        or offer["status"] not in ("ACTIVE", "ACCEPTED")
+    ):
+        raise HTTPException(status_code=409, detail="ILLEGAL_TRANSITION")
+    try:
+        outcome = await apply_transition(
+            session,
+            TransitionRequest(
+                case_id=cid,
+                expected_from=CaseState.OFFERED,
+                to_state=CaseState.RESOLVED_RESHIP,
+                expected_version=case["version"],
+                transition_id="T10",
+                actor=Actor.MERCHANT,
+                reason_code=None,
+            ),
+        )
+    except (IllegalTransition, ConcurrentModification) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await session.commit()
+    return MerchantActionResponse(
+        case_id=case_id,
+        state=outcome.state.value,
+        offer_id=str(offer["id"]),
+        supersedes=None,
+    )
 
 
-@router.post("/cases/{case_id}/appeal", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/cases/{case_id}/appeal")
 async def appeal_case(
     case_id: str,
     body: AppealRequest,
     claims: dict = Depends(require_internal_jwt),
-) -> None:
-    raise _not_implemented("POST /cases/{case_id}/appeal")
+    session: AsyncSession = Depends(get_session),
+) -> AppealResponse:
+    """api.md s3.9: implements T24 (DECLINED -> HUMAN_REVIEW). Ownership check mirrors
+    accept_offer_route/decline_offer_route (buyer id from the bare `sub` claim, per this
+    service's existing convention -- see .claude/memory/entries/internal-auth-convention-chaos.md);
+    wrong owner -> 404, no enumeration."""
+    buyer_id = str(claims.get("sub", ""))
+    cid = UUID(case_id)
+    case = await repo.get_case_for_update(session, cid)
+    if case is None or case.get("buyer_id") != buyer_id:
+        raise HTTPException(status_code=404, detail="CASE_NOT_FOUND")
+
+    if body.note:
+        await repo.insert_case_signal(
+            session,
+            case_id=cid,
+            kind="appeal_note",
+            payload={"note": body.note[: settings.case_report_max_chars]},
+        )
+
+    try:
+        await apply_transition(
+            session,
+            TransitionRequest(
+                case_id=cid,
+                expected_from=CaseState(case["state"]),
+                to_state=CaseState.HUMAN_REVIEW,
+                expected_version=case["version"],
+                transition_id="T24",
+                actor=Actor.BUYER,
+                reason_code=None,
+            ),
+        )
+    except (IllegalTransition, ConcurrentModification) as exc:
+        raise HTTPException(status_code=409, detail="ILLEGAL_TRANSITION") from exc
+    await session.commit()
+    return AppealResponse(state="HUMAN_REVIEW")
 
 
 @router.get("/notifications", status_code=status.HTTP_501_NOT_IMPLEMENTED)

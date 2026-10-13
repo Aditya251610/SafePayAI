@@ -3,6 +3,7 @@ Never routed by the gateway externally (404 externally is a gateway concern, not
 
 from __future__ import annotations
 
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,13 +12,23 @@ from safepayai_common.outbox import OutboxRelayConfig
 from safepayai_common.outbox import flush_outbox as relay_flush_outbox
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import repo
 from app.db import get_session
 from app.deps import require_internal_jwt, require_tick_secret
-from app.domain.states import CaseKind, CaseOrigin
+from app.domain.states import (
+    Actor,
+    CaseKind,
+    CaseOrigin,
+    CaseState,
+    ConcurrentModification,
+    IllegalTransition,
+)
 from app.schemas.cases import InternalEventEnvelope
 from app.settings import settings
+from app.usecases.execute_refund import reconcile_attempts
 from app.usecases.open_case import OpenCaseCommand
 from app.usecases.open_case import open_case as uc_open_case
+from app.usecases.transitions import TransitionRequest, apply_transition
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -113,6 +124,111 @@ async def internal_outbox_flush(
     }
 
 
-@router.post("/tick", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def internal_tick(_: None = Depends(require_tick_secret)) -> None:
-    raise _not_implemented("POST /internal/tick")
+@router.post("/tick")
+async def internal_tick(
+    _: None = Depends(require_tick_secret),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """api.md s2: reconcile in-flight refund attempts, flush the outbox relay, then run the
+    time-based window checks -- T12 (offer/link expired -> HUMAN_REVIEW, no auto-deny, window
+    held), T21/T22 (RESOLVED_REFUNDED/RESOLVED_RESHIP -> CLOSED after a grace period), T23
+    (DECLINED -> CLOSED after the appeal window). Each phase commits its own transaction so a
+    later phase failing never rolls back an earlier phase's already-durable work; a single
+    transition losing its CAS race (another caller got there first) is skipped, not fatal to
+    the rest of the sweep."""
+    reconcile_summary = await reconcile_attempts(session, settings.tick_reconcile_limit)
+    await session.commit()
+
+    relay_result = await relay_flush_outbox(session, _relay_config())
+    await session.commit()
+
+    now = repo.now_utc()
+
+    offers_expired_to_review = 0
+    for row in await repo.get_expired_active_offers(session, now):
+        try:
+            await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=row["case_id"],
+                    expected_from=CaseState(row["case_state"]),
+                    to_state=CaseState.HUMAN_REVIEW,
+                    expected_version=row["case_version"],
+                    transition_id="T12",
+                    actor=Actor.SYSTEM,
+                    reason_code=None,
+                ),
+            )
+            offers_expired_to_review += 1
+        except (IllegalTransition, ConcurrentModification):
+            continue
+    await session.commit()
+
+    resolved_closed = 0
+    for state, transition_id in (
+        (CaseState.RESOLVED_REFUNDED, "T21"),
+        (CaseState.RESOLVED_RESHIP, "T22"),
+    ):
+        cutoff = now - timedelta(seconds=settings.resolution_grace_period_s)
+        for row in await repo.get_cases_past_cutoff(
+            session, state=state.value, cutoff=cutoff
+        ):
+            try:
+                await apply_transition(
+                    session,
+                    TransitionRequest(
+                        case_id=row["id"],
+                        expected_from=state,
+                        to_state=CaseState.CLOSED,
+                        expected_version=row["version"],
+                        transition_id=transition_id,
+                        actor=Actor.SYSTEM,
+                        reason_code=None,
+                    ),
+                )
+                resolved_closed += 1
+            except (IllegalTransition, ConcurrentModification):
+                continue
+    await session.commit()
+
+    declined_closed = 0
+    appeal_cutoff = now - timedelta(seconds=settings.appeal_window_s)
+    for row in await repo.get_cases_past_cutoff(
+        session, state=CaseState.DECLINED.value, cutoff=appeal_cutoff
+    ):
+        try:
+            await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=row["id"],
+                    expected_from=CaseState.DECLINED,
+                    to_state=CaseState.CLOSED,
+                    expected_version=row["version"],
+                    transition_id="T23",
+                    actor=Actor.SYSTEM,
+                    reason_code=None,
+                ),
+            )
+            declined_closed += 1
+        except (IllegalTransition, ConcurrentModification):
+            continue
+    await session.commit()
+
+    return {
+        "reconcile": {
+            "examined": reconcile_summary.examined,
+            "finalized_completed": reconcile_summary.finalized_completed,
+            "finalized_failed": reconcile_summary.finalized_failed,
+            "still_unknown": reconcile_summary.still_unknown,
+            "needs_review": reconcile_summary.needs_review,
+            "frozen_skipped_replays": reconcile_summary.frozen_skipped_replays,
+        },
+        "outbox_relay": {
+            "delivered": relay_result.delivered,
+            "failed": relay_result.failed,
+            "pending": relay_result.pending,
+        },
+        "offers_expired_to_review": offers_expired_to_review,
+        "resolved_closed": resolved_closed,
+        "declined_closed": declined_closed,
+    }
