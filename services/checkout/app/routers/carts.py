@@ -101,18 +101,19 @@ async def _run_check_pipeline(
             {
                 "sku": line_["sku"],
                 "qty": line_["qty"],
-                "unit_price_minor": line_["unit_price_minor"],
+                "unit_minor": line_["unit_price_minor"],
+                "line_minor": line_["line_total_minor"],
                 "merchant_id": line_["merchant_id"],
+                "sku_known": True,
             }
             for line_ in priced["lines"]
         ],
         "total_minor": priced["total_minor"],
         "currency": priced["currency"],
-        "committed_minor": 0,
     }
     try:
         mandate_eval = await clients.evaluate_mandate(
-            settings, token, body.mandate_id, cart_for_eval
+            settings, token, body.mandate_id, cart_for_eval, committed_minor=0
         )
     except UpstreamError as exc:
         checks.append(
@@ -377,10 +378,11 @@ async def confirm_cart(
         settings,
         token,
         idempotency_key=create_request_id,
+        mandate_id=str(cart_row["mandate_id"]),
+        proposal_hash=cart_row["proposal_hash"],
+        internal_order_id=order_id,
         amount_minor=cart_row["total_minor"],
         currency=cart_row["currency"],
-        custom_id=str(cart_row["mandate_id"]),
-        invoice_id=order_id,
         return_url=return_url,
         cancel_url=cancel_url,
         ticket=create_request_id,  # placeholder until PS_CHECKOUT_TICKET_HMAC_KEY wiring lands
@@ -391,7 +393,7 @@ async def confirm_cart(
         assert order_row is not None
         if result.ok and result.body is not None:
             approve_url = result.body.get("approve_url", "")
-            paypal_order_id = result.body.get("paypal_order_id", "")
+            paypal_order_id = result.body.get("order_id", "")
             await repo.cas_order_status(
                 session,
                 order_id,

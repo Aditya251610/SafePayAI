@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import clients, repo
+from app import clients, deps, repo
 from app.domain.shipment_states import (
     DELIVERED_AFTER_LOST_EDGE,
     Anomaly,
@@ -128,7 +128,9 @@ async def create_shipment(
             replayed=True,
         )
 
-    order_facts = await clients.get_order_facts(cmd.order_id)
+    order_facts = await clients.get_order_facts(
+        cmd.order_id, token=deps.mint_outbound_token("checkout")
+    )
     if order_facts is None:
         raise ConnectionError("checkout unreachable; cannot create shipment (503)")
     if order_facts.status != "CAPTURED":

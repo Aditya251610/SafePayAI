@@ -461,6 +461,24 @@ async def delete_detections_for_shipment(
     )
 
 
+async def get_detection_kinds_for_order(
+    session: AsyncSession, order_id: str
+) -> set[str]:
+    """Distinct detection kinds (LATE/LOST) recorded for any shipment on this order."""
+    result = await session.execute(
+        text(
+            """
+            SELECT DISTINCT d.kind
+            FROM tracking.detections d
+            JOIN tracking.shipments s ON s.id = d.shipment_id
+            WHERE s.order_id = :order_id
+            """
+        ),
+        {"order_id": order_id},
+    )
+    return {row[0] for row in result.fetchall()}
+
+
 # ---------------------------------------------------------------------------
 # Demo clock / clock jumps
 # ---------------------------------------------------------------------------
