@@ -602,6 +602,141 @@ async def get_notifications(
     return [dict(row) for row in result.mappings().all()]
 
 
+async def insert_case_signal(
+    session: AsyncSession,
+    *,
+    case_id: uuid.UUID,
+    kind: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    """Append-only audit trail row (resolution.case_signals) for anything worth keeping that
+    isn't itself a case-state mutation -- e.g. reviewer_name/reason text on a review decision,
+    the merchant-shared stamp, buyer appeal notes (spec s2 case_signals; api.md s3.4/s3.8/s3.9).
+    case_transitions.reason is typed to the ReasonCode enum via apply_transition, not free text,
+    so this is the right place for untrusted/free-text audit data instead."""
+    await session.execute(
+        text(
+            """
+            INSERT INTO resolution.case_signals (id, case_id, kind, payload)
+            VALUES (:id, :case_id, :kind, :payload)
+            """
+        ),
+        {
+            "id": uuid.uuid4(),
+            "case_id": case_id,
+            "kind": kind,
+            "payload": to_jsonb_text(payload) if payload is not None else None,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Approvals (tier-2 single-use consent links, spec s5)
+# ---------------------------------------------------------------------------
+
+
+async def insert_approval(
+    session: AsyncSession,
+    *,
+    approval_id: uuid.UUID,
+    tid: str,
+    proposal_id: uuid.UUID,
+    proposal_hash: str,
+    token_hash: str,
+    expires_at: datetime,
+) -> None:
+    await session.execute(
+        text(
+            """
+            INSERT INTO resolution.approvals
+                (id, tid, proposal_id, proposal_hash, token_hash, status, expires_at)
+            VALUES
+                (:id, :tid, :proposal_id, :proposal_hash, :token_hash, 'issued', :expires_at)
+            """
+        ),
+        {
+            "id": approval_id,
+            "tid": tid,
+            "proposal_id": proposal_id,
+            "proposal_hash": proposal_hash,
+            "token_hash": token_hash,
+            "expires_at": expires_at,
+        },
+    )
+
+
+async def get_approval_by_token_hash(
+    session: AsyncSession, token_hash: str
+) -> dict[str, Any] | None:
+    result = await session.execute(
+        text(
+            "SELECT id, tid, proposal_id, proposal_hash, token_hash, status, expires_at, "
+            "consumed_at, created_at FROM resolution.approvals WHERE token_hash = :token_hash"
+        ),
+        {"token_hash": token_hash},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
+async def consume_approval(session: AsyncSession, approval_id: uuid.UUID) -> bool:
+    """Single-use consume: CAS status 'issued' -> 'consumed' (spec s5 tier 2)."""
+    result = await session.execute(
+        text(
+            """
+            UPDATE resolution.approvals SET status = 'consumed', consumed_at = now()
+            WHERE id = :id AND status = 'issued'
+            """
+        ),
+        {"id": approval_id},
+    )
+    return int(result.rowcount) == 1  # type: ignore[attr-defined]
+
+
+async def revoke_approvals_for_proposal(
+    session: AsyncSession, proposal_id: uuid.UUID
+) -> None:
+    """Revoke any still-issued approval link for a superseded offer (T26 guard: 'old offer
+    SUPERSEDED, tokens revoked')."""
+    await session.execute(
+        text(
+            """
+            UPDATE resolution.approvals SET status = 'revoked'
+            WHERE proposal_id = :proposal_id AND status = 'issued'
+            """
+        ),
+        {"proposal_id": proposal_id},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Time-based sweeps (POST /internal/tick window checks)
+# ---------------------------------------------------------------------------
+
+
+async def get_expired_active_offers(
+    session: AsyncSession, now: datetime
+) -> list[dict[str, Any]]:
+    """ACTIVE offers past their expires_at while the case is still OFFERED (T12: 'no auto-deny,
+    window held' -- the caller escalates to HUMAN_REVIEW, never declines). Offers created with
+    expires_at=None (the common case today, see usecases/offers.py create_offer) never match,
+    by design -- there is nothing to expire until something sets expires_at."""
+    result = await session.execute(
+        text(
+            """
+            SELECT o.id AS offer_id, o.case_id AS case_id, c.state AS case_state,
+                   c.version AS case_version
+            FROM resolution.offers o
+            JOIN resolution.cases c ON c.id = o.case_id
+            WHERE o.status = 'ACTIVE' AND o.expires_at IS NOT NULL AND o.expires_at < :now
+              AND c.state = 'OFFERED'
+            """
+        ),
+        {"now": now},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
 async def get_outbox_after(
     session: AsyncSession, *, after: int, limit: int = 100
 ) -> list[dict[str, Any]]:
@@ -612,6 +747,31 @@ async def get_outbox_after(
             "FROM resolution.outbox WHERE seq > :after ORDER BY seq ASC LIMIT :limit"
         ),
         {"after": after, "limit": limit},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
+async def get_cases_past_cutoff(
+    session: AsyncSession, *, state: str, cutoff: datetime
+) -> list[dict[str, Any]]:
+    """Cases still in `state` whose most recent case_transitions row INTO that state is older
+    than `cutoff` (T21/T22/T23 grace/appeal-window sweeps). There is no generic
+    '<state>_entered_at' column (only human_review_entered_at exists for the review-queue SLA),
+    so this reads the audit trail instead."""
+    result = await session.execute(
+        text(
+            """
+            SELECT c.id, c.version
+            FROM resolution.cases c
+            JOIN LATERAL (
+                SELECT ct.at FROM resolution.case_transitions ct
+                WHERE ct.case_id = c.id AND ct.to_state = :state
+                ORDER BY ct.at DESC LIMIT 1
+            ) t ON true
+            WHERE c.state = :state AND t.at < :cutoff
+            """
+        ),
+        {"state": state, "cutoff": cutoff},
     )
     return [dict(row) for row in result.mappings().all()]
 
