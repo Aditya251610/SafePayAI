@@ -24,6 +24,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Implement paypal-adapter refund_capture, get_refund, reconcile, and MCP tools
 - Implement outbox relay to audit across all producer services
 - Wire the fully-automated DETECTOR-origin case-to-refund loop end to end (#81)
+- Implement resolution GET /cases and GET /review/queue (were 501 stubs) (#82)
 
 ### Bug Fixes
 
@@ -50,6 +51,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Remove .claude internal docs/config from the public repo
 - Reduce CI/Dependabot noise and add CHANGELOG.md
 - Auto-generate CHANGELOG.md via git-cliff
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
