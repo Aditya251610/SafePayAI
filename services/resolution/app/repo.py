@@ -569,6 +569,53 @@ async def get_reconcilable_attempts(
     return [dict(row) for row in result.mappings().all()]
 
 
+async def update_case_kind(
+    session: AsyncSession, case_id: uuid.UUID, kind: str
+) -> None:
+    """Reclassify case.kind post-open (decide.py, BUYER_REPORT first-pass triage result).
+
+    Caller must have already checked (order_id, kind) won't collide with the (order_id, kind)
+    unique constraint -- this does not CAS or catch IntegrityError itself.
+    """
+    await session.execute(
+        text("UPDATE resolution.cases SET kind = :kind WHERE id = :id"),
+        {"kind": kind, "id": case_id},
+    )
+
+
+async def get_notifications(
+    session: AsyncSession, *, buyer_id: str | None, limit: int = 100
+) -> list[dict[str, Any]]:
+    """GET /notifications (api.md section 2: "B(own), M"). buyer_id=None means unscoped
+    (merchant sees all); a buyer's own id scopes to their rows only."""
+    where_clause = "WHERE buyer_id = :buyer_id" if buyer_id else ""
+    params: dict[str, Any] = {"limit": limit}
+    if buyer_id:
+        params["buyer_id"] = buyer_id
+    result = await session.execute(
+        text(
+            "SELECT id, case_id, buyer_id, type, body, created_at FROM resolution.notifications "
+            f"{where_clause} ORDER BY created_at DESC LIMIT :limit"
+        ),
+        params,
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
+async def get_outbox_after(
+    session: AsyncSession, *, after: int, limit: int = 100
+) -> list[dict[str, Any]]:
+    """GET /internal/outbox?after=seq (api.md section 2: "S -- Pull catch-up", ADR-003)."""
+    result = await session.execute(
+        text(
+            "SELECT seq, event_id, type, version, aggregate_id, payload, trace_id, created_at "
+            "FROM resolution.outbox WHERE seq > :after ORDER BY seq ASC LIMIT :limit"
+        ),
+        {"after": after, "limit": limit},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
 async def count_buyer_completed_refunds_in_window(
     session: AsyncSession, buyer_id: str, window_start: datetime
 ) -> int:

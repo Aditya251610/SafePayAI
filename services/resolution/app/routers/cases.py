@@ -26,6 +26,8 @@ from app.schemas.cases import (
     ApprovalConsentRequest,
     CaseDetailResponse,
     MerchantActionRequest,
+    NotificationsResponse,
+    NotificationView,
     OfferAcceptRequest,
     OfferAcceptResponse,
     OfferDeclineRequest,
@@ -111,6 +113,12 @@ async def report_case(
         session,
         OpenCaseCommand(
             order_id=UUID(body.order_id),
+            # Intentional OPEN-TIME PLACEHOLDER, not a dead end: decide_and_offer below runs
+            # triage-ai synchronously in this same request and reclassifies case.kind from
+            # triage's real `category` before the first policy decision is made (see
+            # app/usecases/decide.py's "Reclassify case.kind" block). A case can only ever be
+            # opened with a kind that's already certain (DETECTOR) or not yet known
+            # (BUYER_REPORT) -- OTHER is the only honest value here until triage answers.
             kind=CaseKind.OTHER,
             origin=CaseOrigin.BUYER_REPORT,
             source_event_id=None,
@@ -124,7 +132,9 @@ async def report_case(
     return ReportCaseResponse(
         case_id=str(opened.case_id),
         state=case["state"] if case else opened.state.value,
-        kind="OTHER",
+        # Reflects decide_and_offer's triage reclassification above, not the OTHER placeholder
+        # the case was opened with -- this was the original bug (hardcoded "OTHER" literal).
+        kind=case["kind"] if case else "OTHER",
         origin="BUYER_REPORT",
         reasons=[Reason(code=r.code.value) for r in decision.reasons],
         offer=offer_view,
@@ -315,6 +325,26 @@ async def appeal_case(
     raise _not_implemented("POST /cases/{case_id}/appeal")
 
 
-@router.get("/notifications", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def list_notifications(claims: dict = Depends(require_internal_jwt)) -> None:
-    raise _not_implemented("GET /notifications")
+@router.get("/notifications")
+async def list_notifications(
+    claims: dict = Depends(require_internal_jwt),
+    session: AsyncSession = Depends(get_session),
+) -> NotificationsResponse:
+    """api.md section 2: "B(own), M" -- a buyer sees only their own notifications, a
+    merchant sees all. Same claims convention as list_cases_route in this file (verified
+    against app/deps.py's require_internal_jwt: claims.act.role / claims.buyer_id)."""
+    role = (claims.get("act") or {}).get("role")
+    buyer_id = str(claims.get("buyer_id")) if role == "buyer" else None
+    rows = await repo.get_notifications(session, buyer_id=buyer_id)
+    return NotificationsResponse(
+        items=[
+            NotificationView(
+                id=str(r["id"]),
+                case_id=str(r["case_id"]),
+                type=r["type"],
+                created_at=r["created_at"].isoformat(),
+                body=r["body"],
+            )
+            for r in rows
+        ]
+    )
