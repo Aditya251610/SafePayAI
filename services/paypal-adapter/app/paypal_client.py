@@ -237,6 +237,106 @@ class PayPalClient:
             )
         return dict(resp.json())
 
+    async def get_capture(self, capture_id: str) -> dict[str, Any]:
+        """GET /v2/payments/captures/{id}."""
+        resp = await self._request("GET", f"/v2/payments/captures/{capture_id}")
+        if resp.status_code != 200:
+            raise PayPalUpstreamError(
+                "get_capture failed",
+                status_code=resp.status_code,
+                paypal_name=self._error_name(resp),
+            )
+        return dict(resp.json())
+
+    async def add_tracker(
+        self,
+        order_id: str,
+        *,
+        transaction_id: str,
+        tracking_number: str,
+        carrier_name_other: str,
+        notify_payer: bool = False,
+    ) -> dict[str, Any]:
+        """POST /v2/checkout/orders/{order_id}/track -- PayPal's Order Tracking API
+        (app.ops spec.md s1: documented sandbox spike confirmed add=201, PATCH
+        status=204 for CANCELLED only, read-back <1s; see
+        .claude/memory/entries/hackathon-product-selection.md). api.md section 5.5: this
+        adapter always sends carrier="OTHER" (the free-text carrier name goes in
+        carrier_name_other) and never sends `status` at creation -- PayPal ignores it and
+        reads back SHIPPED regardless, per that same spike."""
+        body = {
+            "trackers": [
+                {
+                    "transaction_id": transaction_id,
+                    "tracking_number": tracking_number,
+                    "carrier": "OTHER",
+                    "carrier_name_other": carrier_name_other,
+                    "notify_payer": notify_payer,
+                }
+            ]
+        }
+        resp = await self._request("POST", f"/v2/checkout/orders/{order_id}/track", json_body=body)
+        if resp.status_code not in (200, 201):
+            raise PayPalUpstreamError(
+                "add_tracker failed",
+                status_code=resp.status_code,
+                paypal_name=self._error_name(resp),
+            )
+        try:
+            return dict(resp.json())
+        except ValueError:
+            return {}
+
+    async def get_tracker(self, order_id: str, tracker_id: str) -> dict[str, Any]:
+        """GET /v2/checkout/orders/{order_id}/trackers/{tracker_id}. api.md section 5.6
+        flags this exact path UNVERIFIED (U2) -- the documented sandbox spike exercised
+        tracker add/PATCH/read-back, but this pass had no live sandbox credentials to
+        re-confirm the path shape end to end; see app.ops.get_tracking's `verified: false`."""
+        resp = await self._request("GET", f"/v2/checkout/orders/{order_id}/trackers/{tracker_id}")
+        if resp.status_code != 200:
+            raise PayPalUpstreamError(
+                "get_tracker failed",
+                status_code=resp.status_code,
+                paypal_name=self._error_name(resp),
+            )
+        return dict(resp.json())
+
+    async def verify_webhook_signature(
+        self,
+        *,
+        auth_algo: str,
+        cert_url: str,
+        transmission_id: str,
+        transmission_sig: str,
+        transmission_time: str,
+        webhook_id: str,
+        webhook_event: dict[str, Any],
+    ) -> dict[str, Any]:
+        """POST /v1/notifications/verify-webhook-signature -- PayPal's own documented
+        webhook-signature verification API (never a home-grown HMAC scheme, CLAUDE.md
+        honesty rule). NOT exercised live in this pass: there is no public endpoint in
+        local/sandbox dev to receive a genuine PayPal-sent webhook, so this method's
+        correctness against a real signature has not been confirmed end-to-end."""
+        body = {
+            "auth_algo": auth_algo,
+            "cert_url": cert_url,
+            "transmission_id": transmission_id,
+            "transmission_sig": transmission_sig,
+            "transmission_time": transmission_time,
+            "webhook_id": webhook_id,
+            "webhook_event": webhook_event,
+        }
+        resp = await self._request(
+            "POST", "/v1/notifications/verify-webhook-signature", json_body=body
+        )
+        if resp.status_code != 200:
+            raise PayPalUpstreamError(
+                "verify_webhook_signature failed",
+                status_code=resp.status_code,
+                paypal_name=self._error_name(resp),
+            )
+        return dict(resp.json())
+
 
 _client_singleton: PayPalClient | None = None
 

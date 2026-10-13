@@ -10,7 +10,7 @@ import asyncio
 import httpx
 import pytest
 
-from app.paypal_client import PayPalAuthError, PayPalClient
+from app.paypal_client import PayPalAuthError, PayPalClient, PayPalUpstreamError
 from app.settings import Settings
 
 
@@ -140,4 +140,127 @@ async def test_create_order_sends_request_id_header_and_integer_minor_units():
     sent_body = captured["req"].content
     assert b"49.99" in sent_body
     assert captured["req"].headers["PayPal-Request-Id"] == "7b1e0a5e-2f0c-4a53-9b0e-000000000001"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_capture_success():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 32000})
+        assert request.url.path == "/v2/payments/captures/CAP1"
+        return httpx.Response(
+            200,
+            json={
+                "id": "CAP1",
+                "status": "COMPLETED",
+                "amount": {"currency_code": "USD", "value": "15.00"},
+                "invoice_id": "ord_1",
+                "custom_id": "mdt_1",
+                "final_capture": True,
+            },
+        )
+
+    client = PayPalClient(_settings(), transport=httpx.MockTransport(handler))
+    result = await client.get_capture("CAP1")
+    assert result["id"] == "CAP1"
+    assert result["status"] == "COMPLETED"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_capture_404_raises_upstream_error_with_status():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 32000})
+        return httpx.Response(404, json={"name": "RESOURCE_NOT_FOUND"})
+
+    client = PayPalClient(_settings(), transport=httpx.MockTransport(handler))
+    with pytest.raises(PayPalUpstreamError) as exc_info:
+        await client.get_capture("missing")
+    assert exc_info.value.status_code == 404
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_add_tracker_sends_carrier_other_and_carrier_name_other():
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 32000})
+        captured["req"] = request
+        return httpx.Response(201, json={"trackers": [{"status": "SHIPPED"}]})
+
+    client = PayPalClient(_settings(), transport=httpx.MockTransport(handler))
+    result = await client.add_tracker(
+        "ORDER1",
+        transaction_id="CAP1",
+        tracking_number="TRACK1",
+        carrier_name_other="Demo Carrier (simulated)",
+        notify_payer=False,
+    )
+    assert result["trackers"][0]["status"] == "SHIPPED"
+    sent_body = captured["req"].content
+    assert b'"carrier":"OTHER"' in sent_body
+    assert b"Demo Carrier (simulated)" in sent_body
+    assert captured["req"].url.path == "/v2/checkout/orders/ORDER1/track"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_add_tracker_rejects_non_2xx():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 32000})
+        return httpx.Response(422, json={"name": "VALIDATION_ERROR"})
+
+    client = PayPalClient(_settings(), transport=httpx.MockTransport(handler))
+    with pytest.raises(PayPalUpstreamError) as exc_info:
+        await client.add_tracker(
+            "ORDER1",
+            transaction_id="CAP1",
+            tracking_number="TRACK1",
+            carrier_name_other="Demo Carrier",
+        )
+    assert exc_info.value.status_code == 422
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_tracker_success():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 32000})
+        assert request.url.path == "/v2/checkout/orders/ORDER1/trackers/CAP1-TRACK1"
+        return httpx.Response(200, json={"id": "CAP1-TRACK1", "status": "SHIPPED"})
+
+    client = PayPalClient(_settings(), transport=httpx.MockTransport(handler))
+    result = await client.get_tracker("ORDER1", "CAP1-TRACK1")
+    assert result["status"] == "SHIPPED"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_verify_webhook_signature_posts_documented_paypal_endpoint():
+    captured: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 32000})
+        captured["req"] = request
+        return httpx.Response(200, json={"verification_status": "SUCCESS"})
+
+    client = PayPalClient(_settings(), transport=httpx.MockTransport(handler))
+    result = await client.verify_webhook_signature(
+        auth_algo="SHA256withRSA",
+        cert_url="https://api.sandbox.paypal.com/cert",
+        transmission_id="tid",
+        transmission_sig="sig",
+        transmission_time="2026-10-14T00:00:00Z",
+        webhook_id="WH-1",
+        webhook_event={"event_type": "PAYMENT.CAPTURE.COMPLETED"},
+    )
+    assert result["verification_status"] == "SUCCESS"
+    assert captured["req"].url.path == "/v1/notifications/verify-webhook-signature"
     await client.aclose()

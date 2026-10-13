@@ -8,9 +8,9 @@ api-gateway (spec.md section 1); reached only via direct HTTP to this process.
 
 Tools call the exact same `app.ops` functions as the REST routers (one code path for money,
 per agent-and-mcp-design.md section 1 "MCP tools call the same internal functions"). Wired:
-create_order, get_order, capture_order, refund_capture, get_refund. `add_tracking` stays
-`not_implemented` -- its own REST endpoint (app/routers/tracking.py) is still a Wave 4 stub,
-out of this task's scope (no app.ops.add_tracking to call).
+create_order, get_order, capture_order, refund_capture, get_refund, get_capture, add_tracking,
+get_tracking (all real as of this wave, mirroring their REST routers one for one so REST and
+MCP cannot diverge).
 
 Per-tool caller allowlist (api.md section 8, app.deps.DEFAULT_ALLOWLIST) is enforced before
 dispatch for every tool, independent of the code wiring here: resolution-only for
@@ -37,7 +37,16 @@ from app.settings import get_settings
 router = APIRouter(tags=["mcp"])
 
 ALL_TOOLS = list(DEFAULT_ALLOWLIST.keys())
-WIRED_TOOLS = {"create_order", "get_order", "capture_order", "refund_capture", "get_refund"}
+WIRED_TOOLS = {
+    "create_order",
+    "get_order",
+    "capture_order",
+    "refund_capture",
+    "get_refund",
+    "get_capture",
+    "add_tracking",
+    "get_tracking",
+}
 
 
 def _tools_for_caller(caller_sub: str | None) -> list[str]:
@@ -127,6 +136,35 @@ async def _dispatch_tool(name: str, caller_sub: str, args: dict[str, Any]) -> di
             raise OpError("REJECTED", "VALIDATION_ERROR", f"missing {missing}", http_status=422)
         async with get_session_factory()() as session:
             return await ops.get_refund(session, client, args["refund_id"], trace_id=trace_id)
+
+    if name == "get_capture":
+        missing = _missing(args, "capture_id")
+        if missing:
+            raise OpError("REJECTED", "VALIDATION_ERROR", f"missing {missing}", http_status=422)
+        return await ops.get_capture(client, args["capture_id"], trace_id=trace_id)
+
+    if name == "add_tracking":
+        add_tracking_required = ("order_id", "capture_id", "tracking_number", "carrier_name_other")
+        missing = _missing(args, *add_tracking_required)
+        if missing:
+            raise OpError("REJECTED", "VALIDATION_ERROR", f"missing {missing}", http_status=422)
+        return await ops.add_tracking(
+            client,
+            args["order_id"],
+            capture_id=args["capture_id"],
+            tracking_number=args["tracking_number"],
+            carrier_name_other=args["carrier_name_other"],
+            notify_payer=bool(args.get("notify_payer", False)),
+            trace_id=trace_id,
+        )
+
+    if name == "get_tracking":
+        missing = _missing(args, "order_id", "tracker_id")
+        if missing:
+            raise OpError("REJECTED", "VALIDATION_ERROR", f"missing {missing}", http_status=422)
+        return await ops.get_tracking(
+            client, args["order_id"], args["tracker_id"], trace_id=trace_id
+        )
 
     if name == "create_order":
         required = (

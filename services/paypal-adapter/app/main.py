@@ -4,7 +4,9 @@ handlers.
 orders/captures/refunds/reconcile are real as of Wave 5B (S1-08) + the refund_capture/MCP
 wave: create_order, get_order, capture_order, refund_capture, get_refund, reconcile all make
 real PayPal sandbox calls via app.ops/app.paypal_client, gated by call_ledger/refund_ledger
-idempotency. get_capture, add_tracking, get_tracking, webhooks remain Wave 4 501 stubs. See
+idempotency. get_capture, add_tracking, get_tracking, control status/freeze/unfreeze, and the
+webhook receiver are also real as of this wave (see app/routers/{captures,tracking,control,
+webhooks}.py module docstrings for exactly what was/wasn't verified live). See
 docs/service-skeleton-conventions.md and .claude/prd/services/paypal-adapter/{api,spec}.md.
 """
 

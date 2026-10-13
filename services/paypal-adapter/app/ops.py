@@ -16,7 +16,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ledger
+from app import control_flags, ledger
 from app.paypal_client import PayPalAuthError, PayPalClient, PayPalUpstreamError
 from app.settings import Settings
 
@@ -31,6 +31,26 @@ class OpError(Exception):
         self.message = message
         self.http_status = http_status
         self.retryable = retryable
+
+
+def error_envelope(exc: OpError, trace_id: str) -> dict[str, Any]:
+    """Shared OpError -> envelope translation for routers added in this wave (get_capture,
+    tracking). Matches the dict literal captures.py's refund_capture handler has used inline
+    since S1-08/Wave 5B -- that one is left as-is (untouched, already-reviewed money path)."""
+    return {
+        "ok": False,
+        "status": exc.status,
+        "paypal_http_status": None,
+        "data": None,
+        "error": {
+            "code": exc.code,
+            "message": exc.message,
+            "retryable": exc.retryable,
+            "paypal_name": None,
+        },
+        "replayed": False,
+        "trace_id": trace_id,
+    }
 
 
 def _envelope(
@@ -71,13 +91,24 @@ def _redact_order_response(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _money_frozen(settings: Settings) -> bool:
-    # Fail closed: unset/false -> frozen (spec.md section 9 kill switch).
-    return not settings.money_enabled
+async def _money_frozen(settings: Settings, session: AsyncSession) -> bool:
+    # Fail closed: unset/false static flag -> frozen (spec.md section 9 kill switch). Even
+    # when the static flag says enabled, the service-local DB control_flags.frozen flag
+    # (app.control_flags, toggled via POST /v1/control/freeze|unfreeze) can independently
+    # freeze money ops -- either source freezing is enough to block (fail closed, matching
+    # resolution's own REFUNDS_FROZEN philosophy). An absent/unreadable DB row is also
+    # treated as frozen. Short-circuits before the DB read when the static flag already
+    # says frozen, so the common "money disabled everywhere" case stays a pure env check.
+    if not settings.money_enabled:
+        return True
+    flags = await control_flags.get_control_flags(session)
+    if flags is None:
+        return True
+    return flags.frozen
 
 
-async def _check_money_enabled(settings: Settings, trace_id: str) -> None:
-    if _money_frozen(settings):
+async def _check_money_enabled(settings: Settings, session: AsyncSession, trace_id: str) -> None:
+    if await _money_frozen(settings, session):
         raise OpError("REJECTED", "MONEY_FROZEN", "money operations are frozen", http_status=403)
 
 
@@ -104,7 +135,7 @@ async def create_order(
     cancel_url: str,
     trace_id: str,
 ) -> dict[str, Any]:
-    await _check_money_enabled(settings, trace_id)
+    await _check_money_enabled(settings, session, trace_id)
 
     if not _is_approve_origin_ok(return_url, settings.paypal_return_url_allowed_origins) or (
         not _is_approve_origin_ok(cancel_url, settings.paypal_return_url_allowed_origins)
@@ -305,6 +336,43 @@ async def get_order(client: PayPalClient, order_id: str, *, trace_id: str) -> di
     return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=200, data=data)
 
 
+async def get_capture(client: PayPalClient, capture_id: str, *, trace_id: str) -> dict[str, Any]:
+    """GET /v1/captures/{capture_id} (api.md section 4/5.4-class read). Plain upstream
+    passthrough, same class as get_order/get_refund -- no ledger, no money decision."""
+    try:
+        raw = await client.get_capture(capture_id)
+    except PayPalAuthError as exc:
+        raise OpError(
+            "REJECTED", "UPSTREAM_AUTH_FAILED", "PayPal authentication failed", http_status=503
+        ) from exc
+    except PayPalUpstreamError as exc:
+        if exc.status_code == 404:
+            raise OpError("REJECTED", "NOT_FOUND", "capture not found", http_status=404) from exc
+        if exc.status_code is None or exc.status_code >= 500:
+            raise OpError(
+                "REJECTED",
+                "UPSTREAM_UNAVAILABLE",
+                "PayPal unavailable",
+                http_status=502,
+                retryable=True,
+            ) from exc
+        raise OpError(
+            "REJECTED", "UPSTREAM_REJECTED", "PayPal rejected the request", http_status=422
+        ) from exc
+
+    amount = raw.get("amount") or {}
+    data = {
+        "capture_id": raw.get("id"),
+        "status": raw.get("status"),
+        "amount_minor": _minor_from_value(amount.get("value")),
+        "currency": amount.get("currency_code"),
+        "invoice_id": raw.get("invoice_id"),
+        "custom_id": raw.get("custom_id"),
+        "final_capture": raw.get("final_capture"),
+    }
+    return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=200, data=data)
+
+
 def _minor_from_value(value: str | None) -> int | None:
     if value is None:
         return None
@@ -326,7 +394,7 @@ async def capture_order(
     currency: str,
     trace_id: str,
 ) -> dict[str, Any]:
-    await _check_money_enabled(settings, trace_id)
+    await _check_money_enabled(settings, session, trace_id)
 
     body_for_hash = {
         "op": "capture_order",
@@ -512,7 +580,7 @@ async def refund_capture(
     """
     del ticket  # presence-only check happens in the router; kept as an explicit param here
     # so a future HMAC-verification pass has an obvious single call site to extend.
-    await _check_money_enabled(settings, trace_id)
+    await _check_money_enabled(settings, session, trace_id)
 
     if amount_minor > settings.refund_max_minor:
         raise OpError(
@@ -752,6 +820,131 @@ async def get_refund(
         "amount_minor": _minor_from_value(amount.get("value")),
         "currency": amount.get("currency_code"),
         "capture_id": _capture_id_from_links(raw.get("links") or []),
+    }
+    return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=200, data=data)
+
+
+def _tracker_id(capture_id: str, tracking_number: str) -> str:
+    """api.md section 5.5's documented contract/sandbox-spike example: tracker_id is always
+    `{capture_id}-{tracking_number}`, a composite natural key -- not parsed off a PayPal
+    response body (PayPal's own tracker ids for this API follow the same transaction_id-
+    tracking_number shape, used directly as the GET path segment)."""
+    return f"{capture_id}-{tracking_number}"
+
+
+async def add_tracking(
+    client: PayPalClient,
+    order_id: str,
+    *,
+    capture_id: str,
+    tracking_number: str,
+    carrier_name_other: str,
+    notify_payer: bool,
+    trace_id: str,
+) -> dict[str, Any]:
+    """POST /v1/orders/{order_id}/track (api.md section 5.5). Best-effort signal only (spec
+    s1/s7): no money decision, no call_ledger idempotency row -- PayPal-Request-Id has no
+    documented effect on this endpoint (api.md 5.5: "I"); the natural key (capture_id,
+    tracking_number) is the documented dedupe guard instead, handled below by reading the
+    tracker back on a duplicate-add rejection rather than surfacing a spurious error."""
+    tracker_id = _tracker_id(capture_id, tracking_number)
+    try:
+        raw = await client.add_tracker(
+            order_id,
+            transaction_id=capture_id,
+            tracking_number=tracking_number,
+            carrier_name_other=carrier_name_other,
+            notify_payer=notify_payer,
+        )
+    except PayPalAuthError as exc:
+        raise OpError(
+            "REJECTED", "UPSTREAM_AUTH_FAILED", "PayPal authentication failed", http_status=503
+        ) from exc
+    except PayPalUpstreamError as exc:
+        if exc.status_code == 422:
+            # Natural-key dedupe (api.md 5.5): a duplicate add is expected to be rejected
+            # upstream; read back the tracker we would otherwise have created and report it
+            # replayed rather than surfacing an error for an already-tracked shipment. If the
+            # read-back itself fails, the original 422 was for some other reason -- propagate it.
+            try:
+                existing = await client.get_tracker(order_id, tracker_id)
+            except (PayPalAuthError, PayPalUpstreamError):
+                raise OpError(
+                    "REJECTED",
+                    "UPSTREAM_REJECTED",
+                    "PayPal rejected the tracker add",
+                    http_status=422,
+                ) from exc
+            data = {
+                "order_id": order_id,
+                "tracker_id": tracker_id,
+                "status": existing.get("status", "SHIPPED"),
+            }
+            return _envelope(
+                ok=True,
+                status="OK",
+                trace_id=trace_id,
+                paypal_http_status=200,
+                data=data,
+                replayed=True,
+            )
+        if exc.status_code is None or exc.status_code >= 500:
+            raise OpError(
+                "UNKNOWN",
+                "UPSTREAM_UNAVAILABLE",
+                "PayPal unavailable",
+                http_status=504,
+                retryable=True,
+            ) from exc
+        raise OpError(
+            "REJECTED", "UPSTREAM_REJECTED", "PayPal rejected the tracker add", http_status=422
+        ) from exc
+
+    status = "SHIPPED"
+    trackers = raw.get("trackers") if isinstance(raw, dict) else None
+    if isinstance(trackers, list) and trackers and isinstance(trackers[0], dict):
+        status = trackers[0].get("status", status)
+    data = {"order_id": order_id, "tracker_id": tracker_id, "status": status}
+    return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=201, data=data)
+
+
+async def get_tracking(
+    client: PayPalClient, order_id: str, tracker_id: str, *, trace_id: str
+) -> dict[str, Any]:
+    """GET /v1/orders/{order_id}/trackers/{tracker_id} (api.md section 5.6). Path flagged
+    UNVERIFIED (U2) in the spec; `verified` is always reported false here -- this is an
+    honest statement that this exact PayPal read-back path has not been re-confirmed live in
+    this pass (CLAUDE.md honesty rule), not a permanent claim about the API shape.
+    `carrier_status` is deliberately left null -- late/lost/delivered state lives only in the
+    `tracking` service's own DB (SIMULATED CARRIER, per CLAUDE.md); this endpoint never
+    merges or guesses at it."""
+    try:
+        raw = await client.get_tracker(order_id, tracker_id)
+    except PayPalAuthError as exc:
+        raise OpError(
+            "REJECTED", "UPSTREAM_AUTH_FAILED", "PayPal authentication failed", http_status=503
+        ) from exc
+    except PayPalUpstreamError as exc:
+        if exc.status_code == 404:
+            raise OpError("REJECTED", "NOT_FOUND", "tracker not found", http_status=404) from exc
+        if exc.status_code is None or exc.status_code >= 500:
+            raise OpError(
+                "REJECTED",
+                "UPSTREAM_UNAVAILABLE",
+                "PayPal unavailable",
+                http_status=502,
+                retryable=True,
+            ) from exc
+        raise OpError(
+            "REJECTED", "UPSTREAM_REJECTED", "PayPal rejected the request", http_status=422
+        ) from exc
+
+    data = {
+        "order_id": order_id,
+        "tracker_id": raw.get("id") or tracker_id,
+        "paypal_status": raw.get("status"),
+        "carrier_status": None,
+        "verified": False,
     }
     return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=200, data=data)
 
