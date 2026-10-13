@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     internal_jwks_url: str = ""
     internal_audience: str = "tracking"
 
+    # Outbound service-JWT self-minting (tracking -> checkout/paypal-adapter/resolution/audit).
+    service_signing_key: str = ""
+    service_signing_kid: str = ""
+
     # Event push HMAC (outbound outbox delivery signing)
     event_push_hmac_key: str = ""
 

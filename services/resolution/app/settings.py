@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     internal_jwt_signing_key: str = ""
     internal_jwt_kid: str = ""
     internal_jwt_trusted_issuers: str = "api-gateway"
+    internal_jwks_url: str = ""
 
     mandate_url: str = ""
     checkout_url: str = ""

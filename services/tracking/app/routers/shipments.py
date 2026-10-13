@@ -94,6 +94,7 @@ async def get_shipments(
 
     rows = await repo.get_shipments_by_order(session, order_id)
     delivered = any(r["status"] == ShipmentStatus.DELIVERED.value for r in rows)
+    detection_kinds = await repo.get_detection_kinds_for_order(session, order_id)
     return {
         "order_id": order_id,
         "sim_now": sim_now_val.isoformat(),
@@ -110,8 +111,8 @@ async def get_shipments(
         "consistency": {
             "delivered": delivered,
             "delivered_at_sim": None,
-            "late_detected": False,
-            "lost_detected": False,
+            "late_detected": "LATE" in detection_kinds,
+            "lost_detected": "LOST" in detection_kinds,
         },
         "simulated": True,
         "carrier_label": "SIMULATED CARRIER",

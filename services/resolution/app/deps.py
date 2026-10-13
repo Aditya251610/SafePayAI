@@ -12,11 +12,30 @@ from typing import Any
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
-from safepayai_common.auth.jwt import verify_service_token
+from safepayai_common.auth.jwt import (
+    ServiceJWTConfig,
+    mint_service_token,
+    verify_service_token,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.settings import settings
+
+
+def mint_outbound_token(audience: str) -> str | None:
+    """Mints a short-lived resolution -> <audience> service token (mirrors checkout's
+    deps.mint_outbound_token). Returns None when no signing key is configured."""
+    if not settings.internal_jwt_signing_key or not settings.internal_jwt_kid:
+        return None
+    config = ServiceJWTConfig(
+        issuer="resolution",
+        audience=audience,
+        signing_key_pem=settings.internal_jwt_signing_key,
+        kid=settings.internal_jwt_kid,
+        ttl_seconds=60,
+    )
+    return mint_service_token("svc:resolution", config)
 
 
 async def db_session(
@@ -26,7 +45,8 @@ async def db_session(
 
 
 def _jwks_client() -> jwt.PyJWKClient:
-    return jwt.PyJWKClient("https://localhost/.well-known/jwks.json")
+    url = settings.internal_jwks_url or "https://localhost/.well-known/jwks.json"
+    return jwt.PyJWKClient(url)
 
 
 async def require_internal_jwt(

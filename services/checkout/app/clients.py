@@ -48,14 +48,18 @@ async def resolve_prices(
 
 
 async def evaluate_mandate(
-    settings: Settings, token: str, mandate_id: str, cart: dict[str, Any]
+    settings: Settings,
+    token: str,
+    mandate_id: str,
+    cart: dict[str, Any],
+    committed_minor: int | None = None,
 ) -> dict[str, Any]:
     timeout = httpx.Timeout(settings.http_timeout_mandate_ms / 1000.0)
     async with build_client(settings.mandate_base_url, timeout=timeout) as client:
         try:
             resp = await client.post(
                 f"/mandates/{mandate_id}/evaluate",
-                json={"cart": cart},
+                json={"cart": cart, "committed_minor": committed_minor},
                 headers={"Authorization": f"Bearer {token}"},
             )
         except httpx.HTTPError as exc:
@@ -121,22 +125,23 @@ async def create_order(
     token: str,
     *,
     idempotency_key: str,
+    mandate_id: str,
+    proposal_hash: str,
+    internal_order_id: str,
     amount_minor: int,
     currency: str,
-    custom_id: str,
-    invoice_id: str,
     return_url: str,
     cancel_url: str,
     ticket: str,
 ) -> AdapterResult:
     timeout = httpx.Timeout(settings.http_timeout_adapter_ms / 1000.0)
     payload = {
-        "idempotency_key": idempotency_key,
-        "ticket": ticket,
+        "request_id": idempotency_key,
+        "mandate_id": mandate_id,
+        "proposal_hash": proposal_hash,
+        "internal_order_id": internal_order_id,
         "amount_minor": amount_minor,
         "currency": currency,
-        "custom_id": custom_id,
-        "invoice_id": invoice_id,
         "return_url": return_url,
         "cancel_url": cancel_url,
     }
@@ -150,6 +155,7 @@ async def create_order(
                 headers={
                     "Authorization": f"Bearer {token}",
                     "PayPal-Request-Id": idempotency_key,
+                    "X-Authorization-Ticket": ticket,
                 },
             )
         except httpx.TimeoutException as exc:
@@ -159,14 +165,23 @@ async def create_order(
 
     if resp.status_code in (200, 201):
         try:
-            return AdapterResult(True, True, resp.json(), "created")
+            envelope = resp.json()
         except ValueError:
             return AdapterResult(False, False, None, "malformed JSON response")
+        if envelope.get("ok"):
+            return AdapterResult(True, True, envelope.get("data"), "created")
+        error = envelope.get("error") or {}
+        return AdapterResult(
+            False, True, None, error.get("message", "rejected"), error.get("code")
+        )
     if resp.status_code == 409:
         return AdapterResult(False, False, None, "conflict, treat as unknown")
     if 400 <= resp.status_code < 500 and resp.status_code != 409:
         return AdapterResult(
-            False, True, None, f"definite failure status={resp.status_code}"
+            False,
+            True,
+            None,
+            f"definite failure status={resp.status_code} body={resp.text[:300]}",
         )
     return AdapterResult(False, False, None, f"status={resp.status_code}")
 

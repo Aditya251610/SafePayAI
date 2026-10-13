@@ -190,7 +190,7 @@ async def test_confirm_writes_order_before_adapter_call_then_awaiting_approval(
         return clients.AdapterResult(
             True,
             True,
-            {"paypal_order_id": "PAY-1", "approve_url": "https://paypal.test/approve"},
+            {"order_id": "PAY-1", "approve_url": "https://paypal.test/approve"},
             "created",
         )
 
@@ -277,7 +277,7 @@ async def test_confirm_idempotent_replay_same_key(client, monkeypatch) -> None:
         return clients.AdapterResult(
             True,
             True,
-            {"paypal_order_id": "PAY-2", "approve_url": "https://paypal.test/approve2"},
+            {"order_id": "PAY-2", "approve_url": "https://paypal.test/approve2"},
             "created",
         )
 

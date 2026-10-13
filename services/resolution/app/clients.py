@@ -25,6 +25,7 @@ from uuid import UUID
 
 import httpx
 
+from app.deps import mint_outbound_token
 from app.domain.policy import CaptureFacts, TermsSnapshot
 from app.domain.states import CaseKind
 from app.settings import settings
@@ -58,6 +59,7 @@ async def get_mandate_terms(
     None terms = unreachable/malformed (D0 FACT_UNAVAILABLE). hmac_valid False maps to
     ReasonCode.TERMS_INVALID (spec s4 D0, s6 check 3).
     """
+    token = token or mint_outbound_token("mandate")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(settings.mandate_url, settings.triage_timeout_s) as client:
@@ -94,6 +96,7 @@ async def get_capture_facts(
     order_id: str, token: str | None = None
 ) -> CaptureFacts | None:
     """GET /orders/{order_id} on checkout. None = unreachable or capture facts not exposed yet."""
+    token = token or mint_outbound_token("checkout")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(settings.checkout_url, settings.adapter_timeout_s) as client:
@@ -125,6 +128,7 @@ async def get_order_identity(
     order_id: str, token: str | None = None
 ) -> tuple[str | None, str | None, str | None]:
     """GET /orders/{order_id} on checkout; returns (mandate_id, capture_id, buyer_id), any may be None."""
+    token = token or mint_outbound_token("checkout")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(settings.checkout_url, settings.adapter_timeout_s) as client:
@@ -149,6 +153,7 @@ async def get_order_identity(
 
 async def get_protected_until(order_id: str, token: str | None = None) -> Any | None:
     """Best-effort read of the demo protection window from checkout's order facts (spec s10)."""
+    token = token or mint_outbound_token("checkout")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(settings.checkout_url, settings.adapter_timeout_s) as client:
@@ -178,6 +183,7 @@ async def get_tracking_agreement(
     Tracking's contract is known exactly (tracking/api.md): consistency.delivered tells us
     whether the carrier fact disagrees with a LATE/LOST claim (spec s4 D3).
     """
+    token = token or mint_outbound_token("tracking")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(settings.tracking_url, settings.adapter_timeout_s) as client:
@@ -213,6 +219,7 @@ async def refund_capture(
     token: str | None = None,
 ) -> AdapterResult:
     """POST /captures/{capture_id}/refund on paypal-adapter (spec s7 step 2)."""
+    token = token or mint_outbound_token("paypal-adapter")
     headers = {"PayPal-Request-Id": str(request_id)}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -248,6 +255,7 @@ async def refund_capture(
 
 async def get_refund(refund_id: str, token: str | None = None) -> AdapterResult:
     """GET /refunds/{refund_id} on paypal-adapter (spec s8 item 1)."""
+    token = token or mint_outbound_token("paypal-adapter")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(
@@ -267,6 +275,7 @@ async def get_refund(refund_id: str, token: str | None = None) -> AdapterResult:
 
 async def reconcile_refund(request_id: UUID, token: str | None = None) -> AdapterResult:
     """POST /reconcile/{request_id} on paypal-adapter (spec s8 item 2): idempotent replay lookup."""
+    token = token or mint_outbound_token("paypal-adapter")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(
@@ -298,6 +307,7 @@ async def classify_triage(
     """
     if not settings.triage_ai_url:
         return None
+    token = token or mint_outbound_token("triage-ai")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(settings.triage_ai_url, settings.triage_timeout_s) as client:

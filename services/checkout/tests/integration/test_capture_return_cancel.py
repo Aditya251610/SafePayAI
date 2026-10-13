@@ -93,7 +93,7 @@ async def _create_and_confirm(
             True,
             True,
             {
-                "paypal_order_id": "PAY-" + idem,
+                "order_id": "PAY-" + idem,
                 "approve_url": "https://paypal.test/approve",
             },
             "created",

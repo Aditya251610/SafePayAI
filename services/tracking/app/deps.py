@@ -11,11 +11,31 @@ from collections.abc import AsyncIterator
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
-from safepayai_common.auth.jwt import verify_service_token
+from safepayai_common.auth.jwt import (
+    ServiceJWTConfig,
+    mint_service_token,
+    verify_service_token,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.settings import settings
+
+
+def mint_outbound_token(audience: str) -> str | None:
+    """Mints a short-lived tracking -> <audience> service token (mirrors checkout's
+    deps.mint_outbound_token). Returns None when no signing key is configured, matching
+    the optional-token signature already used by app/clients.py's functions."""
+    if not settings.service_signing_key or not settings.service_signing_kid:
+        return None
+    config = ServiceJWTConfig(
+        issuer="tracking",
+        audience=audience,
+        signing_key_pem=settings.service_signing_key,
+        kid=settings.service_signing_kid,
+        ttl_seconds=60,
+    )
+    return mint_service_token("svc:tracking", config)
 
 
 async def db_session(

@@ -22,14 +22,28 @@ from fastapi import Depends, Header, HTTPException
 from app.settings import Settings, get_settings
 
 DEFAULT_ALLOWLIST: dict[str, set[str]] = {
-    "create_order": {"checkout"},
-    "capture_order": {"checkout"},
-    "refund_capture": {"resolution"},
-    "get_order": {"checkout", "tracking", "resolution"},
-    "get_capture": {"checkout", "tracking", "resolution"},
-    "get_refund": {"resolution"},
-    "add_tracking": {"tracking"},
-    "get_tracking": {"tracking", "resolution"},
+    "create_order": {"checkout", "svc:checkout"},
+    "capture_order": {"checkout", "svc:checkout"},
+    "refund_capture": {"resolution", "svc:resolution"},
+    "get_order": {
+        "checkout",
+        "svc:checkout",
+        "tracking",
+        "svc:tracking",
+        "resolution",
+        "svc:resolution",
+    },
+    "get_capture": {
+        "checkout",
+        "svc:checkout",
+        "tracking",
+        "svc:tracking",
+        "resolution",
+        "svc:resolution",
+    },
+    "get_refund": {"resolution", "svc:resolution"},
+    "add_tracking": {"tracking", "svc:tracking"},
+    "get_tracking": {"tracking", "svc:tracking", "resolution", "svc:resolution"},
 }
 
 
