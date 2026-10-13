@@ -8,6 +8,8 @@ cross-service push is outside this wave's scope (flagged, not silently skipped).
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,14 +54,49 @@ async def get_refunds_frozen(
     )
 
 
-@router.put("/controls/refunds-frozen", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.put("/controls/refunds-frozen")
 async def put_refunds_frozen(
     body: RefundsFrozenPutRequest,
     claims: dict = Depends(require_internal_jwt),
-) -> None:
-    # Flagged, not silently skipped: the adapter-mirror push (PUT /v1/controls/refunds-frozen
-    # on paypal-adapter, spec s9) needs retry-until-ACKED plumbing this wave did not build.
-    raise _not_implemented("PUT /controls/refunds-frozen")
+    session: AsyncSession = Depends(get_session),
+) -> RefundsFrozenState:
+    """api.md section 3.11: operator-only toggle. The adapter-mirror push (PUT
+    /v1/controls/refunds-frozen on paypal-adapter, spec s9) is flagged, not silently
+    skipped: paypal-adapter's own kill switch (PS_PAYPALADAPTER_MONEY_ENABLED / its own
+    control_flags) is independent and must be toggled there separately for now; cross-
+    service mirror push with retry-until-ACKED is future work."""
+    role = (claims.get("act") or {}).get("role")
+    if role != "operator":
+        raise HTTPException(status_code=403, detail="ROLE_NOT_ALLOWED")
+
+    set_by = str(claims.get("sub", "operator"))
+    epoch = await repo.set_refunds_frozen(
+        session, frozen=body.refunds_frozen, reason=body.reason, set_by=set_by
+    )
+    await repo.insert_outbox_event(
+        session,
+        event_id=uuid4(),
+        event_type="refund.freeze_changed",
+        aggregate_id="control_flags",
+        payload={
+            "refunds_frozen": body.refunds_frozen,
+            "epoch": epoch,
+            "set_by_role": role,
+            "reason_code": body.reason,
+        },
+    )
+    await session.commit()
+
+    flags = await repo.get_control_flags(session)
+    assert flags is not None
+    return RefundsFrozenState(
+        refunds_frozen=flags["refunds_frozen"],
+        reason=flags["reason"],
+        set_by=flags["set_by"],
+        epoch=flags["epoch"],
+        readable=True,
+        adapter_mirror="PENDING",
+    )
 
 
 @router.post("/refunds/reconcile")

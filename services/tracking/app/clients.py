@@ -23,6 +23,7 @@ from typing import Any
 
 import httpx
 
+from app.deps import mint_outbound_token
 from app.settings import settings
 
 DEFAULT_PROTECTION_WINDOW_DAYS = (
@@ -106,8 +107,9 @@ async def add_tracking(
     carrier_name: str,
     token: str | None = None,
 ) -> AdapterResult:
-    """POST /orders/{order_id}/track on paypal-adapter (spec s1: tracker id =
+    """POST /v1/orders/{order_id}/track on paypal-adapter (spec s1: tracker id =
     {capture_id}-{tracking_number}; best-effort signal, never blocks shipment creation)."""
+    token = token or mint_outbound_token("paypal-adapter")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     payload = {
         "capture_id": capture_id,
@@ -117,7 +119,7 @@ async def add_tracking(
     try:
         async with _client(settings.paypal_adapter_url) as client:
             resp = await client.post(
-                f"/orders/{order_id}/track", json=payload, headers=headers
+                f"/v1/orders/{order_id}/track", json=payload, headers=headers
             )
     except httpx.HTTPError as exc:
         return AdapterResult(False, None, None, f"connection_error: {exc}")
@@ -134,11 +136,12 @@ async def cancel_tracking(
     *, order_id: str, tracker_id: str, token: str | None = None
 ) -> AdapterResult:
     """Best-effort PATCH to CANCELLED on paypal-adapter (spec s1: irreversible once applied)."""
+    token = token or mint_outbound_token("paypal-adapter")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
         async with _client(settings.paypal_adapter_url) as client:
             resp = await client.patch(
-                f"/orders/{order_id}/trackers/{tracker_id}/status",
+                f"/v1/orders/{order_id}/trackers/{tracker_id}/status",
                 json={"status": "CANCELLED"},
                 headers=headers,
             )

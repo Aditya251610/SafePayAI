@@ -20,6 +20,7 @@ already require for an unreachable adapter.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -115,9 +116,15 @@ async def get_capture_facts(
     currency = body.get("currency")
     if capture_id is None or amount_minor is None or currency is None:
         return None
+    # checkout exposes its own order-status vocabulary (CAPTURED/CAPTURE_PENDING/...), not
+    # PayPal's capture-status vocabulary that check_capture_identity enforces (COMPLETED/
+    # PARTIALLY_REFUNDED). Map the one checkout status that means "captured, refundable"
+    # until checkout exposes the real PayPal capture status directly.
+    raw_status = str(body.get("capture_status") or body.get("status") or "")
+    status = "COMPLETED" if raw_status == "CAPTURED" else raw_status
     return CaptureFacts(
         capture_id=str(capture_id),
-        status=str(body.get("capture_status", body.get("status", ""))),
+        status=status,
         amount_minor=int(amount_minor),
         refunded_total_minor=int(body.get("refunded_total_minor", 0)),
         currency=str(currency),
@@ -151,8 +158,13 @@ async def get_order_identity(
     )
 
 
-async def get_protected_until(order_id: str, token: str | None = None) -> Any | None:
-    """Best-effort read of the demo protection window from checkout's order facts (spec s10)."""
+async def get_protected_until(
+    order_id: str, window_hold_days: int, token: str | None = None
+) -> Any | None:
+    """Demo protection window: checkout's order response has no literal `protected_until`
+    field (known gap, flagged in this module's docstring) -- derive it here instead from
+    the order's own `created_at` + the mandate's `window_hold_days` (already fetched into
+    terms_snapshot by open_case), rather than waiting on a checkout schema change."""
     token = token or mint_outbound_token("checkout")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
@@ -166,7 +178,14 @@ async def get_protected_until(order_id: str, token: str | None = None) -> Any | 
         body = resp.json()
     except ValueError:
         return None
-    return body.get("protected_until")
+    created_at_raw = body.get("created_at")
+    if not created_at_raw:
+        return None
+    try:
+        created_at = datetime.fromisoformat(str(created_at_raw))
+    except ValueError:
+        return None
+    return created_at + timedelta(days=window_hold_days)
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,7 +239,7 @@ async def refund_capture(
 ) -> AdapterResult:
     """POST /captures/{capture_id}/refund on paypal-adapter (spec s7 step 2)."""
     token = token or mint_outbound_token("paypal-adapter")
-    headers = {"PayPal-Request-Id": str(request_id)}
+    headers = {"PayPal-Request-Id": str(request_id), "X-Authorization-Ticket": ticket}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     payload = {
@@ -242,9 +261,12 @@ async def refund_capture(
     except httpx.HTTPError as exc:
         return AdapterResult(False, None, None, f"connection_error: {exc}")
     try:
-        body = resp.json() if resp.content else None
+        envelope = resp.json() if resp.content else None
     except ValueError:
-        body = None
+        envelope = None
+    # paypal-adapter wraps every response in {ok, status, data, error, ...} (ops._envelope);
+    # the refund_id/status/capture_id fields callers need live under "data", not top-level.
+    body = (envelope or {}).get("data") if envelope else None
     return AdapterResult(
         resp.status_code in (200, 201),
         resp.status_code,
@@ -265,9 +287,10 @@ async def get_refund(refund_id: str, token: str | None = None) -> AdapterResult:
     except httpx.HTTPError as exc:
         return AdapterResult(False, None, None, f"connection_error: {exc}")
     try:
-        body = resp.json() if resp.content else None
+        envelope = resp.json() if resp.content else None
     except ValueError:
-        body = None
+        envelope = None
+    body = (envelope or {}).get("data") if envelope else None
     return AdapterResult(
         resp.status_code == 200, resp.status_code, body, f"status={resp.status_code}"
     )
@@ -285,9 +308,10 @@ async def reconcile_refund(request_id: UUID, token: str | None = None) -> Adapte
     except httpx.HTTPError as exc:
         return AdapterResult(False, None, None, f"connection_error: {exc}")
     try:
-        body = resp.json() if resp.content else None
+        envelope = resp.json() if resp.content else None
     except ValueError:
-        body = None
+        envelope = None
+    body = (envelope or {}).get("data") if envelope else None
     return AdapterResult(
         resp.status_code in (200, 201),
         resp.status_code,

@@ -60,8 +60,10 @@ async def assemble_facts_and_decide(
 
     mandate_hash_valid = terms is not None
     protected_until: datetime | None = None
-    if case.get("mandate_id") and case.get("order_id"):
-        protected_until_raw = await clients.get_protected_until(case["order_id"])
+    if case.get("mandate_id") and case.get("order_id") and terms is not None:
+        protected_until_raw = await clients.get_protected_until(
+            case["order_id"], terms.window_hold_days
+        )
         if isinstance(protected_until_raw, str):
             try:
                 protected_until = datetime.fromisoformat(protected_until_raw)

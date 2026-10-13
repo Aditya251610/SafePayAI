@@ -406,7 +406,11 @@ async def execute_refund(session: AsyncSession, case_id: UUID) -> ExecuteOutcome
         invoice_id=invoice_id,
         amount_minor=offer["amount_minor"],
         currency=offer["currency"],
-        ticket="",
+        # Placeholder until PS_RESOLUTION_TICKET_HMAC_KEY wiring lands (mirrors checkout's
+        # own create_order placeholder, services/checkout/app/routers/carts.py): a non-empty
+        # ticket is required by paypal-adapter's require_authorization_ticket gate, which
+        # today only checks presence, not a real signed ticket.
+        ticket=str(request_id),
     )
     sent_at = repo.now_utc()
     await repo.update_attempt_status(

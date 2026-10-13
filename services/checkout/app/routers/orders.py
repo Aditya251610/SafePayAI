@@ -55,10 +55,11 @@ def _buyer_id(principal: Principal) -> str:
     return principal.buyer_id or principal.sub
 
 
-def _order_view(row: dict) -> dict:
+def _order_view(row: dict, capture_row: dict | None = None) -> dict:
     return {
         "order_id": str(row["order_id"]),
         "cart_id": str(row["cart_id"]),
+        "buyer_id": str(row["buyer_id"]),
         "mandate_id": str(row["mandate_id"]),
         "status": row["status"],
         "total_minor": row["total_minor"],
@@ -68,6 +69,11 @@ def _order_view(row: dict) -> dict:
         "failure_code": row["failure_code"],
         "created_at": row["created_at"].strftime("%Y-%m-%dT%H:%M:%SZ"),
         "updated_at": row["updated_at"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # The REAL PayPal capture id, distinct from paypal_order_id (an order can have its
+        # own id separate from the capture object nested under it) -- resolution's refund
+        # path needs this exact id, not the order id, to call POST /captures/{id}/refund.
+        "capture_id": capture_row["capture_id"] if capture_row else None,
+        "capture_status": capture_row["paypal_status"] if capture_row else None,
     }
 
 
@@ -756,11 +762,14 @@ async def get_order(
 ) -> dict:
     async with session.begin():
         row = await repo.get_order_row(session, order_id)
+        capture_row = (
+            await repo.get_capture_row(session, order_id) if row is not None else None
+        )
     if row is None:
         raise CheckoutError(404, "ORDER_NOT_FOUND", "order not found")
     if principal.role == "buyer" and str(row["buyer_id"]) != _buyer_id(principal):
         raise CheckoutError(404, "ORDER_NOT_FOUND", "order not found")
-    return _order_view(row)
+    return _order_view(row, capture_row)
 
 
 @router.get("/orders/{order_id}/receipt")
