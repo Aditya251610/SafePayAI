@@ -80,6 +80,16 @@ class Settings(BaseSettings):
     human_review_sla_target_s: int | None = None
     case_report_max_chars: int = 4000
 
+    # POST /internal/tick window checks (T12/T21/T22/T23) -- no spec-given numbers, so these
+    # are small documented defaults rather than magic numbers inline in the tick use case.
+    resolution_grace_period_s: int = (
+        3600  # RESOLVED_REFUNDED/RESOLVED_RESHIP -> CLOSED (I)
+    )
+    appeal_window_s: int = 259200  # DECLINED -> CLOSED, 3 days (I)
+    tick_reconcile_limit: int = (
+        50  # reconcile_attempts() limit when driven by the tick, not a request
+    )
+
     tick_secret: str = ""
     demo_mode: bool = True
     log_level: str = "INFO"

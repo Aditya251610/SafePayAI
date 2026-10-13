@@ -162,6 +162,17 @@ def upgrade() -> None:
     # not imply the former. outbox.seq is bigserial.
     conn.execute(sa.text(f'GRANT USAGE ON SEQUENCE "{SCHEMA}".outbox_seq_seq TO "{RUNTIME_ROLE}"'))
 
+    # Seed the single control_flags row (id=1), fail-closed (frozen=true), mirroring
+    # resolution's own 0001_baseline.py control_flags seed. svc_paypal only has SELECT/UPDATE
+    # on this table (no INSERT, see the grant above), so this row can only ever be created
+    # here, as the migration role -- app.control_flags.set_frozen UPDATEs it, never INSERTs.
+    conn.execute(
+        sa.text(
+            f'INSERT INTO "{SCHEMA}".control_flags (id, money_enabled, frozen) '
+            "VALUES (1, false, true)"
+        )
+    )
+
 
 def downgrade() -> None:
     for table in ("outbox", "control_flags", "ticket_nonces", "refund_ledger", "call_ledger"):

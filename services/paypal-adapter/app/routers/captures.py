@@ -2,7 +2,8 @@
 
 refund_capture (not create_refund, per the confirmed rename) is real as of Wave 5B/paypal-
 adapter-refund-mcp: real PayPal call via app.ops, backed by the call_ledger/refund_ledger
-idempotency flow. get_capture stays a Wave 4 501 stub -- out of this task's scope.
+idempotency flow. get_capture is also real as of this wave: a plain upstream passthrough
+(GET /v2/payments/captures/{id}), no ledger, no money decision -- same class as get_order.
 
 `compat_router` registers the same refund_capture handler at the bare path (no `/v1` prefix)
 to match resolution's already-merged Wave 5B client (services/resolution/app/clients.py
@@ -23,7 +24,6 @@ from app import ops
 from app.db import get_db
 from app.deps import Caller, require_tool_permission
 from app.paypal_client import PayPalClient, get_paypal_client
-from app.schemas.envelope import not_implemented_envelope
 from app.schemas.orders import RefundCaptureRequest
 from app.settings import Settings, get_settings
 
@@ -44,15 +44,19 @@ def _status_to_http(status: str, ok: bool) -> int:
     return mapping.get(status, 400)
 
 
-@router.get("/captures/{capture_id}", status_code=501)
+@router.get("/captures/{capture_id}")
 async def get_capture(
+    request: Request,
     capture_id: str,
     _caller: Caller = Depends(require_tool_permission("get_capture")),  # noqa: B008
+    client: PayPalClient = Depends(get_paypal_client),
 ) -> JSONResponse:
-    return JSONResponse(
-        status_code=501,
-        content=not_implemented_envelope("get_capture pending Wave 5", str(uuid.uuid4())),
-    )
+    trace_id = _trace_id(request)
+    try:
+        envelope = await ops.get_capture(client, capture_id, trace_id=trace_id)
+    except ops.OpError as exc:
+        return JSONResponse(status_code=exc.http_status, content=ops.error_envelope(exc, trace_id))
+    return JSONResponse(status_code=200, content=envelope)
 
 
 async def _refund_capture_handler(

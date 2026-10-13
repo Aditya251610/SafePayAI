@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
@@ -108,13 +109,19 @@ async def add_tracking(
     token: str | None = None,
 ) -> AdapterResult:
     """POST /v1/orders/{order_id}/track on paypal-adapter (spec s1: tracker id =
-    {capture_id}-{tracking_number}; best-effort signal, never blocks shipment creation)."""
+    {capture_id}-{tracking_number}; best-effort signal, never blocks shipment creation).
+
+    paypal-adapter's AddTrackingRequest is extra="forbid" and requires request_id (its own
+    idempotency key) plus carrier_name_other (it always sends PayPal's carrier="OTHER" with
+    the real name here) -- field names fixed to match now that this endpoint is real (it
+    used to 501 regardless of payload shape, so this mismatch went unnoticed)."""
     token = token or mint_outbound_token("paypal-adapter")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     payload = {
+        "request_id": str(uuid4()),
         "capture_id": capture_id,
         "tracking_number": tracking_number,
-        "carrier": carrier_name,
+        "carrier_name_other": carrier_name,
     }
     try:
         async with _client(settings.paypal_adapter_url) as client:
