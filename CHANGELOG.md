@@ -34,6 +34,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Declare @eslint/eslintrc as an explicit web dependency
 - Audit/integration failing in CI - missing safepayai database
 - Mount paypal-adapter's outbox-flush router
+- Wire real auth and contract fixes found during first end-to-end hero-loop run (#80)
 
 ### Documentation
 
@@ -48,6 +49,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Remove .claude internal docs/config from the public repo
 - Reduce CI/Dependabot noise and add CHANGELOG.md
 - Auto-generate CHANGELOG.md via git-cliff
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
