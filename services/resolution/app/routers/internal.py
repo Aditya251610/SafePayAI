@@ -72,9 +72,12 @@ async def internal_events_receive(
     case (idempotent on (order_id, kind) via open_case) and run the same decide ->
     offer-creation path as a buyer report, skipping triage entirely (spec s3 T5). Deduping
     beyond the (order_id, kind) unique constraint is a no-op per api.md section 6 ("handler
-    is a no-op if the case exists"). mandate.revoked is accepted but not yet actioned here
-    (future work, see api.md section 6 third inbox row); unknown event types are ignored
-    (at-least-once delivery, forward-compatible).
+    is a no-op if the case exists"). mandate.revoked is deliberately a no-op HERE (ignored
+    by `_INBOX_KIND_BY_TYPE`) -- the "blocks pre-authorization for cases not yet opened"
+    rule it drives is enforced at the point a NEW case asks for terms (clients.
+    get_mandate_terms checks live mandate_status, not this event), since resolution never
+    caches mandate state between the event and a later case-open; unknown event types are
+    ignored (at-least-once delivery, forward-compatible).
     """
     # Imported lazily to avoid a cases<->internal router import cycle at module load time.
     from app.routers.cases import decide_and_offer

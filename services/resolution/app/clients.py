@@ -57,8 +57,16 @@ async def get_mandate_terms(
 ) -> tuple[TermsSnapshot | None, str | None, bool]:
     """GET /mandates/{id}/terms. Returns (TermsSnapshot|None, terms_hash|None, hmac_valid).
 
-    None terms = unreachable/malformed (D0 FACT_UNAVAILABLE). hmac_valid False maps to
-    ReasonCode.TERMS_INVALID (spec s4 D0, s6 check 3).
+    None terms = unreachable/malformed/revoked (D0 FACT_UNAVAILABLE). hmac_valid False maps
+    to ReasonCode.TERMS_INVALID (spec s4 D0, s6 check 3).
+
+    api.md section 6 (confirmed D1, 00-platform-prd.md): "mandate.revoked blocks
+    pre-authorization for cases not yet opened; opened cases keep their terms snapshot."
+    Since terms_snapshot is read once and frozen at open_case time (never re-fetched for an
+    existing case -- see open_case.py), the only place this rule can be enforced is HERE:
+    if the mandate is already revoked/expired/exhausted at the moment a NEW case asks for
+    terms, return None (same as unreachable) so open_case freezes no protection for it,
+    rather than silently granting full terms to a case opened after revocation.
     """
     token = token or mint_outbound_token("mandate")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
@@ -72,6 +80,9 @@ async def get_mandate_terms(
     try:
         body = resp.json()
     except ValueError:
+        return None, None, False
+
+    if body.get("mandate_status") != "active":
         return None, None, False
 
     protection = body.get("protection") or {}

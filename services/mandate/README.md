@@ -5,9 +5,11 @@ Pure authority service for SafePayAI: signs and holds the immutable buyer Mandat
 counters) under row locks, and issues per-order protection grants that survive
 revoke/expiry. No LLM, no PayPal credentials, no catalog dependency.
 
-Wave 4 status: contracts + skeleton only. All routes except `/healthz`, `/readyz`
-return `501 not_implemented`. Canonicalization, hashing/HMAC, state derivation,
-evaluate/reserve/commit business logic lands in Wave 5.
+Fully implemented and live-tested against the real PayPal sandbox: sign, canonicalize/
+hash/HMAC, evaluate/reserve/commit/release spend reservations under row locks, and
+revoke (verified live — a real revoked mandate correctly blocks protection for any
+case opened against it afterward, while cases already opened under it keep their
+frozen terms snapshot, per the confirmed "revoke = future spend only" rule).
 
 ## Run alone
 

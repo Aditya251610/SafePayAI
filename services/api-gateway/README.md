@@ -6,13 +6,17 @@ proxies `/api/<svc>/*` to the owning service, and enforces CSRF/CORS/rate limits
 and header stripping. Owns only the `gateway` schema (users, sessions, csrf_uses,
 signing_keys, settings) - no business data.
 
-Wave 5 status: real logic for sessions/login/logout, argon2id passwords, RS256
-internal JWT minting + `/.well-known/jwks.json` with kid rotation, role guards,
-an in-process rate limiter on auth endpoints, and the generic `/api/<svc>/*`
-proxy (header allowlist, JWT mint, forward, response filter, idempotency and
-money-routes checks). `GET /api/auth/csrf` and the ops/BFF endpoints remain
-`501 not_implemented` stubs - out of this pass's scope; see the handoff notes in
-the PR/report for the full list of flagged scope cuts and deviations.
+Real logic for sessions/login/logout, argon2id passwords, RS256 internal JWT
+minting + `/.well-known/jwks.json` with kid rotation (this is the JWKS every
+other backend service verifies internal tokens against), role guards, an
+in-process rate limiter on auth endpoints, `GET /api/auth/csrf`, and the
+generic `/api/<svc>/*` proxy (header allowlist, JWT mint, forward, response
+filter, idempotency and money-routes checks). The ops endpoints
+(`/api/ops/status|freeze|tick`) and the BFF read endpoints
+(`/api/bff/buyer-home|orders/{id}|merchant-queue`) remain `501 not_implemented`
+— these are frontend-facing convenience aggregation endpoints, not on the
+backend money path, and were out of scope while the backend was built directly
+against each service.
 
 ## Run alone
 

@@ -4,9 +4,9 @@ Seeded, read-only product catalog for SafePayAI (12 items, 3 virtual merchants,
 sandbox/demo data only). Serves item/merchant/category listings and server-authoritative
 price resolution; never trusts a caller-supplied price.
 
-Wave 4 status: contracts + skeleton only. All routes except `/health`, `/healthz`,
-`/readyz` return `501 not_implemented`. Business logic (pricing algorithm, seeding
-admin flows) lands in Wave 5.
+Fully implemented: item/merchant/category listings, server-authoritative price
+resolution, and the seeded demo catalog (12 items, 3 merchants) all real and in use
+by every live checkout flow run against this backend.
 
 ## Run alone
 

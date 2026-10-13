@@ -27,8 +27,11 @@ uv run pytest
 
 ## Status
 
-Wave 4 scaffold only: `/classify`, `/draft`, `/brief` return `501 Not Implemented` after
-auth/schema validation. `/health`, `/healthz`, `/readyz`, `/health/deep` are real. The LLM
-provider adapters in `app/llm_provider.py` are wired to `libs/common`'s `LLMGateway`
-interface but raise `NotImplementedError` on every call — no Gemini/Groq SDK calls exist
-yet; that is Wave 5.
+Fully implemented with real Gemini/Groq calls through `app/llm_provider.py`.
+`resolution`'s `/classify` contract was wrong for most of this project's history (sent/
+parsed a shape that never matched this service's real, already-correct schema) — fixed
+on the `resolution` side; this service's own `/classify`, `/draft`, `/brief` were never
+the problem. Known gap: `resolution` currently sends an empty `timeline` and
+`item_titles` on every real call (neither `tracking` nor `checkout` expose that data
+yet), so this service's `InconsistencyFlag`/timeline-consistency output is weaker than
+designed until that's wired up.
