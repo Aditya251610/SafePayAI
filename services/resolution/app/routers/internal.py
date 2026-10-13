@@ -11,6 +11,7 @@ from safepayai_common.outbox import OutboxRelayConfig
 from safepayai_common.outbox import flush_outbox as relay_flush_outbox
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import repo
 from app.db import get_session
 from app.deps import require_internal_jwt, require_tick_secret
 from app.domain.states import CaseKind, CaseOrigin
@@ -92,11 +93,31 @@ async def internal_events_receive(
     return {"ok": True, "handled": True, "case_id": str(opened.case_id)}
 
 
-@router.get("/outbox", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.get("/outbox")
 async def internal_outbox_pull(
-    after: int = 0, claims: dict = Depends(require_internal_jwt)
-) -> None:
-    raise _not_implemented("GET /internal/outbox")
+    after: int = 0,
+    claims: dict = Depends(require_internal_jwt),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """api.md section 2: "S -- Pull catch-up" (ADR-003). Read-only debug/catch-up endpoint
+    for a consumer that may have missed outbox rows via the push relay; mirrors
+    services/mandate/app/routers/internal.py's outbox_pull shape."""
+    rows = await repo.get_outbox_after(session, after=after)
+    return {
+        "events": [
+            {
+                "seq": r["seq"],
+                "event_id": str(r["event_id"]),
+                "type": r["type"],
+                "version": r["version"],
+                "aggregate_id": r["aggregate_id"],
+                "payload": r["payload"],
+                "trace_id": r["trace_id"],
+                "created_at": r["created_at"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            for r in rows
+        ]
+    }
 
 
 @router.post("/outbox/flush")

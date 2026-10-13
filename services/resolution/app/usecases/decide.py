@@ -8,7 +8,7 @@ Port calls (triage, mandate, tracking, checkout) are your adapters; this file on
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,23 +83,79 @@ async def assemble_facts_and_decide(
         carrier_agrees = tracking_facts.carrier_agrees
         carrier_status = tracking_facts.carrier_status
 
-    triage_body = await clients.classify_triage(
-        case["order_id"], case.get("untrusted_text")
+    # Assemble triage-ai's real ClassifyRequest shape (order/timeline facts), per
+    # services/triage-ai/app/schemas/triage.py. Business logic (this assembly) stays in
+    # resolution's own usecase, not in libs/common or the thin clients.py adapter.
+    order_date = case["opened_at"].date()  # fallback proxy if checkout is unreachable
+    order_state_raw: str | None = None
+    if case.get("order_id"):
+        order_state_facts = await clients.get_order_state_facts(case["order_id"])
+        if order_state_facts is not None:
+            order_date = order_state_facts.created_at.date()
+            order_state_raw = order_state_facts.status
+    order_facts_payload = {
+        "order_ref": case["order_id"] or str(case_id),
+        "order_date": order_date.isoformat(),
+        "promised_by": protected_until.date().isoformat() if protected_until else None,
+        "demo_now": now.isoformat(),
+        "state": order_state_raw or (capture.status if capture else "UNKNOWN"),
+        # checkout's GET /orders/{id} does not expose line-item titles today (known gap,
+        # see this module's clients.py docstring) -- empty list, which the schema defaults to.
+        "item_titles": [],
+        "amount_minor": capture.amount_minor if capture else None,
+        "currency": capture.currency if capture else None,
+    }
+    # Tracking's GET /shipments/{order_id} exposes only an aggregate `consistency`/latest
+    # shipment status today, not a full per-event history -- sending an empty timeline
+    # (schema default) rather than blocking this task on a new tracking endpoint. Noted as
+    # a tradeoff, not silently dropped.
+    timeline_payload: list[dict] = []
+    triage_origin = "buyer_report" if case["origin"] == "BUYER_REPORT" else "detector"
+
+    triage_result = await clients.classify_triage(
+        case_id=case_id,
+        trace_id=str(uuid4()),
+        origin=triage_origin,
+        buyer_text=case.get("untrusted_text"),
+        timeline=timeline_payload,
+        order=order_facts_payload,
     )
-    if triage_body is not None:
-        triage_ok = bool(triage_body.get("ok", False))
-        triage_confidence = float(triage_body.get("confidence", 0.0))
-        injection_suspected = bool(triage_body.get("injection_suspected", False))
+    if triage_result is not None:
+        triage_ok = triage_result.route == "PROCEED"
+        triage_confidence = triage_result.confidence
+        injection_suspected = triage_result.injection_suspected
     elif case["origin"] == "DETECTOR":
         # spec s3 T5: detector origin (kind already known) does not need triage-ai.
         triage_ok = True
         triage_confidence = 1.0
         injection_suspected = False
     else:
-        # triage-ai unreachable/not built -> fail closed (spec s4 D1).
+        # triage-ai unreachable/malformed -> fail closed (spec s4 D1).
         triage_ok = False
         triage_confidence = 0.0
         injection_suspected = False
+
+    # Reclassify case.kind from triage's answer for BUYER_REPORT-origin cases ONLY (DETECTOR
+    # cases already know their kind for certain and must not be overridden). Only on the
+    # FIRST pass out of PROBLEM_DETECTED (mirrors the T5/T6/T7/T8 guard below) so a
+    # re-evaluation call (e.g. execute_refund's re-check) never flip-flops kind. Guarded
+    # against the (order_id, kind) unique constraint: if a case already exists for this
+    # order under triage's proposed kind (e.g. a DETECTOR case for the same order/kind),
+    # skip the reclassification rather than risk an IntegrityError mid-transaction -- a
+    # rare collision, left as OTHER rather than crashing the decide path.
+    if (
+        case["origin"] == "BUYER_REPORT"
+        and triage_result is not None
+        and triage_result.category != kind
+        and case["kind"] == CaseKind.OTHER.value
+        and CaseState(case["state"]) == CaseState.PROBLEM_DETECTED
+    ):
+        collision = await repo.get_case_by_order_and_kind(
+            session, case["order_id"], triage_result.category.value
+        )
+        if collision is None:
+            kind = triage_result.category
+            await repo.update_case_kind(session, case_id, kind.value)
 
     buyer_completed_refunds_in_window: int | None = None
     if case.get("buyer_id"):

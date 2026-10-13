@@ -210,7 +210,7 @@ def _mock_money_path(
     async def fake_tracking(order_id: str, kind: CaseKind, token: str | None = None):
         return clients.TrackingFacts(carrier_status="IN_TRANSIT", carrier_agrees=True)
 
-    async def fake_triage(order_id: str, untrusted_text, token: str | None = None):
+    async def fake_triage(**kwargs):
         return None
 
     monkeypatch.setattr(clients, "get_order_identity", fake_identity)
@@ -376,3 +376,122 @@ async def test_execute_refund_blocked_when_frozen(
     case = await repo.get_case(session, opened.case_id)
     assert case is not None
     assert case["state"] == "APPROVED"
+
+
+async def test_buyer_report_reclassifies_kind_from_triage_on_first_pass(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The actual bug fix: a BUYER_REPORT case opens as a kind=OTHER placeholder, and the
+    first assemble_facts_and_decide pass reclassifies it to triage's real category and
+    persists that back to the cases row (not just the in-memory DecisionFacts)."""
+    mandate_id, capture_id, buyer_id = "mandate-4", "cap-4", "buyer-4"
+    _mock_money_path(
+        monkeypatch, mandate_id=mandate_id, capture_id=capture_id, buyer_id=buyer_id
+    )
+
+    async def fake_triage(**kwargs):
+        return clients.TriageResult(
+            category=CaseKind.DAMAGED,
+            confidence=0.88,
+            route="PROCEED",
+            reasons=["item arrived damaged per buyer photos"],
+            injection_suspected=False,
+        )
+
+    monkeypatch.setattr(clients, "classify_triage", fake_triage)
+
+    opened = await open_case(
+        session,
+        OpenCaseCommand(
+            order_id=uuid4(),
+            kind=CaseKind.OTHER,
+            origin=CaseOrigin.BUYER_REPORT,
+            source_event_id=None,
+            untrusted_text="it arrived broken",
+        ),
+    )
+    await session.commit()
+
+    await assemble_facts_and_decide(session, opened.case_id, CFG)
+    await session.commit()
+
+    case = await repo.get_case(session, opened.case_id)
+    assert case is not None
+    assert case["kind"] == CaseKind.DAMAGED.value
+
+    # A re-evaluation pass (case is no longer in PROBLEM_DETECTED) must not flip kind again,
+    # even if triage were to return a different category.
+    async def fake_triage_other(**kwargs):
+        return clients.TriageResult(
+            category=CaseKind.WRONG_ITEM,
+            confidence=0.9,
+            route="PROCEED",
+            reasons=[],
+            injection_suspected=False,
+        )
+
+    monkeypatch.setattr(clients, "classify_triage", fake_triage_other)
+    await assemble_facts_and_decide(session, opened.case_id, CFG)
+    await session.commit()
+
+    case_after = await repo.get_case(session, opened.case_id)
+    assert case_after is not None
+    assert case_after["kind"] == CaseKind.DAMAGED.value
+
+
+async def test_buyer_report_kind_reclassification_skips_on_collision(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If a case already exists for (order_id, triage's proposed kind) -- e.g. a DETECTOR
+    case for the same order under LATE -- the reclassification is skipped rather than
+    risking the (order_id, kind) unique constraint; the BUYER_REPORT case stays OTHER."""
+    order_id = uuid4()
+    mandate_id, capture_id, buyer_id = "mandate-5", "cap-5", "buyer-5"
+    _mock_money_path(
+        monkeypatch, mandate_id=mandate_id, capture_id=capture_id, buyer_id=buyer_id
+    )
+
+    async def fake_triage_other(**kwargs):
+        return None
+
+    monkeypatch.setattr(clients, "classify_triage", fake_triage_other)
+    await open_case(
+        session,
+        OpenCaseCommand(
+            order_id=order_id,
+            kind=CaseKind.LATE,
+            origin=CaseOrigin.DETECTOR,
+            source_event_id=uuid4(),
+            untrusted_text=None,
+        ),
+    )
+    await session.commit()
+
+    async def fake_triage_late(**kwargs):
+        return clients.TriageResult(
+            category=CaseKind.LATE,
+            confidence=0.9,
+            route="PROCEED",
+            reasons=[],
+            injection_suspected=False,
+        )
+
+    monkeypatch.setattr(clients, "classify_triage", fake_triage_late)
+    opened = await open_case(
+        session,
+        OpenCaseCommand(
+            order_id=order_id,
+            kind=CaseKind.OTHER,
+            origin=CaseOrigin.BUYER_REPORT,
+            source_event_id=None,
+            untrusted_text="still hasn't arrived",
+        ),
+    )
+    await session.commit()
+
+    await assemble_facts_and_decide(session, opened.case_id, CFG)
+    await session.commit()
+
+    case = await repo.get_case(session, opened.case_id)
+    assert case is not None
+    assert case["kind"] == CaseKind.OTHER.value

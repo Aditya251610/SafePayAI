@@ -189,6 +189,46 @@ async def get_protected_until(
 
 
 @dataclass(frozen=True, slots=True)
+class OrderStateFacts:
+    """Subset of checkout's GET /orders/{id} needed for triage-ai's OrderFacts.order_date/
+    state fields -- NOT the same as CaptureFacts (that one maps checkout's status vocabulary
+    to PayPal's capture-status vocabulary; this one keeps checkout's raw status string and
+    created_at, which triage-ai's schema wants verbatim)."""
+
+    created_at: datetime
+    status: str
+
+
+async def get_order_state_facts(
+    order_id: str, token: str | None = None
+) -> OrderStateFacts | None:
+    """GET /orders/{order_id} on checkout. None = unreachable/malformed; callers fall back
+    to a proxy (case.opened_at) for order_date and capture.status (or "UNKNOWN") for state."""
+    token = token or mint_outbound_token("checkout")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        async with _client(settings.checkout_url, settings.adapter_timeout_s) as client:
+            resp = await client.get(f"/orders/{order_id}", headers=headers)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code != 200:
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    created_at_raw = body.get("created_at")
+    status = body.get("status")
+    if not created_at_raw or not status:
+        return None
+    try:
+        created_at = datetime.fromisoformat(str(created_at_raw))
+    except ValueError:
+        return None
+    return OrderStateFacts(created_at=created_at, status=str(status))
+
+
+@dataclass(frozen=True, slots=True)
 class TrackingFacts:
     carrier_status: str | None
     carrier_agrees: bool | None
@@ -320,31 +360,97 @@ async def reconcile_refund(request_id: UUID, token: str | None = None) -> Adapte
     )
 
 
-async def classify_triage(
-    order_id: str, untrusted_text: str | None, token: str | None = None
-) -> dict[str, Any] | None:
-    """POST /classify on triage-ai. None = unreachable (D0/D1 fail closed).
+@dataclass(frozen=True, slots=True)
+class TriageResult:
+    """Parsed triage-ai ClassifyResponse (services/triage-ai/app/schemas/triage.py).
 
-    triage-ai is not built yet (CLAUDE.md "Build order: backend first ... all 10 backend
-    services"); this always returns None today, which is the CORRECT fail-closed behaviour
-    (spec s4 D1: triage not ok -> HUMAN_REVIEW), not a workaround.
+    `route == "PROCEED"` maps to the old `triage_ok=True` semantic; `route ==
+    "HUMAN_REVIEW"` maps to `triage_ok=False` (decide.py does this mapping, not here).
+    `injection_suspected` has no 1:1 field in ClassifyResponse -- it's a heuristic derived
+    from `reasons`/`timeline_flags` (see classify_triage's docstring for the exact rule).
+    """
+
+    category: CaseKind
+    confidence: float
+    route: str  # Literal["PROCEED", "HUMAN_REVIEW"]
+    reasons: list[str]
+    injection_suspected: bool
+
+
+async def classify_triage(
+    *,
+    case_id: UUID,
+    trace_id: str,
+    origin: str,
+    buyer_text: str | None,
+    timeline: list[dict[str, Any]],
+    order: dict[str, Any],
+    token: str | None = None,
+) -> TriageResult | None:
+    """POST /classify on triage-ai (ClassifyRequest in -> ClassifyResponse out, per
+    services/triage-ai/app/schemas/triage.py -- the authoritative, already-implemented
+    contract). None = unreachable, non-200, or malformed/unparseable response; callers
+    (decide.py) treat that as a missing fact and fail closed to HUMAN_REVIEW (spec s4 D1).
+
+    `origin` must already be the lowercase triage-ai vocabulary ("buyer_report"/"detector"),
+    `order` an OrderFacts-shaped dict, `timeline` a list of TimelineEvent-shaped dicts --
+    decide.py assembles these (business logic stays out of this client module).
     """
     if not settings.triage_ai_url:
         return None
     token = token or mint_outbound_token("triage-ai")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
+    payload = {
+        "case_id": str(case_id),
+        "trace_id": trace_id,
+        "origin": origin,
+        "buyer_text": buyer_text,
+        "timeline": timeline,
+        "order": order,
+    }
     try:
         async with _client(settings.triage_ai_url, settings.triage_timeout_s) as client:
-            resp = await client.post(
-                "/classify",
-                json={"order_id": order_id, "untrusted_text": untrusted_text},
-                headers=headers,
-            )
+            resp = await client.post("/classify", json=payload, headers=headers)
     except httpx.HTTPError:
         return None
     if resp.status_code != 200:
         return None
     try:
-        return dict(resp.json())
+        body = resp.json()
     except ValueError:
         return None
+
+    category_raw = body.get("category")
+    try:
+        category = CaseKind(category_raw) if category_raw else None
+    except ValueError:
+        category = None
+    route = body.get("route")
+    confidence = body.get("confidence")
+    reasons_raw = body.get("reasons")
+    reasons = [str(r) for r in reasons_raw] if isinstance(reasons_raw, list) else []
+    timeline_flags_raw = body.get("timeline_flags")
+    timeline_flags = timeline_flags_raw if isinstance(timeline_flags_raw, list) else []
+
+    if category is None or route not in ("PROCEED", "HUMAN_REVIEW"):
+        return None
+    if not isinstance(confidence, (int, float)):
+        return None
+
+    # Heuristic mapping for injection_suspected (no such field in ClassifyResponse):
+    # true if any reason string mentions "injection", OR any timeline_flags entry is a
+    # WARN-severity InconsistencyFlag (both are triage-ai's existing signals for "don't
+    # trust this at face value" -- WARN vs INFO severity is triage-ai's own distinction,
+    # per services/triage-ai/app/schemas/triage.py InconsistencyFlag).
+    injection_suspected = any("injection" in r.lower() for r in reasons) or any(
+        isinstance(flag, dict) and flag.get("severity") == "WARN"
+        for flag in timeline_flags
+    )
+
+    return TriageResult(
+        category=category,
+        confidence=float(confidence),
+        route=str(route),
+        reasons=reasons,
+        injection_suspected=injection_suspected,
+    )
