@@ -602,6 +602,35 @@ async def get_notifications(
     return [dict(row) for row in result.mappings().all()]
 
 
+async def insert_notification(
+    session: AsyncSession,
+    *,
+    case_id: uuid.UUID,
+    buyer_id: str | None,
+    type: str,
+    body: str,
+) -> None:
+    """Writer half of GET /notifications -- currently the ONLY delivery path for a tier-2
+    approval-link token issued by review_decision/merchant_action (issue_approval's return
+    value is otherwise unrecoverable: only its sha256 is persisted in approvals.token_hash,
+    by design, and there is no other notification channel wired in this wave)."""
+    await session.execute(
+        text(
+            """
+            INSERT INTO resolution.notifications (id, case_id, buyer_id, type, body)
+            VALUES (:id, :case_id, :buyer_id, :type, :body)
+            """
+        ),
+        {
+            "id": uuid.uuid4(),
+            "case_id": case_id,
+            "buyer_id": buyer_id,
+            "type": type,
+            "body": body,
+        },
+    )
+
+
 async def insert_case_signal(
     session: AsyncSession,
     *,

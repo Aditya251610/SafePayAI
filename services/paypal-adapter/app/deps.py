@@ -44,6 +44,7 @@ DEFAULT_ALLOWLIST: dict[str, set[str]] = {
     "get_refund": {"resolution", "svc:resolution"},
     "add_tracking": {"tracking", "svc:tracking"},
     "get_tracking": {"tracking", "svc:tracking", "resolution", "svc:resolution"},
+    "cancel_tracking": {"tracking", "svc:tracking"},
 }
 
 

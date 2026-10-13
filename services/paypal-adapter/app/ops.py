@@ -949,6 +949,37 @@ async def get_tracking(
     return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=200, data=data)
 
 
+async def cancel_tracking(
+    client: PayPalClient, order_id: str, tracker_id: str, *, status: str, trace_id: str
+) -> dict[str, Any]:
+    """PATCH /v1/orders/{order_id}/trackers/{tracker_id}/status. `status` is already
+    constrained to the literal "CANCELLED" by UpdateTrackerStatusRequest's schema pattern
+    (api.md section 5.1/spec s1: irreversible once applied -- a second cancel on an
+    already-CANCELLED tracker gets PayPal's own 400, mapped to UPSTREAM_REJECTED below, not
+    specially detected as a replay since there is nothing to safely no-op into)."""
+    try:
+        await client.update_tracker_status(order_id, tracker_id, status=status)
+    except PayPalAuthError as exc:
+        raise OpError(
+            "REJECTED", "UPSTREAM_AUTH_FAILED", "PayPal authentication failed", http_status=503
+        ) from exc
+    except PayPalUpstreamError as exc:
+        if exc.status_code == 404:
+            raise OpError("REJECTED", "NOT_FOUND", "tracker not found", http_status=404) from exc
+        if exc.status_code is None or exc.status_code >= 500:
+            raise OpError(
+                "REJECTED",
+                "UPSTREAM_UNAVAILABLE",
+                "PayPal unavailable",
+                http_status=502,
+                retryable=True,
+            ) from exc
+        raise OpError(
+            "REJECTED", "UPSTREAM_REJECTED", "PayPal rejected the request", http_status=422
+        ) from exc
+    return _envelope(ok=True, status="OK", trace_id=trace_id, paypal_http_status=204, data=None)
+
+
 async def reconcile(session: AsyncSession, request_id: str, *, trace_id: str) -> dict[str, Any]:
     """POST /reconcile/{request_id} (api.md section 6/spec.md s6): idempotent replay lookup
     against our own ledger -- never re-calls PayPal, never mutates state. UNKNOWN/IN_FLIGHT/

@@ -282,7 +282,14 @@ async def review_decision(
             offer = await create_offer(
                 session, cid, decision, action, ApprovalTier.APPROVE
             )
-            await issue_approval(session, offer)
+            token = await issue_approval(session, offer)
+            await repo.insert_notification(
+                session,
+                case_id=cid,
+                buyer_id=case.get("buyer_id"),
+                type="APPROVAL_LINK",
+                body=f"{settings.approval_base_url}/approvals/{token}",
+            )
             offer_id = str(offer.offer_id)
             outcome = await apply_transition(
                 session,
@@ -547,7 +554,14 @@ async def merchant_action(
             if old_offer is not None:
                 await repo.supersede_active_offers(session, cid, new_offer.offer_id)
                 await repo.revoke_approvals_for_proposal(session, old_offer["id"])
-            await issue_approval(session, new_offer)
+            token = await issue_approval(session, new_offer)
+            await repo.insert_notification(
+                session,
+                case_id=cid,
+                buyer_id=case.get("buyer_id"),
+                type="APPROVAL_LINK",
+                body=f"{settings.approval_base_url}/approvals/{token}",
+            )
             outcome = await apply_transition(
                 session,
                 TransitionRequest(

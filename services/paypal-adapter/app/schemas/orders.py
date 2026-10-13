@@ -66,5 +66,15 @@ class AddTrackingRequest(BaseModel):
     notify_payer: bool = False
 
 
+class UpdateTrackerStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = Field(pattern=r"^CANCELLED$")
+    # Only CANCELLED is a legal PATCH target per the documented sandbox spike (ON_HOLD/
+    # DELIVERED -> PayPal 400 INVALID_PARAMETER_VALUE); narrowed to one literal value
+    # rather than a Literal["CANCELLED"] type so the 422 on anything else carries the
+    # same VALIDATION_ERROR shape as every other strict schema in this file.
+
+
 class ControlFlagRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")

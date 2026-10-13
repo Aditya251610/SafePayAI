@@ -8,6 +8,7 @@ single-row UPDATE (rowcount 1 wins); a loser gets the existing result, not an er
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,7 @@ from app.domain.proposal import (
     proposal_hash,
 )
 from app.domain.states import Actor, CaseState
+from app.settings import settings
 from app.usecases.transitions import TransitionRequest, apply_transition
 
 
@@ -63,6 +65,14 @@ async def create_offer(
 
     offer_seq = await repo.get_next_offer_seq(session, case_id)
     offer_id = uuid4()
+    expires_at: datetime | None = None
+    if tier == ApprovalTier.APPROVE:
+        # Tier-2 offers are consumed via a single-use approval link whose own HMAC token
+        # already encodes settings.approval_link_ttl_s (see usecases/approvals.py) -- give
+        # the offer row the same expiry so POST /internal/tick's T12 sweep (OFFERED ->
+        # HUMAN_REVIEW on offer expiry) actually has something to find instead of being a
+        # permanent no-op (get_expired_active_offers only matches expires_at IS NOT NULL).
+        expires_at = repo.now_utc() + timedelta(seconds=settings.approval_link_ttl_s)
     fields = ProposalFields(
         case_id=case_id,
         order_id=case["order_id"],
@@ -87,7 +97,7 @@ async def create_offer(
         currency=decision.currency,
         tier=tier.value,
         proposal_hash=p_hash,
-        expires_at=None,
+        expires_at=expires_at,
     )
     await repo.insert_outbox_event(
         session,
@@ -173,6 +183,14 @@ async def accept_offer(
         if refreshed and refreshed["status"] == "ACCEPTED":
             return AcceptResult(case_id=case["id"], state=case["state"], replayed=True)
         raise ValueError("OFFER_NOT_ACTIVE")
+
+    if offer["action"] == Action.RESHIP.value:
+        # T10's trigger is "buyer chose RESHIP offer AND merchant confirms reship" -- the
+        # buyer's accept only marks the offer ACCEPTED (cas_accept_offer above); the case
+        # stays OFFERED until POST /cases/{id}/merchant-action CONFIRM_RESHIP drives T10
+        # (OFFERED -> RESOLVED_RESHIP). Never T9/APPROVED for a RESHIP offer -- that state
+        # means "ready for execute_refund", which a reship must never trigger.
+        return AcceptResult(case_id=case["id"], state=case["state"], replayed=False)
 
     outcome = await apply_transition(
         session,

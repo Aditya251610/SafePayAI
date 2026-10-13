@@ -301,6 +301,25 @@ class PayPalClient:
             )
         return dict(resp.json())
 
+    async def update_tracker_status(self, order_id: str, tracker_id: str, *, status: str) -> None:
+        """PATCH /v2/checkout/orders/{order_id}/trackers/{tracker_id}. Per the documented
+        sandbox spike (.claude/memory/entries/hackathon-product-selection.md): only
+        status=CANCELLED is accepted (204, irreversible -- a later PATCH on the same
+        tracker 400s); ON_HOLD/DELIVERED are rejected by PayPal itself with
+        INVALID_PARAMETER_VALUE. Not re-confirmed live in this pass (same UNVERIFIED U2
+        caveat as get_tracker) -- see app.ops.cancel_tracking."""
+        resp = await self._request(
+            "PATCH",
+            f"/v2/checkout/orders/{order_id}/trackers/{tracker_id}",
+            json_body={"status": status},
+        )
+        if resp.status_code != 204:
+            raise PayPalUpstreamError(
+                "update_tracker_status failed",
+                status_code=resp.status_code,
+                paypal_name=self._error_name(resp),
+            )
+
     async def verify_webhook_signature(
         self,
         *,
