@@ -130,6 +130,50 @@ async def get_case_for_update(
     return dict(row) if row else None
 
 
+async def list_cases(
+    session: AsyncSession,
+    *,
+    status: str | None = None,
+    order_id: str | None = None,
+    buyer_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """GET /cases (api.md section 3.3-adjacent list route). buyer_id scopes a buyer's own
+    view (api.md section 1 ownership rule); status/order_id are optional filters."""
+    conditions = []
+    params: dict[str, Any] = {"limit": limit}
+    if status:
+        conditions.append("state = :status")
+        params["status"] = status
+    if order_id:
+        conditions.append("order_id = :order_id")
+        params["order_id"] = order_id
+    if buyer_id:
+        conditions.append("buyer_id = :buyer_id")
+        params["buyer_id"] = buyer_id
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    result = await session.execute(
+        text(
+            f"SELECT {CASE_COLUMNS} FROM resolution.cases {where_clause} "
+            "ORDER BY opened_at DESC LIMIT :limit"
+        ),
+        params,
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
+async def get_review_queue(session: AsyncSession) -> list[dict[str, Any]]:
+    """GET /review/queue (api.md section 3.3): HUMAN_REVIEW cases, oldest first."""
+    result = await session.execute(
+        text(
+            f"SELECT {CASE_COLUMNS} FROM resolution.cases "
+            "WHERE state = 'HUMAN_REVIEW' ORDER BY human_review_entered_at ASC NULLS LAST, "
+            "opened_at ASC"
+        )
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
 async def insert_case(
     session: AsyncSession,
     *,

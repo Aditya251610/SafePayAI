@@ -9,6 +9,7 @@ scaffold usecases for (resolution/app/usecases only covers open_case/decide/offe
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -35,6 +36,8 @@ from app.schemas.cases import (
     ReportCaseRequest,
     ReportCaseResponse,
     ReviewDecisionRequest,
+    ReviewQueueItem,
+    ReviewQueueResponse,
 )
 from app.settings import settings
 from app.usecases.decide import assemble_facts_and_decide
@@ -150,18 +153,62 @@ async def get_case_route(
     )
 
 
-@router.get("/cases", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def list_cases(
+@router.get("/cases")
+async def list_cases_route(
     status_: str | None = None,
     order_id: str | None = None,
     claims: dict = Depends(require_internal_jwt),
-) -> None:
-    raise _not_implemented("GET /cases")
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    role = (claims.get("act") or {}).get("role")
+    buyer_id = str(claims.get("buyer_id")) if role == "buyer" else None
+    rows = await repo.list_cases(
+        session, status=status_, order_id=order_id, buyer_id=buyer_id
+    )
+    return {
+        "items": [
+            {
+                "case_id": str(r["id"]),
+                "order_id": r["order_id"],
+                "state": r["state"],
+                "kind": r["kind"],
+                "origin": r["origin"],
+                "opened_at": r["opened_at"].isoformat(),
+            }
+            for r in rows
+        ]
+    }
 
 
-@router.get("/review/queue", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def review_queue(claims: dict = Depends(require_internal_jwt)) -> None:
-    raise _not_implemented("GET /review/queue")
+@router.get("/review/queue")
+async def review_queue(
+    claims: dict = Depends(require_internal_jwt),
+    session: AsyncSession = Depends(get_session),
+) -> ReviewQueueResponse:
+    rows = await repo.get_review_queue(session)
+    now = repo.now_utc()
+    target = settings.human_review_sla_target_s
+    items = []
+    for r in rows:
+        entered_at = r.get("human_review_entered_at") or r["opened_at"]
+        age_s = int((now - entered_at).total_seconds())
+        sla_state: Literal["NO_TARGET", "WITHIN", "OVER"] = (
+            "NO_TARGET" if target is None else ("OVER" if age_s > target else "WITHIN")
+        )
+        reason = r.get("human_review_reason")
+        items.append(
+            ReviewQueueItem(
+                case_id=str(r["id"]),
+                kind=r["kind"],
+                reason_codes=[reason] if reason else [],
+                entered_at=entered_at.isoformat(),
+                age_s=age_s,
+                sla_target_s=target,
+                sla_state=sla_state,
+                brief=reason or "Case requires human review.",
+            )
+        )
+    return ReviewQueueResponse(items=items)
 
 
 @router.post(
