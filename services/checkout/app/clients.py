@@ -178,7 +178,10 @@ async def create_order(
         return AdapterResult(False, False, None, "conflict, treat as unknown")
     if 400 <= resp.status_code < 500 and resp.status_code != 409:
         return AdapterResult(
-            False, True, None, f"definite failure status={resp.status_code} body={resp.text[:300]}"
+            False,
+            True,
+            None,
+            f"definite failure status={resp.status_code} body={resp.text[:300]}",
         )
     return AdapterResult(False, False, None, f"status={resp.status_code}")
 

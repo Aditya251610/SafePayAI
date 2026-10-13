@@ -11,7 +11,11 @@ from collections.abc import AsyncIterator
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
-from safepayai_common.auth.jwt import ServiceJWTConfig, mint_service_token, verify_service_token
+from safepayai_common.auth.jwt import (
+    ServiceJWTConfig,
+    mint_service_token,
+    verify_service_token,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
