@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import repo
 from app.db import get_session
 from app.deps import require_idempotency_key, require_internal_jwt
-from app.domain.policy import PolicyClass, PolicyConfig, config_from_settings
+from app.domain.policy import Decision, PolicyClass, PolicyConfig, config_from_settings
 from app.domain.proposal import Action, ApprovalTier
 from app.domain.states import CaseKind, CaseOrigin
 from app.schemas.cases import (
@@ -67,6 +67,36 @@ def _policy_config() -> PolicyConfig:
     )
 
 
+async def decide_and_offer(
+    session: AsyncSession, case_id: UUID
+) -> tuple[Decision, OfferView | None]:
+    """Shared decide -> offer-creation step (api.md s3.1, s3.2 OFFERED path), used by both
+    POST /cases/report (BUYER_REPORT) and the DETECTOR-origin inbox handler
+    (routers/internal.py) so a late/lost detection reaches the same automated offer path
+    without needing triage-ai at all (spec s3 T5: detector origin skips triage)."""
+    decision = await assemble_facts_and_decide(session, case_id, _policy_config())
+
+    offer_view: OfferView | None = None
+    if decision.klass in (PolicyClass.INSIDE_TERMS, PolicyClass.OUTSIDE_TERMS):
+        tier = (
+            ApprovalTier.CONFIRM
+            if decision.klass == PolicyClass.INSIDE_TERMS
+            else ApprovalTier.APPROVE
+        )
+        offer = await create_offer(session, case_id, decision, Action.REFUND, tier)
+        offer_view = OfferView(
+            offer_id=str(offer.offer_id),
+            action=offer.action.value,
+            amount_minor=offer.amount_minor,
+            currency=offer.currency,
+            tier=offer.tier.value,
+            status=offer.status.value,
+            proposal_hash=offer.proposal_hash,
+            expires_at="",
+        )
+    return decision, offer_view
+
+
 @router.post("/cases/report", status_code=201)
 async def report_case(
     body: ReportCaseRequest,
@@ -84,30 +114,7 @@ async def report_case(
             untrusted_text=body.text[: settings.case_report_max_chars],
         ),
     )
-    decision = await assemble_facts_and_decide(
-        session, opened.case_id, _policy_config()
-    )
-
-    offer_view: OfferView | None = None
-    if decision.klass in (PolicyClass.INSIDE_TERMS, PolicyClass.OUTSIDE_TERMS):
-        tier = (
-            ApprovalTier.CONFIRM
-            if decision.klass == PolicyClass.INSIDE_TERMS
-            else ApprovalTier.APPROVE
-        )
-        offer = await create_offer(
-            session, opened.case_id, decision, Action.REFUND, tier
-        )
-        offer_view = OfferView(
-            offer_id=str(offer.offer_id),
-            action=offer.action.value,
-            amount_minor=offer.amount_minor,
-            currency=offer.currency,
-            tier=offer.tier.value,
-            status=offer.status.value,
-            proposal_hash=offer.proposal_hash,
-            expires_at="",
-        )
+    decision, offer_view = await decide_and_offer(session, opened.case_id)
     await session.commit()
 
     case = await repo.get_case(session, opened.case_id)

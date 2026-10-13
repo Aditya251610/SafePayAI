@@ -14,9 +14,11 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import repo
+from app.deps import mint_outbound_token
 from app.domain.demo_clock import sim_now as compute_sim_now
 from app.domain.detector import DetectionThresholds, ShipmentFacts, evaluate_detections
 from app.domain.shipment_states import ShipmentStatus, TransitionSource
@@ -55,9 +57,10 @@ def _facts_from_row(row: dict, last_event_sim: datetime | None) -> ShipmentFacts
 
 async def _materialize_full(
     session: AsyncSession, shipment_id: UUID, sim_now: datetime
-) -> tuple[int, int]:
+) -> tuple[int, int, list[dict]]:
     """Apply the due scheduled-event chain, then evaluate detections. Returns (applied,
-    detected)."""
+    detected, new_detection_events) -- the last is the payload list for notifying resolution
+    after commit (resolution/api.md section 6 inbox: shipment.late_detected/lost_detected)."""
     applied = 0
     due_events = await repo.get_due_scheduled_events(session, shipment_id, sim_now)
     for event in due_events:
@@ -83,11 +86,12 @@ async def _materialize_full(
 
     row = await repo.get_shipment(session, shipment_id)
     if row is None:
-        return applied, 0
+        return applied, 0, []
     last_event_sim = await repo.get_last_event_sim(session, shipment_id)
     facts = _facts_from_row(row, last_event_sim)
 
     detected = 0
+    new_events: list[dict] = []
     for candidate in evaluate_detections(facts, sim_now, _thresholds()):
         inserted = await repo.insert_detection_if_absent(
             session,
@@ -104,26 +108,59 @@ async def _materialize_full(
             if candidate.kind.value == "LATE"
             else "shipment.lost_detected"
         )
+        payload = {
+            "shipment_id": str(candidate.shipment_id),
+            "order_id": facts.order_id,
+            "capture_id": facts.capture_id,
+            "mandate_id": facts.mandate_id,
+            "kind": candidate.kind.value,
+            "promised_at_sim": candidate.promised_at_sim.isoformat(),
+            "detected_at_sim": candidate.detected_at_sim.isoformat(),
+            "carrier_status": candidate.carrier_status.value,
+            "anomaly": candidate.anomaly.value if candidate.anomaly else None,
+            "simulated": True,
+        }
         await repo.insert_outbox_event(
             session,
             event_id=candidate.event_id,
             event_type=event_type,
             aggregate_id=str(shipment_id),
-            payload={
-                "shipment_id": str(candidate.shipment_id),
-                "order_id": facts.order_id,
-                "capture_id": facts.capture_id,
-                "mandate_id": facts.mandate_id,
-                "kind": candidate.kind.value,
-                "promised_at_sim": candidate.promised_at_sim.isoformat(),
-                "detected_at_sim": candidate.detected_at_sim.isoformat(),
-                "carrier_status": candidate.carrier_status.value,
-                "anomaly": candidate.anomaly.value if candidate.anomaly else None,
-                "simulated": True,
-            },
+            payload=payload,
+        )
+        new_events.append(
+            {"event_id": candidate.event_id, "type": event_type, "payload": payload}
         )
 
-    return applied, detected
+    return applied, detected, new_events
+
+
+async def _notify_resolution(new_events: list[dict]) -> None:
+    """Best-effort push of newly-detected LATE/LOST events to resolution's inbox
+    (resolution/api.md section 6). Never raises: the outbox row already persisted the
+    event for later catch-up (ADR-003), so a failure here is not data loss, only a
+    delayed automated case open -- resolution's own reconcile/manual paths still work."""
+    if not settings.resolution_url or not new_events:
+        return
+    token = mint_outbound_token("resolution")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    async with httpx.AsyncClient(
+        base_url=settings.resolution_url, timeout=httpx.Timeout(5.0)
+    ) as client:
+        for event in new_events:
+            try:
+                await client.post(
+                    "/internal/events",
+                    json={
+                        "event_id": str(event["event_id"]),
+                        "type": event["type"],
+                        "version": 1,
+                        "aggregate_id": event["payload"]["shipment_id"],
+                        "payload": event["payload"],
+                    },
+                    headers=headers,
+                )
+            except httpx.HTTPError:
+                continue
 
 
 class TickTrigger(StrEnum):
@@ -190,13 +227,15 @@ async def run_tick(session: AsyncSession, trigger: TickTrigger) -> TickResult:
 
     applied_total = 0
     detected_total = 0
+    all_new_events: list[dict] = []
     shipments = await repo.get_active_nonterminal_shipments(session)
     for shipment in shipments:
-        applied, detected = await _materialize_full(
+        applied, detected, new_events = await _materialize_full(
             session, shipment["id"], current_sim_now
         )
         applied_total += applied
         detected_total += detected
+        all_new_events.extend(new_events)
 
     await repo.finish_detector_run(
         session,
@@ -205,6 +244,7 @@ async def run_tick(session: AsyncSession, trigger: TickTrigger) -> TickResult:
         detected_count=detected_total,
     )
     await session.commit()
+    await _notify_resolution(all_new_events)
 
     return TickResult(
         trigger=trigger,
@@ -223,7 +263,14 @@ async def materialize_shipment(
     Inputs: session, shipment id, current sim_now.
     Output: number of scheduled events applied.
     Edge cases: called before every GET /shipments/* and every resolution call (spec s5 item 3);
-    events apply in seq order with occurred_at_sim = due_at_sim (spec s4 item 1).
+    events apply in seq order with occurred_at_sim = due_at_sim (spec s4 item 1). Caller is
+    responsible for committing before any new detections are notified to resolution (see
+    callers in routers/shipments.py).
     """
-    applied, _detected = await _materialize_full(session, shipment_id, sim_now)
+    applied, _detected, new_events = await _materialize_full(
+        session, shipment_id, sim_now
+    )
+    if new_events:
+        await session.commit()
+        await _notify_resolution(new_events)
     return applied
