@@ -72,6 +72,13 @@ async def pg_env(test_db_name):
     admin_conn = await asyncpg.connect(dsn=_asyncpg_dsn(test_db_name))
     try:
         await admin_conn.execute(f"ALTER ROLE svc_paypal WITH PASSWORD '{svc_password}'")
+        # The baseline migration seeds control_flags fail-closed (frozen=true, see
+        # app.control_flags / app.ops._money_frozen's static-env-OR-DB-flag check added
+        # alongside the get_capture/tracking/control wave). This test suite's
+        # PS_PAYPALADAPTER_MONEY_ENABLED=true below is a deliberate "money enabled for this
+        # test run" signal -- unfreeze the service-local DB flag to match, same as a real
+        # deployment would via POST /v1/control/unfreeze.
+        await admin_conn.execute("UPDATE paypal.control_flags SET frozen = false WHERE id = 1")
     finally:
         await admin_conn.close()
 
