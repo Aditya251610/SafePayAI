@@ -491,6 +491,18 @@ async def consent_approval(
             )
         raise HTTPException(status_code=409, detail="OFFER_NOT_ACTIVE")
 
+    if offer["action"] == Action.RESHIP.value:
+        # Same guard as usecases.offers.accept_offer: a RESHIP offer's consent only marks
+        # it ACCEPTED (cas_accept_offer above) -- the case stays wherever it is until
+        # POST /cases/{id}/merchant-action CONFIRM_RESHIP drives T10. Never T9/APPROVED for
+        # a RESHIP offer, since APPROVED is "ready for execute_refund" and a reship must
+        # never trigger a real refund. (Found live: a fresh RESHIP offer accepted through
+        # this exact path incorrectly executed a real PayPal refund before this fix.)
+        await session.commit()
+        return ApprovalConsentResponse(
+            case_id=str(case["id"]), state=case["state"], execution="DONE"
+        )
+
     try:
         await apply_transition(
             session,
