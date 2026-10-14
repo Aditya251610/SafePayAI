@@ -16,14 +16,16 @@ services (`api-gateway`, `mandate`, `catalog`, `shopping-agent`, `checkout`, `pa
 `tracking`, `resolution`, `triage-ai`, `audit`) have real business logic, not stubs. Verified live,
 twice, with real PayPal sandbox orders (not mocked): the automated late/lost detection → case →
 offer → buyer accept → refund loop, the buyer-report → AI triage → human-reviewer → approval-link
-→ refund loop, merchant-override and reship paths, and mandate revocation correctly blocking future
-(not past) protection. Frontend (`services/web`) has not been started — backend-first build order,
-per project convention.
+→ refund loop, merchant-override and reship paths, mandate revocation correctly blocking future
+(not past) protection, and real PayPal webhook delivery + signature verification (a real sandbox
+webhook subscription, delivered to a temporary public tunnel, passed verification end to end).
+Frontend (`services/web`) has not been started — backend-first build order, per project convention.
 
-Known remaining edge cases (not yet exercised live): PayPal webhook signature verification (no way
-to receive a real PayPal-sent webhook in local dev), concurrency races beyond basic CAS testing,
-and AI triage's injection/timeline-consistency signal is weaker than designed (tracking doesn't yet
-expose a per-shipment-event timeline to triage-ai).
+Known remaining gaps: full `authorization_ticket` HMAC verification at the paypal-adapter boundary
+is still deferred (presence-only check today, not signature verification), concurrency races beyond
+basic CAS testing (duplicate-refund, timeout-after-success, and reconcile-replay-against-genuinely-
+UNKNOWN are untested), and AI triage's injection/timeline-consistency signal is weaker than designed
+(tracking doesn't yet expose a per-shipment-event timeline to triage-ai).
 
 ## Honesty / limitations (read this before judging)
 
