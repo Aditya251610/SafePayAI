@@ -27,6 +27,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Implement resolution GET /cases and GET /review/queue (were 501 stubs) (#82)
 - Complete the resolution reviewer wave + fix real paypal-adapter stub gap (#83)
 - Implement checkout and shopping-agent internal outbox/reconcile/events endpoints (#87)
+- Wire real CSRF, missing gateway routes, and a frontend integration contract (#90)
 
 ### Bug Fixes
 
@@ -58,6 +59,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Remove .claude internal docs/config from the public repo
 - Reduce CI/Dependabot noise and add CHANGELOG.md
 - Auto-generate CHANGELOG.md via git-cliff
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
