@@ -29,6 +29,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Implement checkout and shopping-agent internal outbox/reconcile/events endpoints (#87)
 - Wire real CSRF, missing gateway routes, and a frontend integration contract (#90)
 - Real per-merchant tenancy and a merchant-scoped order filter (#92)
+- Implement gateway's ops and bff aggregator routes (#93)
 
 ### Bug Fixes
 
@@ -82,4 +83,5 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
