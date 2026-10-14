@@ -85,6 +85,43 @@ async def db_engine(migrated_db: str):
     await engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _default_mandate_reservation_mocks(monkeypatch: pytest.MonkeyPatch):
+    """Every confirm_cart call now also creates a real mandate reservation
+    (feat/mandate-reservation-wiring) -- default every reservation-lifecycle call
+    to a plain success so the many existing tests that only mock resolve_prices/
+    evaluate_mandate/create_order don't all need updating individually. A test
+    that specifically exercises reservation refusal/unavailability overrides one
+    of these with its own monkeypatch.setattr after this fixture runs."""
+    from app import clients
+
+    async def _ok_create_reservation(*args, **kwargs):
+        return clients.AdapterResult(
+            True,
+            True,
+            {"reservation_id": "res-test-default", "state": "RESERVED"},
+            "ok",
+        )
+
+    async def _ok_authorize_capture(*args, **kwargs):
+        return clients.AdapterResult(True, True, {"state": "CAPTURING"}, "ok")
+
+    async def _ok_commit(*args, **kwargs):
+        return clients.AdapterResult(True, True, {"state": "CAPTURED"}, "ok")
+
+    async def _ok_release(*args, **kwargs):
+        return clients.AdapterResult(True, True, {"state": "RELEASED"}, "ok")
+
+    async def _ok_mark_unknown(*args, **kwargs):
+        return clients.AdapterResult(True, True, {"state": "CAPTURE_UNKNOWN"}, "ok")
+
+    monkeypatch.setattr(clients, "create_reservation", _ok_create_reservation)
+    monkeypatch.setattr(clients, "authorize_capture_reservation", _ok_authorize_capture)
+    monkeypatch.setattr(clients, "commit_reservation", _ok_commit)
+    monkeypatch.setattr(clients, "release_reservation", _ok_release)
+    monkeypatch.setattr(clients, "mark_reservation_unknown", _ok_mark_unknown)
+
+
 @pytest_asyncio.fixture
 async def client(migrated_db: str):
     os.environ["PS_CHECKOUT_DATABASE_URL"] = migrated_db

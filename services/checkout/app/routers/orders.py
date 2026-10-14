@@ -76,6 +76,7 @@ def _order_view(row: dict, capture_row: dict | None = None) -> dict:
         # path needs this exact id, not the order id, to call POST /captures/{id}/refund.
         "capture_id": capture_row["capture_id"] if capture_row else None,
         "capture_status": capture_row["paypal_status"] if capture_row else None,
+        "mandate_reservation_id": row.get("mandate_reservation_id"),
     }
 
 
@@ -135,6 +136,31 @@ async def _record_capture_failed(
                 "final_status": new_status,
             },
         )
+
+    # Best-effort, outside the txn. new_status="CAPTURE_UNKNOWN" (e.g. the
+    # not-approved race) is NOT terminal -- the order can still resolve via
+    # reconcile, so mark the reservation unknown rather than releasing it.
+    # Every other new_status here is terminal: release. capture_outcome=
+    # "NOT_CAPTURED" is only enforced by mandate when the reservation is
+    # CAPTURING/CAPTURE_UNKNOWN (post authorize-capture); passing it
+    # unconditionally is correct and harmless when the reservation never left
+    # RESERVED (pre authorize-capture failures like ORDER_LOOKUP_FAILED).
+    reservation_id = fresh.get("mandate_reservation_id")
+    if reservation_id:
+        settings = get_settings()
+        token = mint_outbound_token(settings, "mandate")
+        if new_status == "CAPTURE_UNKNOWN":
+            await clients.mark_reservation_unknown(
+                settings, token, reservation_id, reason_code=reason[:64]
+            )
+        else:
+            await clients.release_reservation(
+                settings,
+                token,
+                reservation_id,
+                reason_code=reason[:64],
+                capture_outcome="NOT_CAPTURED",
+            )
 
 
 async def _finalize_captured(
@@ -237,6 +263,37 @@ async def _finalize_captured(
                     "final_status": "CAPTURED",
                 },
             )
+
+    # Best-effort, outside the DB transaction: money has already moved at PayPal,
+    # so a commit failure here must never undo the capture or fail this call --
+    # it only means mandate's own spent/reserved bookkeeping (and the refund-terms
+    # grant commit creates) is out of sync until reconciled by hand. Logged via the
+    # same outbox-event channel other post-capture anomalies already use.
+    reservation_id = fresh.get("mandate_reservation_id")
+    if reservation_id:
+        settings = get_settings()
+        commit_result = await clients.commit_reservation(
+            settings,
+            mint_outbound_token(settings, "mandate"),
+            reservation_id,
+            capture_id=capture_id or order_id,
+            captured_amount_minor=amount_minor,
+            currency=currency,
+            captured_at=captured_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        if not commit_result.ok:
+            async with session.begin():
+                await repo.insert_outbox_event(
+                    session,
+                    event_type="order.capture_failed",
+                    aggregate_id=order_id,
+                    payload={
+                        "order_id": order_id,
+                        "mandate_id": mandate_id,
+                        "reason": f"RESERVATION_COMMIT_FAILED:{commit_result.detail[:100]}",
+                        "final_status": "CAPTURED",
+                    },
+                )
 
     return {
         "status": "CAPTURED",
@@ -465,6 +522,45 @@ async def _attempt_capture(
                 "failure_code": None,
             }
 
+    # Point of no return (mandate's own term, reservations.py's authorize-capture
+    # docstring): the last moment a revoked/expired mandate can stop a capture
+    # before real money moves. A reservation-less order (pre-existing row from
+    # before this wiring landed, or the reservation create silently failed to
+    # persist) skips this gate rather than getting stuck forever.
+    reservation_id = order_row.get("mandate_reservation_id")
+    if reservation_id:
+        auth_result = await clients.authorize_capture_reservation(
+            settings,
+            mint_outbound_token(settings, "mandate"),
+            reservation_id,
+            order_id=order_id,
+            amount_minor=order_row["total_minor"],
+        )
+        if not auth_result.ok:
+            if auth_result.definite:
+                await _record_capture_failed(
+                    session,
+                    order_id,
+                    mandate_id,
+                    "CANCELLED_REVOKED",
+                    auth_result.code or "MANDATE_REVOKED",
+                )
+                return {
+                    "status": "CANCELLED_REVOKED",
+                    "message_code": "MANDATE_REVOKED",
+                    "failure_code": auth_result.code or "MANDATE_REVOKED",
+                }
+            # Indefinite (mandate unreachable/timeout): never proceed to the real
+            # PayPal capture without a definite go-ahead. Safe to retry -- mandate's
+            # own authorize-capture is idempotent on an already-CAPTURING reservation,
+            # and the local order is already CAPTURING with the same
+            # capture_request_id, so the next attempt just re-asks.
+            return {
+                "status": "CAPTURING",
+                "message_code": "TRY_AGAIN",
+                "failure_code": None,
+            }
+
     ticket = (
         mint_ticket(
             settings,
@@ -556,9 +652,11 @@ async def _handle_capture_result(
 
     # Indefinite (timeout/5xx/202 IN_PROGRESS/malformed): CAPTURE_UNKNOWN. Never
     # recaptured blindly -- the next attempt reconciles via get_order first.
+    reservation_id = None
     async with session.begin():
         fresh = await repo.get_order_row(session, order_id)
         if fresh is not None and fresh["status"] not in TERMINAL_STATES:
+            reservation_id = fresh.get("mandate_reservation_id")
             await repo.cas_order_status(
                 session,
                 order_id,
@@ -566,6 +664,17 @@ async def _handle_capture_result(
                 "CAPTURE_UNKNOWN",
                 failure_code=capture_result.detail[:64],
             )
+    # Best-effort, outside the txn -- mirrors _record_capture_failed's
+    # CAPTURE_UNKNOWN branch. Reservation is CAPTURING here (authorize-capture
+    # already succeeded, since capture_order was reached at all).
+    if reservation_id:
+        settings = get_settings()
+        await clients.mark_reservation_unknown(
+            settings,
+            mint_outbound_token(settings, "mandate"),
+            reservation_id,
+            reason_code=capture_result.detail[:64],
+        )
     return {
         "status": "CAPTURE_UNKNOWN",
         "message_code": "TRY_AGAIN",
@@ -684,14 +793,28 @@ async def orders_cancel(
     if order_row is None:
         raise CheckoutError(404, "ORDER_NOT_FOUND", "order not found")
 
+    cancelled_reservation_id = None
     async with session.begin():
         await repo.mark_return_binding_used(session, state_hash)
         fresh = await repo.get_order_row(session, str(binding["order_id"]))
         if fresh is not None and fresh["status"] in ("CREATING", "AWAITING_APPROVAL"):
+            cancelled_reservation_id = fresh.get("mandate_reservation_id")
             await repo.cas_order_status(
                 session, str(binding["order_id"]), fresh["version"], "CANCELLED_BUYER"
             )
             fresh = await repo.get_order_row(session, str(binding["order_id"]))
+
+    # Best-effort, outside the txn -- buyer cancelled before approval/capture, the
+    # reservation is still RESERVED (authorize-capture is only reached once the
+    # buyer approves and a capture attempt actually starts).
+    if cancelled_reservation_id:
+        settings = get_settings()
+        await clients.release_reservation(
+            settings,
+            mint_outbound_token(settings, "mandate"),
+            cancelled_reservation_id,
+            reason_code="CANCELLED_BUYER",
+        )
 
     final_row = fresh or order_row
     return {"order_id": str(final_row["order_id"]), "status": final_row["status"]}

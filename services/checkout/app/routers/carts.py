@@ -410,6 +410,32 @@ async def confirm_cart(
                 f"mandate re-check failed at confirm time: {codes}",
             )
 
+        # Real cap enforcement (mandate's own reservation state machine, row-locked
+        # server-side) -- committed_minor above stays as a redundant check, not the
+        # authority. mandate_id|order_id is the idempotency key on mandate's side, so
+        # a replay of this same confirm_cart call (e.g. after a timeout) is safe.
+        reservation_result = await clients.create_reservation(
+            settings,
+            recheck_token,
+            mandate_id=str(cart_row["mandate_id"]),
+            order_id=order_id,
+            amount_minor=cart_row["total_minor"],
+            currency=cart_row["currency"],
+            proposal_hash=cart_row["proposal_hash"] or "",
+            cart=cart_for_eval,
+        )
+        if not reservation_result.ok:
+            if reservation_result.definite:
+                raise CheckoutError(
+                    409,
+                    reservation_result.code or "RESERVATION_REFUSED",
+                    "mandate refused the reservation at confirm time",
+                )
+            raise CheckoutError(
+                503, "MANDATE_UNAVAILABLE", "mandate unreachable for reservation"
+            )
+        mandate_reservation_id = (reservation_result.body or {}).get("reservation_id")
+
         await repo.insert_order(
             session,
             order_id=order_id,
@@ -423,6 +449,7 @@ async def confirm_cart(
             custom_id=str(cart_row["mandate_id"]),
             invoice_id=order_id,
             merchant_ids=cart_row["merchant_ids"],
+            mandate_reservation_id=mandate_reservation_id,
         )
         await repo.insert_return_binding(
             session,
