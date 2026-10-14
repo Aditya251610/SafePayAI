@@ -79,3 +79,5 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
+- Regenerate changelog [skip ci]
+- Fail-fast on placeholder secrets and harden docker/compose (#91)
