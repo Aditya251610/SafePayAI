@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     trusted_proxy_count: int = 0
     approval_url_host_allowlist: str | None = None
 
+    # Credentials this service holds to call OTHER services' own /internal/tick
+    # (POST /api/ops/tick, REQ-GW-044) -- named after the owning service, same
+    # convention as paypal-adapter's checkout/resolution ticket keys. Each must match
+    # the value configured as that service's own INTERNAL_TICK_SECRET /
+    # PS_RESOLUTION_TICK_SECRET; these are shared-secret pairs distributed out of band.
+    tracking_tick_secret: str | None = None
+    resolution_tick_secret: str | None = None
+
+    build_id: str = "dev"
+
     sentry_dsn: str | None = None
 
     @model_validator(mode="after")
@@ -75,6 +85,8 @@ class Settings(BaseSettings):
             {
                 "PS_APIGATEWAY_CSRF_KEY": self.csrf_key,
                 "PS_APIGATEWAY_TICK_SECRET": self.tick_secret,
+                "PS_APIGATEWAY_TRACKING_TICK_SECRET": self.tracking_tick_secret,
+                "PS_APIGATEWAY_RESOLUTION_TICK_SECRET": self.resolution_tick_secret,
             }
         )
         return self

@@ -232,11 +232,33 @@ mode status to the frontend; infer it from a 404 on first use, or wire one if ne
 | GET | `/api/audit/entries` | session |
 | GET | `/api/audit/verify` | session |
 
+### Ops (`/api/ops/*`)
+| Method | Path | Role | CSRF | Notes |
+|---|---|---|---|---|
+| GET | `/api/ops/status` | session | — | `refunds_frozen` is `"true"\|"false"\|"unknown"`; degrades to `"unknown"` (never a raw error) if the flag owner is unreachable or the caller isn't an operator — treat `"unknown"` as frozen in the UI |
+| POST | `/api/ops/freeze` | operator | yes, purpose `ops_freeze` | `{"frozen": bool, "reason": string}`; forwards to resolution, which audits the change |
+| POST | `/api/ops/tick` | `X-Tick-Secret` header, no session | — | Cron use; drives tracking's + resolution's own `/internal/tick`. 202 with `{"detector": "...", "reconcile": "..."}`, each one of `accepted\|failed\|unavailable\|unconfigured` |
+
+### BFF (`/api/bff/*`)
+| Method | Path | Role | CSRF | Notes |
+|---|---|---|---|---|
+| GET | `/api/bff/orders/{id}` | buyer | — | Aggregates checkout order + tracking shipment + resolution case + audit chain health into one read. 404 if the order itself isn't found/owned; the other three legs degrade to `null` individually (never fail the whole call) |
+| GET | `/api/bff/merchant-queue` | merchant or operator | — | `{"cases": [...], "tracking_pending": null}` — `tracking_pending` is always `null`; tracking has no list-pending-shipments endpoint to aggregate from (see §8) |
+| GET | `/api/bff/buyer-home` | buyer | — | **Still 501.** See §8 — this one has a real missing dependency, not just unbuilt |
+
 ## 8. Known gaps — do not build against these yet
 
-- **`/api/ops/*` and `/api/bff/*` are entirely unimplemented** (501 `not_implemented`
-  on every route). These were scoped as a later wave and never built. Don't call them;
-  there is no fallback behavior to design around, they always 501.
+- **`/api/bff/buyer-home` is unimplemented and genuinely blocked, not just unbuilt.**
+  It needs "mandate list by buyer" and "checkout orders by buyer" endpoints that
+  don't exist anywhere in the service map (mandate has no `GET /mandates` list;
+  checkout's `GET /orders` requires an explicit `mandate_id`, it can't enumerate a
+  buyer's mandates on its own). Adding those is a new feature on mandate/checkout,
+  not a gateway-only fix. Build the buyer home screen from direct proxied reads
+  (`GET /api/checkout/orders?mandate_id=`, `GET /api/mandate/mandates/{id}/terms`,
+  etc.) instead.
+- **`/api/bff/merchant-queue`'s `tracking_pending` is always `null`.** Tracking has
+  no endpoint to list shipments platform-wide (only per-order lookup), so there's
+  nothing to aggregate a pending count from without adding one. Flagged, not faked.
 - **The OpenAPI specs under `contracts/openapi/*.yaml` may be stale** relative to this
   document and the real route set in `app/routers/proxy.py` — they were not
   regenerated as part of this pass. Trust this file and the gateway source over the
