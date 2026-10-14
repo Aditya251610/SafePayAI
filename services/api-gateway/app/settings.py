@@ -8,7 +8,9 @@ never by the running app, and are intentionally NOT in this Settings class.
 
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from safepayai_common.startup_guard import assert_no_placeholder_secrets
 
 
 class Settings(BaseSettings):
@@ -66,6 +68,16 @@ class Settings(BaseSettings):
     approval_url_host_allowlist: str | None = None
 
     sentry_dsn: str | None = None
+
+    @model_validator(mode="after")
+    def _no_placeholder_secrets(self) -> Settings:
+        assert_no_placeholder_secrets(
+            {
+                "PS_APIGATEWAY_CSRF_KEY": self.csrf_key,
+                "PS_APIGATEWAY_TICK_SECRET": self.tick_secret,
+            }
+        )
+        return self
 
 
 def get_settings() -> Settings:

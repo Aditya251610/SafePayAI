@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse
 
 from app.errors import CheckoutError
 from app.routers import carts, health, internal, orders
+from app.settings import get_settings
+
+get_settings()  # fail fast on a placeholder secret before serving any request
 
 app = FastAPI(title="checkout", version="0.1.0")
 

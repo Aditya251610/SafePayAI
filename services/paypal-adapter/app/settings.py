@@ -13,9 +13,10 @@ Forbidden in this env (CI manifest test): LLM_API_KEY, session/CSRF/mandate/appr
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from safepayai_common.outbox import DEV_AUDIT_RELAY_KID, DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
+from safepayai_common.startup_guard import assert_no_placeholder_secrets
 
 
 class Settings(BaseSettings):
@@ -94,6 +95,18 @@ class Settings(BaseSettings):
     paypal_webhook_id: str | None = None
 
     demo_inspector_enabled: bool = False
+
+    @model_validator(mode="after")
+    def _no_placeholder_secrets(self) -> Settings:
+        assert_no_placeholder_secrets(
+            {
+                "PAYPAL_CLIENT_SECRET": self.paypal_client_secret,
+                "PS_CHECKOUT_TICKET_HMAC_KEY": self.checkout_ticket_hmac_key,
+                "PS_RESOLUTION_TICKET_HMAC_KEY": self.resolution_ticket_hmac_key,
+                "PS_PAYPALADAPTER_OUTBOX_FLUSH_SECRET": self.outbox_flush_secret,
+            }
+        )
+        return self
 
 
 def get_settings() -> Settings:

@@ -7,6 +7,9 @@ WORKDIR /workspace
 RUN pip install --no-cache-dir uv
 COPY . .
 RUN uv sync --frozen --no-dev --package ps-shopping-agent
+RUN addgroup --system app && adduser --system --ingroup app app && chown -R app:app /workspace
+ENV UV_CACHE_DIR=/workspace/.cache/uv HOME=/workspace
+USER app
 WORKDIR /workspace/services/shopping-agent
 EXPOSE 8000
 CMD ["uv", "run", "--project", "/workspace", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

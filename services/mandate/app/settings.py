@@ -9,8 +9,10 @@ the shared cron-trigger name used by /internal/* endpoints.
 
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from safepayai_common.outbox import DEV_AUDIT_RELAY_KID, DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
+from safepayai_common.startup_guard import assert_no_placeholder_secrets
 
 
 class Settings(BaseSettings):
@@ -90,6 +92,17 @@ class BareSecrets(BaseSettings):
     mandate_hmac_key: str | None = None
     mandate_hmac_key_previous: str | None = None
     internal_tick_secret: str | None = None
+
+    @model_validator(mode="after")
+    def _no_placeholder_secrets(self) -> BareSecrets:
+        assert_no_placeholder_secrets(
+            {
+                "MANDATE_HMAC_KEY": self.mandate_hmac_key,
+                "MANDATE_HMAC_KEY_PREVIOUS": self.mandate_hmac_key_previous,
+                "INTERNAL_TICK_SECRET": self.internal_tick_secret,
+            }
+        )
+        return self
 
 
 def get_settings() -> Settings:

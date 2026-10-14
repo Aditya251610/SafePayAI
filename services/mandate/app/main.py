@@ -16,6 +16,10 @@ from fastapi.responses import JSONResponse
 
 from app.errors import MandateError
 from app.routers import grants, health, internal, mandates, reservations
+from app.settings import get_bare_secrets, get_settings
+
+get_settings()
+get_bare_secrets()  # fail fast on a placeholder secret before serving any request
 
 app = FastAPI(title="mandate", version="0.1.0")
 
