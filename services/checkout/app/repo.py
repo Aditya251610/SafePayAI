@@ -49,6 +49,87 @@ async def insert_outbox_event(
 
 
 # ---------------------------------------------------------------------------
+# Internal inbox/outbox/reconcile (api.md section 10)
+# ---------------------------------------------------------------------------
+
+
+async def inbox_event_is_new(
+    session: AsyncSession, event_id: str, event_type: str
+) -> bool:
+    """INSERT ... ON CONFLICT DO NOTHING against the (event_id) PK -- True if this is the
+    first time we've seen this event_id (at-least-once delivery, dedupe by event_id, same
+    pattern as resolution's inbox_dedupe)."""
+    result = await session.execute(
+        text(
+            """
+            INSERT INTO checkout.inbox (event_id, type)
+            VALUES (:event_id, :type)
+            ON CONFLICT (event_id) DO NOTHING
+            """
+        ),
+        {"event_id": event_id, "type": event_type},
+    )
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+async def block_carts_for_mandate(session: AsyncSession, mandate_id: str) -> int:
+    """mandate.revoked (api.md s10): block un-captured carts under this mandate so a
+    buyer can't confirm one into an order anymore. Carts that already became an order are
+    untouched here -- that order's own capture-time live mandate check (orders.py's
+    _mandate_status, spec s7 step 4) already catches the revocation organically, no
+    separate flag needed."""
+    result = await session.execute(
+        text(
+            """
+            UPDATE checkout.carts SET status = 'BLOCKED'
+            WHERE mandate_id = :mandate_id AND status IN ('CHECKED', 'NEEDS_CONFIRMATION')
+            """
+        ),
+        {"mandate_id": mandate_id},
+    )
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
+
+async def get_outbox_after(
+    session: AsyncSession, *, after: int, limit: int = 100
+) -> list[dict[str, Any]]:
+    """GET /internal/outbox?after=seq (api.md s10: pull catch-up, ADR-003). Column list
+    matches the real post-0002_outbox_align_schema shape (migrations/versions/
+    0002_outbox_align_schema.py), not the baseline migration's original (pre-alignment)
+    columns -- delivered_at doesn't exist; delivered_to/next_attempt_at/version/trace_id do."""
+    result = await session.execute(
+        text(
+            "SELECT seq, event_id, type, version, aggregate_id, payload, attempts, "
+            "trace_id, created_at, delivered_to, next_attempt_at "
+            "FROM checkout.outbox WHERE seq > :after ORDER BY seq ASC LIMIT :limit"
+        ),
+        {"after": after, "limit": limit},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
+async def get_non_terminal_orders(
+    session: AsyncSession, limit: int = 50
+) -> list[dict[str, Any]]:
+    """POST /internal/reconcile (api.md s10): orders stuck mid-flow (CAPTURABLE_STATES --
+    AWAITING_APPROVAL/APPROVED/CAPTURE_UNKNOWN) that a buyer's own return/capture call
+    never finished for, oldest first."""
+    result = await session.execute(
+        text(
+            """
+            SELECT order_id, mandate_id, status, version, created_at
+            FROM checkout.orders
+            WHERE status IN ('AWAITING_APPROVAL', 'APPROVED', 'CAPTURE_UNKNOWN')
+            ORDER BY created_at ASC
+            LIMIT :limit
+            """
+        ),
+        {"limit": limit},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
+# ---------------------------------------------------------------------------
 # Idempotency
 # ---------------------------------------------------------------------------
 
