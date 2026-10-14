@@ -19,7 +19,7 @@ already require for an unreachable adapter.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -243,6 +243,11 @@ async def get_order_state_facts(
 class TrackingFacts:
     carrier_status: str | None
     carrier_agrees: bool | None
+    # Raw per-event history straight off tracking's own "events" field (tracking's
+    # ShipmentStatus vocabulary, not yet mapped to triage-ai's -- that mapping is
+    # decide.py's job, see TRACKING_TO_TRIAGE_STATUS). Empty if tracking is
+    # unreachable or returned none.
+    events: list[dict] = field(default_factory=list)
 
 
 async def get_tracking_agreement(
@@ -275,7 +280,10 @@ async def get_tracking_agreement(
         carrier_agrees = not delivered
     else:
         carrier_agrees = True
-    return TrackingFacts(carrier_status=carrier_status, carrier_agrees=carrier_agrees)
+    events = body.get("events") or []
+    return TrackingFacts(
+        carrier_status=carrier_status, carrier_agrees=carrier_agrees, events=events
+    )
 
 
 async def refund_capture(

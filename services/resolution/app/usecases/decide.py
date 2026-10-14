@@ -26,6 +26,21 @@ from app.domain.policy import (
 from app.domain.states import Actor, CaseKind, CaseState
 from app.usecases.transitions import TransitionRequest, apply_transition
 
+# tracking's own ShipmentStatus vocabulary -> triage-ai's ShipStatus contract
+# (services/triage-ai/app/schemas/triage.py) -- the two services were built
+# independently and never agreed on one enum; this is the one place that maps
+# between them, kept here (not in clients.py) per this module's existing
+# "business logic stays in the usecase" convention.
+_TRACKING_TO_TRIAGE_STATUS = {
+    "LABEL_CREATED": "LABEL_CREATED",
+    "IN_TRANSIT": "IN_TRANSIT",
+    "OUT_FOR_DELIVERY": "IN_TRANSIT",
+    "EXCEPTION": "DELAYED",
+    "LOST": "LOST_FLAGGED",
+    "DELIVERED": "DELIVERED",
+    "CANCELLED": "UNKNOWN",
+}
+
 
 async def assemble_facts_and_decide(
     session: AsyncSession,
@@ -78,6 +93,7 @@ async def assemble_facts_and_decide(
 
     carrier_agrees: bool | None = None
     carrier_status: str | None = None
+    tracking_facts: clients.TrackingFacts | None = None
     if case.get("order_id"):
         tracking_facts = await clients.get_tracking_agreement(case["order_id"], kind)
         carrier_agrees = tracking_facts.carrier_agrees
@@ -105,11 +121,20 @@ async def assemble_facts_and_decide(
         "amount_minor": capture.amount_minor if capture else None,
         "currency": capture.currency if capture else None,
     }
-    # Tracking's GET /shipments/{order_id} exposes only an aggregate `consistency`/latest
-    # shipment status today, not a full per-event history -- sending an empty timeline
-    # (schema default) rather than blocking this task on a new tracking endpoint. Noted as
-    # a tradeoff, not silently dropped.
-    timeline_payload: list[dict] = []
+    # Tracking's GET /shipments/{order_id} now exposes a real per-event "events" list
+    # (its own ShipmentStatus vocabulary) alongside the aggregate `consistency`
+    # summary; map it into triage-ai's exact TimelineEvent contract here, in the
+    # usecase, same as this module's own convention of keeping that translation out
+    # of the thin clients.py adapter and out of libs/common.
+    timeline_payload = [
+        {
+            "event_id": f"se-{i}",
+            "ts": e.get("occurred_at_sim"),
+            "status": _TRACKING_TO_TRIAGE_STATUS.get(str(e.get("status")), "UNKNOWN"),
+            "note": e.get("note_code"),
+        }
+        for i, e in enumerate(tracking_facts.events if tracking_facts else [])
+    ]
     triage_origin = "buyer_report" if case["origin"] == "BUYER_REPORT" else "detector"
 
     triage_result = await clients.classify_triage(
