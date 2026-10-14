@@ -41,6 +41,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Wire real auth and contract fixes found during first end-to-end hero-loop run (#80)
 - Mandate revocation + capture identity bugs, sync all docs to real tested state (#84)
 - Wire real HMAC authorization-ticket verification + fix mandate-block crash + fix a real refund-race crash (#86)
+- Close 5 backend security/correctness gaps found in a hackathon code review (#88)
 
 ### Documentation
 
@@ -56,6 +57,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Remove .claude internal docs/config from the public repo
 - Reduce CI/Dependabot noise and add CHANGELOG.md
 - Auto-generate CHANGELOG.md via git-cliff
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
