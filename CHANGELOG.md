@@ -31,6 +31,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Real per-merchant tenancy and a merchant-scoped order filter (#92)
 - Implement gateway's ops and bff aggregator routes (#93)
 - Wire a real per-event timeline into triage-ai's consistency checks (#94)
+- Wire mandate's real reservation lifecycle into checkout's capture flow (#95)
 
 ### Bug Fixes
 
@@ -84,6 +85,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
