@@ -53,6 +53,7 @@ at capacity. Rate-limited per IP (`PS_APIGATEWAY_*` auth limits).
 For merchant/operator/reviewer accounts (seeded, not self-service signup). Returns 401
 `UNAUTHENTICATED` for both wrong password and unknown handle — identical in shape and
 timing, don't try to distinguish them in the UI. Rate-limited per (IP, handle) pair.
+Response body includes `principal.merchant_id` (see "Roles" below).
 
 ### `POST /api/auth/logout` → 204
 No body, no CSRF token needed (see section 3). Requires a session.
@@ -67,6 +68,7 @@ who's signed in and what role to render for.
   "role": "buyer",
   "auth_method": "session",
   "display_name": "...",
+  "merchant_id": null,
   "session_expires_at": "2026-...Z"
 }
 ```
@@ -76,6 +78,14 @@ who's signed in and what role to render for.
 each session has exactly one role, fixed at creation. A 403 `FORBIDDEN` response from
 any route means "wrong role for this action", not "not logged in" (that's 401
 `UNAUTHENTICATED`).
+
+**Merchant accounts are real per-merchant tenants, not one shared login.** Each
+merchant-role login is bound to exactly one catalog merchant id (`merchant_id`,
+e.g. `mrc_trailhead`) at the account level — this is the field in `/login` and `/me`
+above, and it's what `GET /api/checkout/orders` uses to scope results (see §7/§8).
+A merchant session with no `merchant_id` bound (shouldn't happen for a real seeded
+account) sees an empty order list, not every merchant's orders — it fails closed,
+not open.
 
 ## 3. CSRF — required on every state-changing call
 
@@ -182,7 +192,7 @@ needs `Idempotency-Key`. **$** = money-route gated.
 | POST | `/api/checkout/orders/{order_id}/capture` | buyer | yes | yes | yes | |
 | GET | `/api/checkout/orders/{order_id}` | session | — | — | | |
 | GET | `/api/checkout/orders/{order_id}/receipt` | session | — | — | | 409 `RECEIPT_NOT_READY` until captured |
-| GET | `/api/checkout/orders` | session | — | — | | **requires** `?mandate_id=`; buyer-scoped only — there is no merchant-scoped order list yet (see §8) |
+| GET | `/api/checkout/orders` | session | — | — | | **requires** `?mandate_id=`; buyer-scoped for buyers, merchant-scoped (by the caller's own `merchant_id`) for merchants, unscoped for operators |
 | POST | `/api/checkout/orders/return` | buyer | yes | — | | body: `{state, token, payer_id}` from the PayPal return redirect |
 | POST | `/api/checkout/orders/cancel` | buyer | yes | — | | body: `{state}` from the PayPal cancel redirect |
 
@@ -227,10 +237,6 @@ mode status to the frontend; infer it from a 404 on first use, or wire one if ne
 - **`/api/ops/*` and `/api/bff/*` are entirely unimplemented** (501 `not_implemented`
   on every route). These were scoped as a later wave and never built. Don't call them;
   there is no fallback behavior to design around, they always 501.
-- **No merchant-scoped order list.** `GET /api/checkout/orders` requires `mandate_id`
-  and is buyer-scoped internally even when called by non-buyer roles — a merchant
-  "orders containing my items" view needs a new filter added to checkout's own
-  `GET /orders` first (not just a gateway proxy line). Flagged, not built.
 - **The OpenAPI specs under `contracts/openapi/*.yaml` may be stale** relative to this
   document and the real route set in `app/routers/proxy.py` — they were not
   regenerated as part of this pass. Trust this file and the gateway source over the

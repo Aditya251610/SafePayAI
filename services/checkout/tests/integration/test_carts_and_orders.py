@@ -309,3 +309,102 @@ async def test_confirm_idempotent_replay_same_key(client, monkeypatch) -> None:
         headers={"Idempotency-Key": "idem-3"},
     )
     assert first.json()["order_id"] == second.json()["order_id"]
+
+
+async def _create_confirmed_order(client, monkeypatch, *, idem_key: str) -> str:
+    async def _resolve(*a, **k):
+        return _priced_response()
+
+    async def _evaluate(*a, **k):
+        return _allow_eval_response()
+
+    async def _create_order(*a, **k):
+        return clients.AdapterResult(
+            True,
+            True,
+            {"order_id": f"PAY-{idem_key}", "approve_url": "https://x"},
+            "created",
+        )
+
+    monkeypatch.setattr(clients, "resolve_prices", _resolve)
+    monkeypatch.setattr(clients, "evaluate_mandate", _evaluate)
+    monkeypatch.setattr(clients, "create_order", _create_order)
+
+    create_resp = await client.post(
+        "/carts",
+        json={
+            "mandate_id": "22222222-2222-2222-2222-222222222222",
+            "lines": [{"sku": "sku-1", "qty": 1}],
+        },
+    )
+    cart_body = create_resp.json()
+    confirm_resp = await client.post(
+        f"/carts/{cart_body['cart_id']}/confirm",
+        json={"proposal_hash": cart_body["proposal_hash"]},
+        headers={"Idempotency-Key": idem_key},
+    )
+    return confirm_resp.json()["order_id"]
+
+
+def _override_principal(role: str, merchant_id: str | None = None) -> None:
+    from app.deps import Principal, require_service_jwt
+    from app.main import app
+
+    app.dependency_overrides[require_service_jwt] = lambda: Principal(
+        sub="test-" + role,
+        role=role,
+        buyer_id="11111111-1111-1111-1111-111111111111",
+        merchant_id=merchant_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_orders_buyer_scoped_to_own_orders(client, monkeypatch) -> None:
+    order_id = await _create_confirmed_order(
+        client, monkeypatch, idem_key="idem-list-1"
+    )
+
+    resp = await client.get(
+        "/orders", params={"mandate_id": "22222222-2222-2222-2222-222222222222"}
+    )
+    assert resp.status_code == 200
+    order_ids = {item["order_id"] for item in resp.json()["items"]}
+    assert order_id in order_ids
+
+
+@pytest.mark.asyncio
+async def test_list_orders_merchant_scoped_to_own_merchant_id(
+    client, monkeypatch
+) -> None:
+    order_id = await _create_confirmed_order(
+        client, monkeypatch, idem_key="idem-list-2"
+    )
+
+    _override_principal("merchant", merchant_id="merchant-1")
+    resp = await client.get(
+        "/orders", params={"mandate_id": "22222222-2222-2222-2222-222222222222"}
+    )
+    assert resp.status_code == 200
+    order_ids = {item["order_id"] for item in resp.json()["items"]}
+    assert order_id in order_ids
+
+    _override_principal("merchant", merchant_id="some-other-merchant")
+    resp = await client.get(
+        "/orders", params={"mandate_id": "22222222-2222-2222-2222-222222222222"}
+    )
+    assert resp.status_code == 200
+    assert order_id not in {item["order_id"] for item in resp.json()["items"]}
+
+
+@pytest.mark.asyncio
+async def test_list_orders_merchant_without_merchant_id_fails_closed(
+    client, monkeypatch
+) -> None:
+    await _create_confirmed_order(client, monkeypatch, idem_key="idem-list-3")
+
+    _override_principal("merchant", merchant_id=None)
+    resp = await client.get(
+        "/orders", params={"mandate_id": "22222222-2222-2222-2222-222222222222"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []

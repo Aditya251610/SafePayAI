@@ -154,7 +154,8 @@ async def login(
             await db.execute(
                 text(
                     """
-                SELECT id, role, actor_type, display_name, password_hash, epoch, disabled_at
+                SELECT id, role, actor_type, display_name, password_hash, epoch,
+                       disabled_at, merchant_id
                 FROM "gateway"."users"
                 WHERE handle = :handle AND is_ephemeral = false
                 """
@@ -188,6 +189,7 @@ async def login(
             "actor_id": user_id,
             "role": row["role"],
             "display_name": row["display_name"],
+            "merchant_id": row["merchant_id"],
         },
         "expires_at": expires_at.isoformat(),
     }
@@ -214,6 +216,7 @@ async def me(principal: Principal = Depends(require_session)) -> dict:
         "role": principal.role,
         "auth_method": "session",
         "display_name": principal.display_name,
+        "merchant_id": principal.merchant_id,
         "session_expires_at": expires_at.isoformat()
         if isinstance(expires_at, datetime)
         else None,

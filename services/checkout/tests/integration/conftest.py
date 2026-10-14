@@ -110,6 +110,7 @@ async def client(migrated_db: str):
         sub="test-buyer",
         role="buyer",
         buyer_id="11111111-1111-1111-1111-111111111111",
+        merchant_id=None,
     )
     app.dependency_overrides[require_service_jwt] = lambda: default_principal
 

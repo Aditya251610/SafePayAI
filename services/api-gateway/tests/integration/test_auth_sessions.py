@@ -44,6 +44,47 @@ async def test_login_success_then_me(app_client, make_user):
     assert me.json()["actor_type"] == "merchant_shared"
 
 
+async def test_login_merchant_carries_merchant_id_through_session(
+    app_client, make_user
+):
+    await make_user(
+        handle="merchant-trailhead",
+        role="merchant",
+        actor_type="merchant",
+        display_name="Trailhead (demo merchant)",
+        password_hash=hash_password("correct-password"),
+        merchant_id="mrc_trailhead",
+    )
+
+    resp = await app_client.post(
+        "/api/auth/login",
+        json={"handle": "merchant-trailhead", "password": "correct-password"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["principal"]["merchant_id"] == "mrc_trailhead"
+
+    me = await app_client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["merchant_id"] == "mrc_trailhead"
+
+
+async def test_login_non_merchant_has_null_merchant_id(app_client, make_user):
+    await make_user(
+        handle="operator-1",
+        role="operator",
+        actor_type="operator",
+        display_name="Operator (demo)",
+        password_hash=hash_password("correct-password"),
+    )
+
+    resp = await app_client.post(
+        "/api/auth/login",
+        json={"handle": "operator-1", "password": "correct-password"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["principal"]["merchant_id"] is None
+
+
 async def test_login_wrong_password_401(app_client, make_user):
     await make_user(
         handle="merchant-2",

@@ -422,6 +422,7 @@ async def confirm_cart(
             create_request_id=create_request_id,
             custom_id=str(cart_row["mandate_id"]),
             invoice_id=order_id,
+            merchant_ids=cart_row["merchant_ids"],
         )
         await repo.insert_return_binding(
             session,

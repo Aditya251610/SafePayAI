@@ -31,6 +31,7 @@ class Principal:
     sid_hash: str
     display_name: str | None = None
     session_expires_at: object = None
+    merchant_id: str | None = None
 
 
 def clear_session_cookie(response: Response, settings: Settings) -> None:
@@ -62,7 +63,8 @@ async def require_session(
                 text(
                     """
                 SELECT s.user_id, s.role, s.epoch, s.expires_at,
-                       u.actor_type, u.display_name, u.disabled_at, u.epoch AS user_epoch
+                       u.actor_type, u.display_name, u.disabled_at, u.epoch AS user_epoch,
+                       u.merchant_id
                 FROM "gateway"."sessions" s
                 JOIN "gateway"."users" u ON u.id = s.user_id
                 WHERE s.sid_hash = :sid_hash
@@ -104,6 +106,7 @@ async def require_session(
         sid_hash=sid_hash,
         display_name=row["display_name"],
         session_expires_at=expires_at,
+        merchant_id=row["merchant_id"],
     )
 
 

@@ -808,6 +808,15 @@ async def get_receipt(
     return dict(receipt_row["receipt_json"])
 
 
+def _row_merchant_ids(row: dict) -> list[str]:
+    merchant_ids = row.get("merchant_ids") or []
+    if isinstance(merchant_ids, str):
+        import json
+
+        merchant_ids = json.loads(merchant_ids)
+    return [str(m) for m in merchant_ids]
+
+
 @router.get("/orders")
 async def list_orders(
     mandate_id: str | None = Query(default=None),
@@ -832,4 +841,15 @@ async def list_orders(
     buyer_id = _buyer_id(principal)
     if principal.role == "buyer":
         rows = [r for r in rows if str(r["buyer_id"]) == buyer_id]
+    elif principal.role == "merchant":
+        # Real per-merchant tenancy (not a role flag): a merchant principal only
+        # ever sees orders that include at least one of their own line items. A
+        # merchant caller with no merchant_id bound (misconfigured/legacy) fails
+        # closed to an empty list rather than leaking every merchant's orders.
+        merchant_id = principal.merchant_id
+        rows = (
+            [r for r in rows if merchant_id in _row_merchant_ids(r)]
+            if merchant_id
+            else []
+        )
     return {"items": [_order_view(r) for r in rows]}

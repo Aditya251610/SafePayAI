@@ -21,6 +21,7 @@ class Principal:
     sub: str
     role: str | None
     buyer_id: str | None
+    merchant_id: str | None
 
 
 def _jwks_client(settings: Settings) -> jwt.PyJWKClient:
@@ -49,6 +50,7 @@ async def require_service_jwt(
         sub=claims.get("sub", ""),
         role=claims.get("role"),
         buyer_id=claims.get("buyer_id"),
+        merchant_id=claims.get("merchant_id"),
     )
 
 
