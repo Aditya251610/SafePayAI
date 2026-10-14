@@ -319,16 +319,17 @@ async def get_order(client: PayPalClient, order_id: str, *, trace_id: str) -> di
     purchase_units = raw.get("purchase_units") or [{}]
     pu = purchase_units[0] if purchase_units else {}
     amount = pu.get("amount") or {}
-    capture_ids = [
-        capture.get("id")
-        for capture in (pu.get("payments", {}).get("captures") or [])
-        if capture.get("id")
-    ]
+    pu_captures = pu.get("payments", {}).get("captures") or []
+    capture_ids = [capture.get("id") for capture in pu_captures if capture.get("id")]
+    # Prefer the capture object's own custom_id/invoice_id when a capture already exists
+    # (see capture_order's identical fix below) -- the purchase_unit-level echo is only
+    # reliable pre-capture; fall back to it if no capture exists yet or it omits the field.
+    first_capture = pu_captures[0] if pu_captures else {}
     data = {
         "order_id": raw.get("id"),
         "status": raw.get("status"),
-        "custom_id": pu.get("custom_id"),
-        "invoice_id": pu.get("invoice_id"),
+        "custom_id": first_capture.get("custom_id") or pu.get("custom_id"),
+        "invoice_id": first_capture.get("invoice_id") or pu.get("invoice_id"),
         "amount_minor": _minor_from_value(amount.get("value")),
         "currency": amount.get("currency_code"),
         "capture_ids": capture_ids,
@@ -511,13 +512,19 @@ async def capture_order(
     capture_pu = (raw.get("purchase_units") or [{}])[0]
     captures = capture_pu.get("payments", {}).get("captures") or []
     capture = captures[0] if captures else {}
+    # custom_id/invoice_id come back on the CAPTURE object itself in PayPal's real
+    # v2/checkout/orders/{id}/capture response, not on the wrapping purchase_unit --
+    # reading capture_pu here always returned empty strings against the real sandbox
+    # (confirmed live: checkout's identity-binding check was silently mismatching on
+    # every real capture because of this). Fall back to capture_pu only if PayPal ever
+    # omits it on the capture object itself.
     data = {
         "order_id": raw.get("id"),
         "status": raw.get("status"),
         "capture_id": capture.get("id"),
         "capture_status": capture.get("status"),
-        "custom_id": capture_pu.get("custom_id"),
-        "invoice_id": capture_pu.get("invoice_id"),
+        "custom_id": capture.get("custom_id") or capture_pu.get("custom_id"),
+        "invoice_id": capture.get("invoice_id") or capture_pu.get("invoice_id"),
         "amount_minor": amount_minor,
         "currency": currency,
     }

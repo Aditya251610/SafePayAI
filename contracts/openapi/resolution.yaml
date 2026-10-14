@@ -4,9 +4,10 @@ info:
   version: "0.1.0"
   description: >
     12-state case machine + REFUNDS_FROZEN kill switch. Derived from
-    .claude/prd/services/resolution/api.md. Wave 4: routes other than health/readyz are
-    stubs returning 501 (including /controls/refunds-frozen, which checks the settings flag
-    but does not yet read/write the real DB-row kill switch).
+    .claude/prd/services/resolution/api.md. All routes below are real (buyer-report -> decide
+    -> offer -> accept -> refund path, the reviewer/merchant/approval-link/appeal path, the
+    REFUNDS_FROZEN kill switch backed by the real DB-row control_flags, and the internal
+    events/outbox/tick endpoints).
 servers:
   - url: /
 paths:
@@ -43,14 +44,10 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ReportCaseRequest" }
       responses:
-        "201": { description: new case, content: { application/json: { schema: { $ref: "#/components/schemas/ReportCaseResponse" } } } }
-        "200": { description: existing case for (order_id, kind) }
-        "400": { description: VALIDATION_ERROR }
-        "404": { description: ORDER_NOT_FOUND }
-        "409": { description: ORDER_NOT_CAPTURED }
-        "422": { description: FIELD_NOT_ALLOWED / TEXT_TOO_LONG / IDEMPOTENCY_KEY_REUSED }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
-        "503": { description: DEPENDENCY_UNAVAILABLE }
+        "201": { description: "case created (always 201 -- the real handler has no idempotent-replay/200 path today, only the fixed @router.post status_code)", content: { application/json: { schema: { $ref: "#/components/schemas/ReportCaseResponse" } } } }
+        "400": { description: IDEMPOTENCY_KEY_REQUIRED (missing Idempotency-Key header) }
+        "401": { description: missing/invalid bearer token }
+        "422": { description: "request validation error (e.g. text over 4000 chars, unknown field -- extra=forbid)" }
   /cases/{case_id}:
     get:
       operationId: getCase
@@ -59,25 +56,29 @@ paths:
         - { name: case_id, in: path, required: true, schema: { type: string } }
       responses:
         "200": { description: case detail, content: { application/json: { schema: { $ref: "#/components/schemas/CaseDetailResponse" } } } }
-        "404": { description: not found }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "401": { description: missing/invalid bearer token }
+        "404": { description: CASE_NOT_FOUND }
   /cases:
     get:
       operationId: listCases
       security: [{ internalJwt: [] }]
+      description: >
+        A buyer caller (claims.act.role == "buyer") is always scoped to their own
+        buyer_id regardless of query params; any other role sees all cases matching the
+        filters.
       parameters:
         - { name: status, in: query, schema: { type: string } }
         - { name: order_id, in: query, schema: { type: string } }
       responses:
-        "200": { description: list }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "200": { description: list, content: { application/json: { schema: { $ref: "#/components/schemas/ListCasesResponse" } } } }
+        "401": { description: missing/invalid bearer token }
   /review/queue:
     get:
       operationId: reviewQueue
       security: [{ internalJwt: [] }]
       responses:
         "200": { description: HUMAN_REVIEW queue, content: { application/json: { schema: { $ref: "#/components/schemas/ReviewQueueResponse" } } } }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "401": { description: missing/invalid bearer token }
   /cases/{case_id}/review-decision:
     post:
       operationId: reviewDecision
@@ -91,10 +92,10 @@ paths:
             schema: { $ref: "#/components/schemas/ReviewDecisionRequest" }
       responses:
         "200": { description: decision applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReviewDecisionResponse" } } } }
-        "403": { description: ROLE_NOT_ALLOWED }
-        "409": { description: ILLEGAL_TRANSITION / CONCURRENT_MODIFICATION }
-        "422": { description: REASON_REQUIRED / FIELD_NOT_ALLOWED }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "403": { description: "ROLE_NOT_ALLOWED (caller's claims.act.role must be reviewer)" }
+        "404": { description: CASE_NOT_FOUND }
+        "409": { description: "ILLEGAL_TRANSITION (case not in HUMAN_REVIEW) / CONCURRENT_MODIFICATION" }
+        "422": { description: "REASON_REQUIRED (decision DECLINE/CLOSE with no non-empty reason) / request validation error" }
   /offers/{offer_id}/accept:
     post:
       operationId: acceptOffer
@@ -107,8 +108,8 @@ paths:
             schema: { $ref: "#/components/schemas/OfferAcceptRequest" }
       responses:
         "200": { description: accepted, content: { application/json: { schema: { $ref: "#/components/schemas/OfferAcceptResponse" } } } }
-        "409": { description: OFFER_NOT_ACTIVE / PROPOSAL_HASH_MISMATCH / ILLEGAL_TRANSITION }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "404": { description: "OFFER_NOT_FOUND (also returned for the wrong buyer -- no enumeration)" }
+        "409": { description: OFFER_NOT_ACTIVE / PROPOSAL_HASH_MISMATCH }
   /offers/{offer_id}/decline:
     post:
       operationId: declineOffer
@@ -121,17 +122,20 @@ paths:
             schema: { $ref: "#/components/schemas/OfferDeclineRequest" }
       responses:
         "200": { description: declined, content: { application/json: { schema: { $ref: "#/components/schemas/OfferDeclineResponse" } } } }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "404": { description: "OFFER_NOT_FOUND (also returned for the wrong buyer -- no enumeration)" }
+        "409": { description: OFFER_NOT_ACTIVE }
   /approvals/{token}:
     get:
       operationId: previewApproval
       security: [{ internalJwt: [] }]
+      description: >
+        Pure read, no state change. Any invalid/expired/revoked/consumed token returns 404
+        (no enumeration of which, except the distinct detail codes below).
       parameters:
         - { name: token, in: path, required: true, schema: { type: string } }
       responses:
         "200": { description: preview, content: { application/json: { schema: { $ref: "#/components/schemas/ApprovalPreviewResponse" } } } }
-        "404": { description: not found }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "404": { description: APPROVAL_NOT_FOUND / APPROVAL_REPLAY (consumed) / APPROVAL_REVOKED / APPROVAL_EXPIRED }
   /approvals/{token}/consent:
     post:
       operationId: consentApproval
@@ -144,12 +148,17 @@ paths:
             schema: { $ref: "#/components/schemas/ApprovalConsentRequest" }
       responses:
         "200": { description: consented, content: { application/json: { schema: { $ref: "#/components/schemas/ApprovalConsentResponse" } } } }
-        "409": { description: APPROVAL_REPLAY / PROPOSAL_HASH_MISMATCH / APPROVAL_EXPIRED / APPROVAL_REVOKED }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "404": { description: APPROVAL_NOT_FOUND / APPROVAL_REVOKED / APPROVAL_EXPIRED }
+        "409": { description: "APPROVAL_REPLAY (consumed, or lost a race against another consent) / PROPOSAL_HASH_MISMATCH / OFFER_NOT_ACTIVE / ILLEGAL_TRANSITION" }
   /cases/{case_id}/merchant-action:
     post:
       operationId: merchantAction
       security: [{ internalJwt: [] }]
+      description: >
+        No amount is accepted from the client -- the offer amount is always server-computed.
+        OVERRIDE_OFFER is legal from DECLINED (T25) or OFFERED (T26, supersedes the active
+        offer); CONFIRM_RESHIP is legal only from OFFERED with an ACTIVE/ACCEPTED RESHIP offer
+        (T10).
       parameters:
         - { name: case_id, in: path, required: true, schema: { type: string } }
       requestBody:
@@ -158,8 +167,9 @@ paths:
             schema: { $ref: "#/components/schemas/MerchantActionRequest" }
       responses:
         "200": { description: action applied, content: { application/json: { schema: { $ref: "#/components/schemas/MerchantActionResponse" } } } }
+        "403": { description: "ROLE_NOT_ALLOWED (caller's claims.act.role must be merchant)" }
+        "404": { description: CASE_NOT_FOUND }
         "409": { description: ILLEGAL_TRANSITION }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
   /cases/{case_id}/appeal:
     post:
       operationId: appealCase
@@ -172,7 +182,8 @@ paths:
             schema: { $ref: "#/components/schemas/AppealRequest" }
       responses:
         "200": { description: appealed, content: { application/json: { schema: { $ref: "#/components/schemas/AppealResponse" } } } }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "404": { description: "CASE_NOT_FOUND (also returned for the wrong buyer -- no enumeration)" }
+        "409": { description: ILLEGAL_TRANSITION }
   /refunds/reconcile:
     post:
       operationId: reconcileRefunds
@@ -183,17 +194,23 @@ paths:
             schema: { $ref: "#/components/schemas/ReconcileRequest" }
       responses:
         "200": { description: reconciled, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResponse" } } } }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
   /controls/refunds-frozen:
     get:
       operationId: getRefundsFrozen
       security: [{ internalJwt: [] }]
+      description: >
+        Reads resolution.control_flags. Absent/unreadable is fail-closed (readable=false,
+        refunds_frozen=true), never an error response.
       responses:
         "200": { description: current state, content: { application/json: { schema: { $ref: "#/components/schemas/RefundsFrozenState" } } } }
-        "501": { description: "Wave 5 pending (Wave 4 checks the settings flag only; does not read/write the DB row)" }
     put:
       operationId: putRefundsFrozen
       security: [{ internalJwt: [] }]
+      description: >
+        Operator-only toggle. Writes the real control_flags row and a refund.freeze_changed
+        outbox event. The paypal-adapter mirror push (PUT /v1/controls/refunds-frozen there)
+        is NOT performed by this endpoint -- adapter_mirror is always reported PENDING;
+        paypal-adapter's own kill switch must be toggled there separately for now.
       requestBody:
         required: true
         content:
@@ -201,50 +218,63 @@ paths:
             schema: { $ref: "#/components/schemas/RefundsFrozenPutRequest" }
       responses:
         "200": { description: toggled, content: { application/json: { schema: { $ref: "#/components/schemas/RefundsFrozenState" } } } }
-        "403": { description: only operator role }
-        "422": { description: REASON_REQUIRED }
-        "501": { description: "Wave 5 pending (Wave 4 checks the settings flag only; does not read/write the DB row)" }
+        "403": { description: "ROLE_NOT_ALLOWED (caller's claims.act.role must be operator)" }
+        "422": { description: "request validation error (reason must be non-empty)" }
   /notifications:
     get:
       operationId: listNotifications
       security: [{ internalJwt: [] }]
+      description: >
+        A buyer caller sees only their own notifications (scoped by claims.buyer_id); any
+        other role (e.g. merchant) sees all notifications unscoped.
       responses:
         "200": { description: notifications, content: { application/json: { schema: { $ref: "#/components/schemas/NotificationsResponse" } } } }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
   /internal/events:
     post:
       operationId: internalEventsReceive
       security: [{ internalJwt: [] }]
+      description: >
+        Inbox for shipment.late_detected/shipment.lost_detected: opens a DETECTOR-origin case
+        (idempotent on (order_id, kind)) and runs the same decide -> offer-creation path as a
+        buyer report, skipping triage-ai entirely. Unknown event types are accepted and
+        ignored (at-least-once delivery, forward-compatible) -- `handled: false`.
       requestBody:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/InternalEventEnvelope" }
       responses:
-        "200": { description: accepted }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "200": { description: accepted (handled or ignored), content: { application/json: { schema: { $ref: "#/components/schemas/InternalEventsReceiveResponse" } } } }
+        "401": { description: missing/invalid bearer token }
+        "422": { description: "VALIDATION_ERROR (payload.order_id missing for a recognized event type)" }
   /internal/outbox:
     get:
       operationId: internalOutboxPull
       security: [{ internalJwt: [] }]
+      description: Read-only pull catch-up for a consumer that may have missed the push relay.
       parameters:
-        - { name: after, in: query, schema: { type: integer } }
+        - { name: after, in: query, schema: { type: integer, default: 0 } }
       responses:
-        "200": { description: outbox page }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "200": { description: outbox page, content: { application/json: { schema: { $ref: "#/components/schemas/OutboxPullResponse" } } } }
+        "401": { description: missing/invalid bearer token }
   /internal/outbox/flush:
     post:
       operationId: internalOutboxFlush
       security: [{ tickSecret: [] }]
       responses:
-        "200": { description: flushed }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "200": { description: flushed, content: { application/json: { schema: { $ref: "#/components/schemas/OutboxFlushResponse" } } } }
+        "401": { description: invalid/missing X-Tick-Secret }
   /internal/tick:
     post:
       operationId: internalTick
       security: [{ tickSecret: [] }]
+      description: >
+        Reconciles in-flight refund attempts, flushes the outbox relay, then runs the
+        time-based window sweeps: T12 (offer/link expired -> HUMAN_REVIEW), T21/T22
+        (RESOLVED_REFUNDED/RESOLVED_RESHIP -> CLOSED after the resolution grace period), T23
+        (DECLINED -> CLOSED after the appeal window). Each phase commits its own transaction.
       responses:
-        "200": { description: reconcile + outbox flush + window checks }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "200": { description: reconcile + outbox flush + window checks, content: { application/json: { schema: { $ref: "#/components/schemas/InternalTickResponse" } } } }
+        "401": { description: invalid/missing X-Tick-Secret }
 components:
   securitySchemes:
     internalJwt:
@@ -473,6 +503,59 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/NotificationView" }
+    CaseListItem:
+      type: object
+      properties:
+        case_id: { type: string }
+        order_id: { type: string }
+        state: { $ref: "#/components/schemas/CaseState" }
+        kind: { $ref: "#/components/schemas/Kind" }
+        origin: { type: string, enum: [DETECTOR, BUYER_REPORT] }
+        opened_at: { type: string, format: date-time }
+    ListCasesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CaseListItem" }
+    InternalEventsReceiveResponse:
+      type: object
+      required: [ok, handled]
+      properties:
+        ok: { type: boolean }
+        handled: { type: boolean }
+        case_id: { type: string, nullable: true }
+    OutboxEventView:
+      type: object
+      properties:
+        seq: { type: integer }
+        event_id: { type: string, format: uuid }
+        type: { type: string }
+        version: { type: integer }
+        aggregate_id: { type: string }
+        payload: { type: object }
+        trace_id: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    OutboxPullResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/OutboxEventView" }
+    OutboxFlushResponse:
+      type: object
+      properties:
+        delivered: { type: integer }
+        failed: { type: integer }
+        pending: { type: integer }
+    InternalTickResponse:
+      type: object
+      properties:
+        reconcile: { $ref: "#/components/schemas/ReconcileResponse" }
+        outbox_relay: { $ref: "#/components/schemas/OutboxFlushResponse" }
+        offers_expired_to_review: { type: integer }
+        resolved_closed: { type: integer }
+        declined_closed: { type: integer }
     InternalEventEnvelope:
       type: object
       required: [event_id, type, version, aggregate_id, payload]

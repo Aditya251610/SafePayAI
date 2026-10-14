@@ -52,7 +52,9 @@ async def open_case(session: AsyncSession, cmd: OpenCaseCommand) -> OpenedCase:
     and freezes them into terms_snapshot + terms_hash (spec s2, C6).
     Output: OpenedCase.
     Edge cases: duplicate (order_id, kind) -> created=False, no new rows (spec s13 unique constraint);
-    mandate unreachable -> still opens the case, terms_snapshot=None so decide() fails closed (D0);
+    mandate unreachable OR revoked/expired/exhausted -> still opens the case, terms_snapshot=None
+    so decide() fails closed (D0) -- see clients.get_mandate_terms for the revoke-blocks-new-
+    protection rule (api.md s6, confirmed D1);
     case.opened_at uses the demo clock from the event (spec s10).
     """
     existing = await repo.get_case_by_order_and_kind(

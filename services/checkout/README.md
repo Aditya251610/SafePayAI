@@ -5,10 +5,13 @@ order state machine for SafePayAI. Calls catalog, mandate, shopping-agent (advis
 intent-fit) and paypal-adapter; never calls PayPal directly and never holds a PayPal
 credential.
 
-Wave 4 status: contracts + skeleton only. `/healthz` and `/readyz` work; every other route
-(`/carts`, `/carts/{id}/confirm`, `/orders/*`, `/internal/*`) returns `501 not_implemented`.
-No business logic, no real PayPal calls yet -- see
-`.claude/prd/services/checkout/{spec,api,deployment}.md` for the Wave 5 contract.
+Fully implemented and live-tested against the real PayPal sandbox: cart pricing/checks
+(`/carts`, `/carts/{id}/confirm`), the full order flow (PayPal order creation, real
+browser-approved capture, return/cancel handling, receipts), all real — verified across
+multiple fresh sandbox checkouts (not mocked). `POST /internal/events`,
+`GET /internal/outbox`, and `POST /internal/reconcile` remain `501 not_implemented`
+(internal catch-up/reconcile tooling, not on the hot money path). See
+`.claude/prd/services/checkout/{spec,api,deployment}.md` for the full contract.
 
 ## Run standalone
 

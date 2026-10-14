@@ -6,10 +6,11 @@ intent-fit verdict. Never sets a price, total, or merchant; never touches money 
 One of only two services (with triage-ai) allowed LLM provider keys (ADR-010); raw model
 output never reaches a money-moving path.
 
-Wave 4 status: contracts + skeleton only. `/healthz` and `/readyz` work; every other route
-(`/propose`, `/intent-fit`, `/internal/outbox/*`) returns `501 not_implemented`. The LLM
-provider adapters (`app/llm_providers.py`) are wired to `safepayai_common`'s gateway
-interface but raise `NotImplementedError` -- no real Gemini/Groq calls yet.
+`/propose` and `/intent-fit` are fully implemented with real Gemini/Groq calls through
+`app/llm_providers.py` (verified via a labelled eval harness, `evals/`, including
+injection-attempt cases and a printed fail-closed rate — real provider keys live in
+`.env`, use sparingly, free-tier RPM/RPD caps can exhaust). `GET /internal/outbox`
+remains `501 not_implemented` (a debug/catch-up endpoint, not on the money path).
 
 ## Run standalone
 

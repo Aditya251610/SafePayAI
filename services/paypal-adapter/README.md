@@ -7,10 +7,16 @@ Money tools (`create_order`, `capture_order`, `refund_capture`) require a caller
 match plus a signed `authorization_ticket` (verified with
 `safepayai_common.auth.ticket.verify_ticket`); never routed by `api-gateway`.
 
-Wave 4 status: contracts + skeleton only. `/healthz`, `/health`, and `/readyz` work
-(including a sandbox-host guard check in `/readyz`). Every REST tool route and the MCP
-`tools/call` method return a `501`/`isError` stub. No real PayPal API calls exist in this
-codebase yet -- see `.claude/prd/services/paypal-adapter/{spec,api,deployment}.md`.
+Fully implemented and live-verified against the real PayPal sandbox: `create_order`,
+`get_order`, `capture_order`, `refund_capture`, `get_refund`, `get_capture`, tracker
+add/get/cancel, and the DB-backed `control` kill switch (OR'd with the static env var)
+all make real PayPal API calls, confirmed live across multiple fresh sandbox checkouts
+and real refunds. Webhook signature verification is implemented but NOT re-confirmed
+against a real PayPal-sent webhook — there's no way to receive one in local dev; it
+returns a clear `{"ok": false, "status": "DISABLED"}` when disabled (the default) rather
+than pretending to process webhooks. Full `authorization_ticket` HMAC verification is
+still deferred (the router dependency only checks the header is present, not its
+signature) pending checkout/resolution as ticket minters.
 
 ## Run standalone
 

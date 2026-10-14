@@ -4,8 +4,17 @@ info:
   version: "0.1.0"
   description: >
     Carrier/delivery state machine, owned entirely in our DB (PayPal has no delivery-status
-    API). Derived from .claude/prd/services/tracking/api.md. Wave 4: routes other than
-    health/readyz are stubs returning 501.
+    API; carrier/delivery status is SIMULATED, driven by this service's own demo clock, not
+    real PayPal data). Derived from .claude/prd/services/tracking/api.md and the real app/
+    source (app/routers/*.py, app/usecases/*.py, app/schemas/shipments.py). All routes below
+    are real except POST /internal/events and GET /internal/events, which remain 501 stubs
+    (not yet implemented). The late/lost detector (POST /detector/run, POST /internal/tick)
+    and the demo-clock endpoints are live-tested against the real demo clock; the PayPal
+    tracker-mirror calls made from POST /shipments and POST /shipments/{id}/cancel are also
+    live-tested against the PayPal sandbox, though the tracker-mirror call has been observed
+    to be rejected (422) by PayPal itself when attempted against an already-fully-refunded
+    sandbox order -- a sandbox state limitation, not a code bug; paypal_sync reports FAILED
+    in that case rather than blocking the local state change.
 servers:
   - url: /
 paths:
@@ -65,15 +74,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ShipmentCreateResponse" }
-        "200": { description: idempotent replay }
-        "400": { description: VALIDATION }
+        "200": { description: idempotent replay (same order_id + tracking_number already exists) }
         "401": { description: unauthenticated }
-        "403": { description: ROLE_NOT_ALLOWED }
-        "404": { description: ORDER_NOT_FOUND }
-        "409": { description: ORDER_NOT_CAPTURED or DUPLICATE_TRACKING }
-        "429": { description: rate limited }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
-        "503": { description: DEPENDENCY_UNAVAILABLE }
+        "409": { description: ORDER_NOT_CAPTURED (order not yet captured per checkout) }
+        "503": { description: CHECKOUT_UNREACHABLE }
   /shipments/{order_id}:
     get:
       operationId: getShipments
@@ -82,13 +86,14 @@ paths:
         - { name: order_id, in: path, required: true, schema: { type: string } }
       responses:
         "200":
-          description: shipment(s) + consistency block
+          description: >
+            Shipment(s) + consistency block. Always 200 even for an order with zero
+            shipments (empty shipments array) -- there is no 404/403 branch in the real
+            handler.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ShipmentsListResponse" }
-        "403": { description: buyer not owner }
-        "404": { description: not found }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "401": { description: unauthenticated }
   /shipments/{order_id}/verify:
     get:
       operationId: verifyClaim
@@ -102,8 +107,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/VerifyClaimResponse" }
-        "400": { description: unknown claim }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "400": { description: INVALID_CLAIM (claim query param not one of LATE/LOST/NOT_DELIVERED) }
+        "401": { description: unauthenticated }
   /shipments/{shipment_id}/cancel:
     post:
       operationId: cancelShipment
@@ -121,11 +126,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CancelShipmentResponse" }
-        "409": { description: ILLEGAL_TRANSITION }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "401": { description: unauthenticated }
+        "404": { description: SHIPMENT_NOT_FOUND }
+        "409": { description: ILLEGAL_TRANSITION (shipment already DELIVERED or CANCELLED) }
   /demo/clock:
     get:
       operationId: getDemoClock
+      summary: Current sim time. No sandbox/role guard on this read-only endpoint.
       security: [{ internalJwt: [] }]
       responses:
         "200":
@@ -133,10 +140,15 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DemoClockResponse" }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "401": { description: unauthenticated }
   /demo/clock/advance:
     post:
       operationId: advanceDemoClock
+      summary: >
+        Guard order (spec s8): PS_TRACKING_SANDBOX_MODE -> DEMO_CONTROLS_ENABLED -> JWT
+        merchant role -> Idempotency-Key header -> bounds. Replaying an already-used
+        Idempotency-Key re-runs a tick and returns the originally recorded from_sim/to_sim
+        rather than erroring.
       security: [{ internalJwt: [] }]
       parameters:
         - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
@@ -147,16 +159,20 @@ paths:
             schema: { $ref: "#/components/schemas/DemoClockAdvanceRequest" }
       responses:
         "200":
-          description: advanced
+          description: advanced (or idempotent replay of a previously-used Idempotency-Key)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DemoClockAdvanceResponse" }
-        "404": { description: sandbox mode off }
-        "409": { description: CLOCK_VERSION_CONFLICT }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "400":
+          description: >
+            delta_seconds out of bounds, or CLOCK_VERSION_CONFLICT (concurrent advance lost
+            the CAS race) -- both surface as 400, not 409, in the real handler.
+        "403": { description: ROLE_NOT_ALLOWED (JWT role claim is not merchant) }
+        "404": { description: "sandbox mode off, or demo controls disabled" }
   /demo/clock/reset:
     post:
       operationId: resetDemoClock
+      summary: Same guard order as /demo/clock/advance (sandbox mode, demo controls, merchant role).
       security: [{ internalJwt: [] }]
       requestBody:
         content:
@@ -168,10 +184,12 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DemoClockResetResponse" }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "403": { description: ROLE_NOT_ALLOWED }
+        "404": { description: "sandbox mode off, or demo controls disabled" }
   /demo/shipments/{shipment_id}/force:
     post:
       operationId: forceShipment
+      summary: Same guard order as /demo/clock/advance (sandbox mode, demo controls, merchant role).
       security: [{ internalJwt: [] }]
       parameters:
         - { name: shipment_id, in: path, required: true, schema: { type: string } }
@@ -186,11 +204,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DemoForceShipmentResponse" }
+        "403": { description: ROLE_NOT_ALLOWED }
+        "404": { description: "SHIPMENT_NOT_FOUND, or sandbox mode off / demo controls disabled" }
         "409": { description: ILLEGAL_TRANSITION }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
   /detector/run:
     post:
       operationId: detectorRun
+      summary: Manual trigger; calls the same run_tick used by POST /internal/tick (spec.md section 5, conflict C1).
       security: [{ internalJwt: [] }]
       responses:
         "200":
@@ -198,10 +218,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DetectorRunResponse" }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "401": { description: unauthenticated }
   /internal/tick:
     post:
       operationId: internalTick
+      summary: >
+        External cron trigger (shared bare INTERNAL_TICK_SECRET convention). Calls the same
+        run_tick as POST /detector/run with trigger=EXTERNAL. Never routed by the gateway.
       security: [{ tickSecret: [] }]
       responses:
         "200":
@@ -209,27 +232,26 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DetectorRunResponse" }
-        "401": { description: invalid tick secret }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "401": { description: invalid or missing tick secret }
   /internal/events:
     post:
       operationId: receiveInternalEvent
+      summary: Not yet implemented -- still a 501 stub.
       security: [{ internalJwt: [] }]
       requestBody:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/InternalEventEnvelope" }
       responses:
-        "200": { description: accepted }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "501": { description: "\"POST /internal/events pending Wave 5\" -- genuinely not implemented" }
     get:
       operationId: pullInternalEvents
+      summary: Not yet implemented -- still a 501 stub.
       security: [{ internalJwt: [] }]
       parameters:
         - { name: after, in: query, schema: { type: integer } }
       responses:
-        "200": { description: outbox page }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
+        "501": { description: "\"GET /internal/events pending Wave 5\" -- genuinely not implemented" }
 components:
   securitySchemes:
     internalJwt:
@@ -281,6 +303,11 @@ components:
         occurred_at_sim: { type: string, format: date-time }
     ShipmentView:
       type: object
+      description: >
+        The real GET /shipments/{order_id} handler (app/routers/shipments.py get_shipments)
+        currently returns only id/status/active/promised_at_sim/anomaly per shipment -- it
+        does not populate `events` even though ShipmentEvent exists as a schema shape; listed
+        here as not currently present on this response, not a guaranteed field.
       properties:
         id: { type: string }
         status: { type: string }
@@ -307,6 +334,9 @@ components:
           items: { $ref: "#/components/schemas/ShipmentView" }
         consistency: { $ref: "#/components/schemas/ConsistencyBlock" }
         simulated: { type: boolean }
+        carrier_label:
+          type: string
+          description: Always "SIMULATED CARRIER" (CLAUDE.md honesty rule) -- present on the real response, previously missing from this schema.
     VerifyClaimResponse:
       type: object
       properties:
