@@ -173,15 +173,15 @@ contracts/openapi/paypal-adapter.yaml:
   info-license:
     - '#/info'
   operation-4xx-response:
-    - '#/paths/~1v1~1reconcile~1{request_id}/post/responses'
+    - '#/paths/~1captures~1{capture_id}~1refund/post/responses'
+    - '#/paths/~1refunds~1{refund_id}/get/responses'
+    - '#/paths/~1reconcile~1{request_id}/post/responses'
     - '#/paths/~1v1~1control~1status/get/responses'
     - '#/paths/~1v1~1control~1freeze/post/responses'
     - '#/paths/~1v1~1control~1unfreeze/post/responses'
     - '#/paths/~1healthz/get/responses'
     - '#/paths/~1health/get/responses'
     - '#/paths/~1readyz/get/responses'
-  operation-2xx-response:
-    - '#/paths/~1v1~1webhooks~1paypal/post/responses'
 contracts/openapi/resolution.yaml:
   info-license:
     - '#/info'
@@ -219,9 +219,6 @@ contracts/openapi/resolution.yaml:
     - '#/paths/~1notifications/get/responses'
   struct:
     - '#/components/schemas/Reason/properties/text/nullable'
-    - >-
-      #/paths/~1cases~1report/post/responses/422/unknown field --
-      extra="forbid")
     - '#/components/schemas/CaseDetailResponse/properties/decision/nullable'
     - '#/components/schemas/CaseDetailResponse/properties/refund/nullable'
     - '#/components/schemas/CaseDetailResponse/properties/queued_reason/nullable'
@@ -229,10 +226,6 @@ contracts/openapi/resolution.yaml:
     - '#/components/schemas/ReviewDecisionRequest/properties/reason/nullable'
     - '#/components/schemas/ReviewDecisionResponse/properties/offer_id/nullable'
     - '#/components/schemas/RefundView/properties/paypal_refund_id/nullable'
-    - >-
-      #/paths/~1approvals~1{token}~1consent/post/responses/409/or lost a race
-      against another consent) ~1 PROPOSAL_HASH_MISMATCH ~1 OFFER_NOT_ACTIVE ~1
-      ILLEGAL_TRANSITION
     - '#/components/schemas/MerchantActionResponse/properties/offer_id/nullable'
     - '#/components/schemas/MerchantActionResponse/properties/supersedes/nullable'
     - '#/components/schemas/AppealRequest/properties/note/nullable'
@@ -270,22 +263,11 @@ contracts/openapi/tracking.yaml:
     - '#/paths/~1shipments~1{order_id}/get/summary'
     - '#/paths/~1shipments~1{order_id}~1verify/get/summary'
     - '#/paths/~1shipments~1{shipment_id}~1cancel/post/summary'
-    - '#/paths/~1demo~1clock/get/summary'
-    - '#/paths/~1demo~1clock~1advance/post/summary'
-    - '#/paths/~1demo~1clock~1reset/post/summary'
-    - '#/paths/~1demo~1shipments~1{shipment_id}~1force/post/summary'
-    - '#/paths/~1detector~1run/post/summary'
-    - '#/paths/~1internal~1tick/post/summary'
-    - '#/paths/~1internal~1events/get/summary'
-    - '#/paths/~1internal~1events/post/summary'
   operation-4xx-response:
     - '#/paths/~1health/get/responses'
     - '#/paths/~1healthz/get/responses'
     - '#/paths/~1readyz/get/responses'
     - '#/paths/~1healthz~1deep/get/responses'
-    - '#/paths/~1demo~1clock/get/responses'
-    - '#/paths/~1demo~1clock~1reset/post/responses'
-    - '#/paths/~1detector~1run/post/responses'
     - '#/paths/~1internal~1events/get/responses'
     - '#/paths/~1internal~1events/post/responses'
   struct:
@@ -293,6 +275,9 @@ contracts/openapi/tracking.yaml:
     - '#/components/schemas/ConsistencyBlock/properties/delivered_at_sim/nullable'
     - '#/components/schemas/InternalEventEnvelope/properties/trace_id/nullable'
     - '#/components/schemas/ErrorEnvelope/properties/request_id/nullable'
+  operation-2xx-response:
+    - '#/paths/~1internal~1events/get/responses'
+    - '#/paths/~1internal~1events/post/responses'
   no-unused-components:
     - '#/components/schemas/ErrorEnvelope'
   security-defined:
@@ -324,7 +309,6 @@ contracts/openapi/triage-ai.yaml:
     - '#/components/schemas/OrderFacts/properties/currency/nullable'
     - '#/components/schemas/Provenance/properties/model/nullable'
     - '#/components/schemas/Provenance/properties/cached_at/nullable'
-    - '#/paths/~1classify/post/responses/500/not a model~1provider failure)'
     - '#/components/schemas/BriefRequest/properties/buyer_text/nullable'
     - '#/components/schemas/BriefRequest/properties/policy_decision/nullable'
     - '#/components/schemas/TransportErrorBody/properties/trace_id/nullable'

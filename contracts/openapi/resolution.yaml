@@ -47,7 +47,7 @@ paths:
         "201": { description: "case created (always 201 -- the real handler has no idempotent-replay/200 path today, only the fixed @router.post status_code)", content: { application/json: { schema: { $ref: "#/components/schemas/ReportCaseResponse" } } } }
         "400": { description: IDEMPOTENCY_KEY_REQUIRED (missing Idempotency-Key header) }
         "401": { description: missing/invalid bearer token }
-        "422": { description: request validation error (e.g. text over 4000 chars, unknown field -- extra="forbid") }
+        "422": { description: "request validation error (e.g. text over 4000 chars, unknown field -- extra=forbid)" }
   /cases/{case_id}:
     get:
       operationId: getCase
@@ -149,7 +149,7 @@ paths:
       responses:
         "200": { description: consented, content: { application/json: { schema: { $ref: "#/components/schemas/ApprovalConsentResponse" } } } }
         "404": { description: APPROVAL_NOT_FOUND / APPROVAL_REVOKED / APPROVAL_EXPIRED }
-        "409": { description: APPROVAL_REPLAY (consumed, or lost a race against another consent) / PROPOSAL_HASH_MISMATCH / OFFER_NOT_ACTIVE / ILLEGAL_TRANSITION }
+        "409": { description: "APPROVAL_REPLAY (consumed, or lost a race against another consent) / PROPOSAL_HASH_MISMATCH / OFFER_NOT_ACTIVE / ILLEGAL_TRANSITION" }
   /cases/{case_id}/merchant-action:
     post:
       operationId: merchantAction

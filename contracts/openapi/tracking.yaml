@@ -168,7 +168,7 @@ paths:
             delta_seconds out of bounds, or CLOCK_VERSION_CONFLICT (concurrent advance lost
             the CAS race) -- both surface as 400, not 409, in the real handler.
         "403": { description: ROLE_NOT_ALLOWED (JWT role claim is not merchant) }
-        "404": { description: sandbox mode off, or demo controls disabled }
+        "404": { description: "sandbox mode off, or demo controls disabled" }
   /demo/clock/reset:
     post:
       operationId: resetDemoClock
@@ -185,7 +185,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DemoClockResetResponse" }
         "403": { description: ROLE_NOT_ALLOWED }
-        "404": { description: sandbox mode off, or demo controls disabled }
+        "404": { description: "sandbox mode off, or demo controls disabled" }
   /demo/shipments/{shipment_id}/force:
     post:
       operationId: forceShipment
@@ -205,7 +205,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DemoForceShipmentResponse" }
         "403": { description: ROLE_NOT_ALLOWED }
-        "404": { description: SHIPMENT_NOT_FOUND, or sandbox mode off / demo controls disabled }
+        "404": { description: "SHIPMENT_NOT_FOUND, or sandbox mode off / demo controls disabled" }
         "409": { description: ILLEGAL_TRANSITION }
   /detector/run:
     post:
