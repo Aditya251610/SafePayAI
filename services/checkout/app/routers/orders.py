@@ -8,10 +8,11 @@ checkout's capture path for real (sprint-plan S2-01/S2-02).
 
 Capture core (spec.md section 7 steps 4-10 / section 8-10, api.md section 6) lives in
 `_attempt_capture` below and is shared by the return handler, the manual-retry/reconcile
-endpoint, and (implicitly) future `/internal/reconcile` work. The ticket minted for the
-adapter capture call is still the placeholder established in carts.py's confirm flow
-(`ticket=<request id>`) -- full HMAC ticket minting (PS_CHECKOUT_TICKET_HMAC_KEY) is
-tracked separately and not yet provisioned in this repo.
+endpoint, and (implicitly) future `/internal/reconcile` work. The adapter capture call now
+mints a real HMAC authorization_ticket via app.tickets.mint_ticket
+(PS_CHECKOUT_TICKET_HMAC_KEY), verified on paypal-adapter's side -- falls back to the raw
+capture_request_id (fails closed, paypal-adapter rejects an unsigned ticket) only if no
+signing key is configured.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from app.deps import (
 from app.errors import CheckoutError
 from app.schemas.carts import OrderCancelRequest, OrderReturnRequest
 from app.settings import Settings, get_settings
+from app.tickets import mint_ticket
 
 router = APIRouter(tags=["orders"])
 
@@ -464,7 +466,14 @@ async def _attempt_capture(
             }
 
     ticket = (
-        capture_request_id  # placeholder until PS_CHECKOUT_TICKET_HMAC_KEY wiring lands
+        mint_ticket(
+            settings,
+            mandate_id=mandate_id,
+            proposal_hash=proposal_hash,
+            amount_minor=order_row["total_minor"],
+            currency=order_row["currency"],
+        )
+        or capture_request_id
     )
     capture_result = await clients.capture_order(
         settings,

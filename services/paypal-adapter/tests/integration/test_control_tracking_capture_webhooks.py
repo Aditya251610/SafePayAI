@@ -14,6 +14,8 @@ import pytest
 import respx
 from httpx import Response
 
+from .conftest import mint_ticket
+
 PAYPAL_BASE = "https://api-m.sandbox.paypal.com"
 
 
@@ -68,9 +70,16 @@ async def test_freeze_blocks_capture_order_money_op(client, checkout_token):
     try:
         with respx.mock(assert_all_called=False) as mock:
             _token_route(mock)
+            ticket = mint_ticket(
+                "checkout",
+                mandate_id="mdt_1",
+                proposal_hash="sha256:abc",
+                amount_minor=4999,
+                currency="USD",
+            )
             resp = await client.post(
                 "/v1/orders/ORDER_FREEZE/capture",
-                headers={**headers, "X-Authorization-Ticket": "t"},
+                headers={**headers, "X-Authorization-Ticket": ticket},
                 json={
                     "request_id": str(uuid.uuid4()),
                     "mandate_id": "mdt_1",

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     internal_jwt_trusted_issuers: str = "api-gateway"
     internal_jwks_url: str = ""
 
+    ticket_hmac_key: str = ""
+    ticket_hmac_kid: str = "k1"
+    ticket_ttl_seconds: int = 120
+
     mandate_url: str = ""
     checkout_url: str = ""
     tracking_url: str = ""

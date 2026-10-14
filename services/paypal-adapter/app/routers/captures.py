@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ops
 from app.db import get_db
-from app.deps import Caller, require_tool_permission
+from app.deps import Caller, require_tool_permission, verify_authorization_ticket
 from app.paypal_client import PayPalClient, get_paypal_client
 from app.schemas.orders import RefundCaptureRequest
 from app.settings import Settings, get_settings
@@ -73,6 +73,20 @@ async def _refund_capture_handler(
     ticket = x_authorization_ticket or body.ticket
     if not ticket:
         raise HTTPException(status_code=403, detail="TICKET_INVALID")
+    # Real HMAC verification needs mandate_id/proposal_hash to reconstruct the exact
+    # TicketPayload the minter signed -- both are optional on RefundCaptureRequest for
+    # forward-compat with older callers, but a caller that omits them cannot produce a
+    # ticket that verifies, so this fails the same TICKET_INVALID way as a bad signature
+    # (no separate error code -- don't tell an attacker which check failed).
+    verify_authorization_ticket(
+        ticket,
+        caller_sub=caller.sub,
+        mandate_id=body.mandate_id or "",
+        proposal_hash=body.proposal_hash or "",
+        amount_minor=body.amount_minor,
+        currency=body.currency,
+        settings=settings,
+    )
     try:
         envelope = await ops.refund_capture(
             session,

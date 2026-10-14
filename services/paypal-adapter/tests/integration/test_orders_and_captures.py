@@ -11,6 +11,8 @@ import pytest
 import respx
 from httpx import Response
 
+from .conftest import mint_ticket
+
 PAYPAL_BASE = "https://api-m.sandbox.paypal.com"
 
 
@@ -71,7 +73,14 @@ async def test_create_order_then_replay_returns_same_order_no_second_paypal_call
             "return_url": "http://localhost:3000/return",
             "cancel_url": "http://localhost:3000/cancel",
         }
-        headers = {"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": "t"}
+        ticket = mint_ticket(
+            "checkout",
+            mandate_id="mdt_1",
+            proposal_hash="sha256:abc",
+            amount_minor=4999,
+            currency="USD",
+        )
+        headers = {"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": ticket}
 
         resp1 = await client.post("/v1/orders", headers=headers, json=body)
         assert resp1.status_code == 201, resp1.text
@@ -111,7 +120,6 @@ async def test_create_order_replay_with_different_body_rejected(client, checkout
             )
         )
         request_id = str(uuid.uuid4())
-        headers = {"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": "t"}
         base_body = {
             "request_id": request_id,
             "mandate_id": "mdt_1",
@@ -122,11 +130,42 @@ async def test_create_order_replay_with_different_body_rejected(client, checkout
             "return_url": "http://localhost:3000/return",
             "cancel_url": "http://localhost:3000/cancel",
         }
-        resp1 = await client.post("/v1/orders", headers=headers, json=base_body)
+        ticket1 = mint_ticket(
+            "checkout",
+            mandate_id="mdt_1",
+            proposal_hash="sha256:abc",
+            amount_minor=1000,
+            currency="USD",
+        )
+        resp1 = await client.post(
+            "/v1/orders",
+            headers={
+                "Authorization": f"Bearer {checkout_token}",
+                "X-Authorization-Ticket": ticket1,
+            },
+            json=base_body,
+        )
         assert resp1.status_code == 201
 
+        # Different amount -> a correctly-signed ticket for THAT amount (isolating the
+        # ops-layer idempotency-key-reuse check below from ticket verification, which would
+        # otherwise reject this with TICKET_INVALID first since the ticket binds amount_minor).
         different_body = {**base_body, "amount_minor": 2000}
-        resp2 = await client.post("/v1/orders", headers=headers, json=different_body)
+        ticket2 = mint_ticket(
+            "checkout",
+            mandate_id="mdt_1",
+            proposal_hash="sha256:abc",
+            amount_minor=2000,
+            currency="USD",
+        )
+        resp2 = await client.post(
+            "/v1/orders",
+            headers={
+                "Authorization": f"Bearer {checkout_token}",
+                "X-Authorization-Ticket": ticket2,
+            },
+            json=different_body,
+        )
         assert resp2.status_code == 409
         assert resp2.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
 
@@ -160,9 +199,16 @@ async def test_capture_order_pre_check_rejects_not_approved(client, checkout_tok
             )
         )
         capture_route = mock.post(f"{PAYPAL_BASE}/v2/checkout/orders/ORDERABC/capture")
+        ticket = mint_ticket(
+            "checkout",
+            mandate_id="mdt_1",
+            proposal_hash="sha256:abc",
+            amount_minor=4999,
+            currency="USD",
+        )
         resp = await client.post(
             "/v1/orders/ORDERABC/capture",
-            headers={"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": "t"},
+            headers={"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": ticket},
             json={
                 "request_id": str(uuid.uuid4()),
                 "mandate_id": "mdt_1",
@@ -218,9 +264,16 @@ async def test_capture_order_happy_path(client, checkout_token):
                 },
             )
         )
+        ticket = mint_ticket(
+            "checkout",
+            mandate_id="mdt_1",
+            proposal_hash="sha256:abc",
+            amount_minor=4999,
+            currency="USD",
+        )
         resp = await client.post(
             "/v1/orders/ORDEROK/capture",
-            headers={"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": "t"},
+            headers={"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": ticket},
             json={
                 "request_id": str(uuid.uuid4()),
                 "mandate_id": "mdt_1",
@@ -259,10 +312,17 @@ async def test_not_permitted_caller_rejected(client, tracking_token):
 @pytest.mark.asyncio
 async def test_money_frozen_blocks_create_order(client, checkout_token, monkeypatch):
     monkeypatch.setenv("PS_PAYPALADAPTER_MONEY_ENABLED", "false")
+    ticket = mint_ticket(
+        "checkout",
+        mandate_id="mdt_1",
+        proposal_hash="sha256:abc",
+        amount_minor=4999,
+        currency="USD",
+    )
     try:
         resp = await client.post(
             "/v1/orders",
-            headers={"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": "t"},
+            headers={"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": ticket},
             json={
                 "request_id": str(uuid.uuid4()),
                 "mandate_id": "mdt_1",

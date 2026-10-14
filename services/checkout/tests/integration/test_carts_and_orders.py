@@ -53,7 +53,11 @@ def _allow_eval_response() -> dict:
 def _block_eval_response() -> dict:
     return {
         "decision": "BLOCK",
-        "hard_blocks": ["OVER_CAP"],
+        # Real mandate shape (mandate_logic.EvaluateResult.hard_blocks): list of
+        # {"code": str, "details": dict}, never bare strings -- this fixture previously
+        # mocked the wrong shape, which is exactly why create_cart's old bare-string
+        # handling of hard_blocks was never caught as broken.
+        "hard_blocks": [{"code": "OVER_CAP", "details": {"remaining_minor": 0}}],
         "advisory_flags": [],
         "mandate": {
             "mandate_id": "22222222-2222-2222-2222-222222222222",

@@ -6,18 +6,20 @@ paypal-adapter are mocked via monkeypatch on app.clients (no real HTTP calls, re
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app import clients, repo
 from app.domain.policy import CaptureFacts, PolicyClass, PolicyConfig, TermsSnapshot
 from app.domain.proposal import Action, ApprovalTier
 from app.domain.states import Actor, CaseKind, CaseOrigin, CaseState, IllegalTransition
+from app.settings import settings as app_settings
 from app.usecases.decide import assemble_facts_and_decide
-from app.usecases.execute_refund import execute_refund
+from app.usecases.execute_refund import execute_refund, reconcile_attempts
 from app.usecases.offers import accept_offer, create_offer
 from app.usecases.open_case import OpenCaseCommand, open_case
 from app.usecases.transitions import TransitionRequest, apply_transition
@@ -495,3 +497,400 @@ async def test_buyer_report_kind_reclassification_skips_on_collision(
     case = await repo.get_case(session, opened.case_id)
     assert case is not None
     assert case["kind"] == CaseKind.OTHER.value
+
+
+# ---------------------------------------------------------------------------
+# Reconcile: SENT/UNKNOWN attempts (api.md s3.10, spec s8) -- simulates "our connection to
+# paypal-adapter timed out/errored (UNKNOWN), but find out later what actually happened" by
+# mocking clients.refund_capture to return a 5xx/timeout-shaped AdapterResult (triggers
+# execute_refund's UNKNOWN branch), then mocking clients.get_refund for reconcile_attempts's
+# own follow-up read. No prior test in this suite exercised reconcile_attempts at all.
+# ---------------------------------------------------------------------------
+
+
+async def _drive_to_unknown_attempt(
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    mandate_id: str,
+    capture_id: str,
+    buyer_id: str,
+):
+    _mock_money_path(
+        monkeypatch, mandate_id=mandate_id, capture_id=capture_id, buyer_id=buyer_id
+    )
+
+    async def fake_refund_capture_timeout(**kwargs):
+        # status_code=504/None and no body -- matches execute_refund's final "else" branch
+        # (timeout/5xx/connection error/unimplemented -> UNKNOWN, reconcile decides).
+        return clients.AdapterResult(False, 504, None, "timeout")
+
+    monkeypatch.setattr(clients, "refund_capture", fake_refund_capture_timeout)
+
+    opened = await open_case(
+        session,
+        OpenCaseCommand(
+            order_id=uuid4(),
+            kind=CaseKind.LATE,
+            origin=CaseOrigin.DETECTOR,
+            source_event_id=None,
+            untrusted_text=None,
+        ),
+    )
+    await session.commit()
+    decision = await assemble_facts_and_decide(session, opened.case_id, CFG)
+    offer = await create_offer(
+        session, opened.case_id, decision, Action.REFUND, ApprovalTier.CONFIRM
+    )
+    await session.commit()
+    await accept_offer(session, offer.offer_id, buyer_id, offer.proposal_hash)
+    await session.commit()
+
+    outcome = await execute_refund(session, opened.case_id)
+    await session.commit()
+    assert outcome.execution == "IN_PROGRESS"
+    assert outcome.attempt_status is not None
+    assert outcome.attempt_status.value == "UNKNOWN"
+
+    # get_reconcilable_attempts requires sent_at older than refund_min_reconcile_age_s
+    # (default 60s, far too slow for a test) -- 0 it out for this test only.
+    monkeypatch.setattr(app_settings, "refund_min_reconcile_age_s", 0)
+
+    attempt = await repo.get_attempt_for_case(session, opened.case_id)
+    assert attempt is not None
+    return opened.case_id, attempt["id"]
+
+
+async def test_reconcile_resolves_unknown_attempt_to_completed(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None
+) -> None:
+    case_id, attempt_id = await _drive_to_unknown_attempt(
+        session,
+        monkeypatch,
+        mandate_id="mandate-r1",
+        capture_id="cap-r1",
+        buyer_id="buyer-r1",
+    )
+    # Simulate: the original refund_capture call DID reach PayPal and get an id back, but
+    # OUR read of the confirmation timed out (the realistic "timeout-after-success" case) --
+    # a known paypal_refund_id routes reconcile through get_refund (a pure read, no frozen
+    # gate), not reconcile_refund (a potential-replay, frozen-gated -- see the other tests).
+    await repo.update_attempt_status(
+        session,
+        attempt_id=attempt_id,
+        new_status="UNKNOWN",
+        paypal_refund_id="R-TIMEOUT-1",
+    )
+    await session.commit()
+
+    async def fake_get_refund(refund_id, token=None):
+        assert refund_id == "R-TIMEOUT-1"
+        return clients.AdapterResult(
+            True, 200, {"status": "COMPLETED", "id": refund_id}, "ok"
+        )
+
+    monkeypatch.setattr(clients, "get_refund", fake_get_refund)
+
+    summary = await reconcile_attempts(session, 25)
+    await session.commit()
+
+    assert summary.examined == 1
+    assert summary.finalized_completed == 1
+    assert summary.still_unknown == 0
+
+    case = await repo.get_case(session, case_id)
+    assert case is not None
+    assert case["state"] == "RESOLVED_REFUNDED"
+    attempt = await repo.get_attempt_for_case(session, case_id)
+    assert attempt is not None
+    assert attempt["status"] == "COMPLETED"
+
+
+async def test_reconcile_resolves_unknown_attempt_to_failed(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None
+) -> None:
+    case_id, attempt_id = await _drive_to_unknown_attempt(
+        session,
+        monkeypatch,
+        mandate_id="mandate-r2",
+        capture_id="cap-r2",
+        buyer_id="buyer-r2",
+    )
+    await repo.update_attempt_status(
+        session,
+        attempt_id=attempt_id,
+        new_status="UNKNOWN",
+        paypal_refund_id="R-TIMEOUT-2",
+    )
+    await session.commit()
+
+    async def fake_get_refund(refund_id, token=None):
+        return clients.AdapterResult(
+            True, 200, {"status": "FAILED", "id": refund_id}, "ok"
+        )
+
+    monkeypatch.setattr(clients, "get_refund", fake_get_refund)
+
+    summary = await reconcile_attempts(session, 25)
+    await session.commit()
+
+    assert summary.examined == 1
+    assert summary.finalized_failed == 1
+
+    case = await repo.get_case(session, case_id)
+    assert case is not None
+    assert case["state"] == "HUMAN_REVIEW"
+    attempt = await repo.get_attempt_for_case(session, case_id)
+    assert attempt is not None
+    assert attempt["status"] == "FAILED"
+
+
+async def test_reconcile_leaves_still_ambiguous_attempt_as_unknown(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None
+) -> None:
+    """No paypal_refund_id was ever captured (our original call never got that far before
+    timing out) -- reconcile routes through reconcile_refund(request_id) instead of
+    get_refund. That call is itself still ambiguous (another timeout/5xx): reconcile must
+    not guess: the attempt and case both stay exactly where they were, to be retried later."""
+    case_id, _attempt_id = await _drive_to_unknown_attempt(
+        session,
+        monkeypatch,
+        mandate_id="mandate-r3",
+        capture_id="cap-r3",
+        buyer_id="buyer-r3",
+    )
+
+    async def fake_reconcile_refund_still_down(request_id, token=None):
+        return clients.AdapterResult(False, 504, None, "timeout")
+
+    monkeypatch.setattr(clients, "reconcile_refund", fake_reconcile_refund_still_down)
+
+    summary = await reconcile_attempts(session, 25)
+    await session.commit()
+
+    assert summary.examined == 1
+    assert summary.still_unknown == 1
+    assert summary.finalized_completed == 0
+    assert summary.finalized_failed == 0
+
+    case = await repo.get_case(session, case_id)
+    assert case is not None
+    assert case["state"] == "REFUNDING"
+    attempt = await repo.get_attempt_for_case(session, case_id)
+    assert attempt is not None
+    assert attempt["status"] == "UNKNOWN"
+
+
+async def test_reconcile_with_known_refund_id_still_reads_while_frozen(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None
+) -> None:
+    """spec s8/s9: a known paypal_refund_id routes reconcile through get_refund (a pure
+    read), which runs regardless of the freeze flag and still finalizes a COMPLETED result
+    -- freezing blocks NEW replay attempts (the no-refund-id reconcile_refund path, see
+    test_reconcile_skips_replay_while_frozen_with_no_known_refund_id below), not reads of
+    what's already known to have happened on PayPal's side."""
+    case_id, attempt_id = await _drive_to_unknown_attempt(
+        session,
+        monkeypatch,
+        mandate_id="mandate-r4",
+        capture_id="cap-r4",
+        buyer_id="buyer-r4",
+    )
+    await repo.update_attempt_status(
+        session,
+        attempt_id=attempt_id,
+        new_status="UNKNOWN",
+        paypal_refund_id="R-TIMEOUT-4",
+    )
+    await session.commit()
+
+    from sqlalchemy import text as sa_text
+
+    await session.execute(
+        sa_text(
+            "UPDATE resolution.control_flags SET refunds_frozen = true, epoch = epoch + 1 WHERE id = 1"
+        )
+    )
+    await session.commit()
+
+    async def fake_get_refund(refund_id, token=None):
+        return clients.AdapterResult(
+            True, 200, {"status": "COMPLETED", "id": refund_id}, "ok"
+        )
+
+    monkeypatch.setattr(clients, "get_refund", fake_get_refund)
+
+    summary = await reconcile_attempts(session, 25)
+    await session.commit()
+
+    assert summary.examined == 1
+    assert summary.finalized_completed == 1
+    assert summary.frozen_skipped_replays == 0
+
+    case = await repo.get_case(session, case_id)
+    assert case is not None
+    assert case["state"] == "RESOLVED_REFUNDED"
+
+
+async def test_reconcile_skips_replay_while_frozen_with_no_known_refund_id(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None
+) -> None:
+    """No paypal_refund_id known yet -- reconcile would need reconcile_refund (a
+    potential-replay call), which is correctly frozen-gated (spec s9): no PayPal call at
+    all while frozen, attempt and case stay exactly where they were."""
+    case_id, _attempt_id = await _drive_to_unknown_attempt(
+        session,
+        monkeypatch,
+        mandate_id="mandate-r5",
+        capture_id="cap-r5",
+        buyer_id="buyer-r5",
+    )
+
+    from sqlalchemy import text as sa_text
+
+    await session.execute(
+        sa_text(
+            "UPDATE resolution.control_flags SET refunds_frozen = true, epoch = epoch + 1 WHERE id = 1"
+        )
+    )
+    await session.commit()
+
+    called = False
+
+    async def fake_reconcile_refund_should_not_be_called(request_id, token=None):
+        nonlocal called
+        called = True
+        return clients.AdapterResult(True, 200, {"status": "COMPLETED"}, "ok")
+
+    monkeypatch.setattr(
+        clients, "reconcile_refund", fake_reconcile_refund_should_not_be_called
+    )
+
+    summary = await reconcile_attempts(session, 25)
+    await session.commit()
+
+    assert called is False  # frozen must block the call entirely, not just its effect
+    assert summary.examined == 1
+    assert summary.frozen_skipped_replays == 1
+    assert summary.finalized_completed == 0
+
+    case = await repo.get_case(session, case_id)
+    assert case is not None
+    assert case["state"] == "REFUNDING"
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: duplicate/simultaneous accept_offer calls for the SAME offer must resolve
+# to exactly one winner, never a double-refund -- each concurrent caller needs its own
+# AsyncSession (one session cannot run two concurrent statements), so this test builds its
+# own engine/sessionmaker against the same throwaway test DB the `session` fixture uses.
+# ---------------------------------------------------------------------------
+
+
+def _sqlalchemy_dsn_for_test(pg_env: dict) -> str:
+    return (
+        f"postgresql+asyncpg://svc_resolution:{pg_env['svc_password']}"
+        f"@localhost:5432/{pg_env['db_name']}"
+    )
+
+
+async def test_concurrent_accept_offer_has_exactly_one_winner(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None, pg_env: dict
+) -> None:
+    mandate_id, capture_id, buyer_id = "mandate-c1", "cap-c1", "buyer-c1"
+    _mock_money_path(
+        monkeypatch, mandate_id=mandate_id, capture_id=capture_id, buyer_id=buyer_id
+    )
+
+    call_count = 0
+
+    async def fake_refund_capture(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        return clients.AdapterResult(
+            True, 201, {"refund_id": f"R-CONCURRENT-{call_count}"}, "completed"
+        )
+
+    monkeypatch.setattr(clients, "refund_capture", fake_refund_capture)
+
+    opened = await open_case(
+        session,
+        OpenCaseCommand(
+            order_id=uuid4(),
+            kind=CaseKind.LATE,
+            origin=CaseOrigin.DETECTOR,
+            source_event_id=None,
+            untrusted_text=None,
+        ),
+    )
+    await session.commit()
+    decision = await assemble_facts_and_decide(session, opened.case_id, CFG)
+    offer = await create_offer(
+        session, opened.case_id, decision, Action.REFUND, ApprovalTier.CONFIRM
+    )
+    await session.commit()
+
+    engine = create_async_engine(
+        _sqlalchemy_dsn_for_test(pg_env), future=True, pool_size=10, max_overflow=10
+    )
+    maker = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async def one_accept():
+        async with maker() as s:
+            try:
+                result = await accept_offer(
+                    s, offer.offer_id, buyer_id, offer.proposal_hash
+                )
+                await s.commit()
+                return ("ok", result)
+            except Exception as exc:  # noqa: BLE001
+                await s.rollback()
+                return ("error", exc)
+
+    results = await asyncio.gather(*[one_accept() for _ in range(8)])
+    await engine.dispose()
+
+    ok_results = [r for kind, r in results if kind == "ok"]
+    assert (
+        len(ok_results) == 8
+    )  # CAS makes every caller see a clean result, winner or replay
+    winners = [r for r in ok_results if not r.replayed]
+    assert len(winners) == 1  # exactly one caller actually won the accept race
+
+    final_offer = await repo.get_offer(session, offer.offer_id)
+    assert final_offer is not None
+    assert final_offer["status"] == "ACCEPTED"
+
+    case = await repo.get_case(session, opened.case_id)
+    assert case is not None
+    assert case["state"] == "APPROVED"
+
+    # execute_refund is what the route handler calls next after a winning accept (mirrors
+    # accept_offer_route/consent_approval) -- racing it too must still produce exactly one
+    # real PayPal call, with every caller converging on the same final state.
+    engine2 = create_async_engine(
+        _sqlalchemy_dsn_for_test(pg_env), future=True, pool_size=10, max_overflow=10
+    )
+    maker2 = async_sessionmaker(engine2, expire_on_commit=False, class_=AsyncSession)
+
+    async def one_execute():
+        async with maker2() as s:
+            outcome = await execute_refund(s, opened.case_id)
+            await s.commit()
+            return outcome
+
+    outcomes = await asyncio.gather(*[one_execute() for _ in range(5)])
+    await engine2.dispose()
+
+    assert (
+        call_count == 1
+    )  # exactly one real PayPal call, no matter how many callers raced
+    completed = [o for o in outcomes if o.execution == "DONE"]
+    assert len(completed) >= 1
+
+    final_case = await repo.get_case(session, opened.case_id)
+    assert final_case is not None
+    assert final_case["state"] == "RESOLVED_REFUNDED"
+    attempt = await repo.get_attempt_for_case(session, opened.case_id)
+    assert attempt is not None
+    assert attempt["status"] == "COMPLETED"
