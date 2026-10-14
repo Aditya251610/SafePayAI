@@ -408,3 +408,126 @@ async def test_list_orders_merchant_without_merchant_id_fails_closed(
     )
     assert resp.status_code == 200
     assert resp.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_blocked_when_mandate_refuses_reservation(
+    client, monkeypatch
+) -> None:
+    async def _resolve(*a, **k):
+        return _priced_response()
+
+    async def _evaluate(*a, **k):
+        return _allow_eval_response()
+
+    async def _refused(*a, **k):
+        return clients.AdapterResult(False, True, {}, "refused", code="OVER_CAP")
+
+    monkeypatch.setattr(clients, "resolve_prices", _resolve)
+    monkeypatch.setattr(clients, "evaluate_mandate", _evaluate)
+    monkeypatch.setattr(clients, "create_reservation", _refused)
+
+    create_resp = await client.post(
+        "/carts",
+        json={
+            "mandate_id": "22222222-2222-2222-2222-222222222222",
+            "lines": [{"sku": "sku-1", "qty": 1}],
+        },
+    )
+    cart_body = create_resp.json()
+
+    confirm_resp = await client.post(
+        f"/carts/{cart_body['cart_id']}/confirm",
+        json={"proposal_hash": cart_body["proposal_hash"]},
+        headers={"Idempotency-Key": "idem-reservation-refused"},
+    )
+    assert confirm_resp.status_code == 409
+    assert confirm_resp.json()["error"] == "OVER_CAP"
+    # No order was ever created for THIS cart -- a refused reservation must not
+    # leave a row behind (other tests in this session create their own orders
+    # under the same shared mandate_id, so check by cart_id, not list emptiness).
+    order_resp = await client.get(
+        "/orders", params={"mandate_id": "22222222-2222-2222-2222-222222222222"}
+    )
+    cart_ids = {item["cart_id"] for item in order_resp.json()["items"]}
+    assert cart_body["cart_id"] not in cart_ids
+
+
+@pytest.mark.asyncio
+async def test_confirm_blocked_when_mandate_unreachable_for_reservation(
+    client, monkeypatch
+) -> None:
+    async def _resolve(*a, **k):
+        return _priced_response()
+
+    async def _evaluate(*a, **k):
+        return _allow_eval_response()
+
+    async def _unreachable(*a, **k):
+        return clients.AdapterResult(False, False, None, "connection_error")
+
+    monkeypatch.setattr(clients, "resolve_prices", _resolve)
+    monkeypatch.setattr(clients, "evaluate_mandate", _evaluate)
+    monkeypatch.setattr(clients, "create_reservation", _unreachable)
+
+    create_resp = await client.post(
+        "/carts",
+        json={
+            "mandate_id": "22222222-2222-2222-2222-222222222222",
+            "lines": [{"sku": "sku-1", "qty": 1}],
+        },
+    )
+    cart_body = create_resp.json()
+
+    confirm_resp = await client.post(
+        f"/carts/{cart_body['cart_id']}/confirm",
+        json={"proposal_hash": cart_body["proposal_hash"]},
+        headers={"Idempotency-Key": "idem-reservation-unreachable"},
+    )
+    assert confirm_resp.status_code == 503
+    assert confirm_resp.json()["error"] == "MANDATE_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_confirm_stores_mandate_reservation_id_on_the_order(
+    client, monkeypatch
+) -> None:
+    async def _resolve(*a, **k):
+        return _priced_response()
+
+    async def _evaluate(*a, **k):
+        return _allow_eval_response()
+
+    async def _create_order(*a, **k):
+        return clients.AdapterResult(
+            True, True, {"order_id": "PAY-resv", "approve_url": "https://x"}, "created"
+        )
+
+    async def _reserved(*a, **k):
+        return clients.AdapterResult(
+            True, True, {"reservation_id": "res-abc-123", "state": "RESERVED"}, "ok"
+        )
+
+    monkeypatch.setattr(clients, "resolve_prices", _resolve)
+    monkeypatch.setattr(clients, "evaluate_mandate", _evaluate)
+    monkeypatch.setattr(clients, "create_order", _create_order)
+    monkeypatch.setattr(clients, "create_reservation", _reserved)
+
+    create_resp = await client.post(
+        "/carts",
+        json={
+            "mandate_id": "22222222-2222-2222-2222-222222222222",
+            "lines": [{"sku": "sku-1", "qty": 1}],
+        },
+    )
+    cart_body = create_resp.json()
+    confirm_resp = await client.post(
+        f"/carts/{cart_body['cart_id']}/confirm",
+        json={"proposal_hash": cart_body["proposal_hash"]},
+        headers={"Idempotency-Key": "idem-reservation-stored"},
+    )
+    assert confirm_resp.status_code == 201
+    order_id = confirm_resp.json()["order_id"]
+
+    order_resp = await client.get(f"/orders/{order_id}")
+    assert order_resp.json()["mandate_reservation_id"] == "res-abc-123"

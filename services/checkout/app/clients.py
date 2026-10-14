@@ -298,3 +298,138 @@ async def capture_order(
     return AdapterResult(
         False, False, None, f"status={resp.status_code}", code=error_code
     )
+
+
+# ---------------------------------------------------------------------------
+# Mandate reservation lifecycle (mandate/app/routers/reservations.py). cap
+# enforcement's real source of truth -- committed_minor/sum_committed_minor
+# stays as a redundant belt-and-suspenders check in carts.py, not replaced.
+# ---------------------------------------------------------------------------
+
+
+async def _reservation_call(
+    settings: Settings, token: str, method: str, path: str, body: dict[str, Any]
+) -> AdapterResult:
+    timeout = httpx.Timeout(settings.http_timeout_mandate_ms / 1000.0)
+    async with build_client(settings.mandate_base_url, timeout=timeout) as client:
+        try:
+            resp = await client.request(
+                method, path, json=body, headers={"Authorization": f"Bearer {token}"}
+            )
+        except httpx.TimeoutException as exc:
+            return AdapterResult(False, False, None, f"timeout: {exc}")
+        except httpx.HTTPError as exc:
+            return AdapterResult(False, False, None, f"connection_error: {exc}")
+    try:
+        data = resp.json() if resp.content else None
+    except ValueError:
+        return AdapterResult(False, False, None, "malformed JSON response")
+    if resp.status_code in (200, 201):
+        return AdapterResult(True, True, data, "ok")
+    error_code = (data or {}).get("error") if isinstance(data, dict) else None
+    # 4xx here is mandate's own considered refusal (OVER_CAP, MANDATE_REVOKED,
+    # AMOUNT_MISMATCH, INVALID_RESERVATION_STATE, ...) -- definite, never retried
+    # blindly. 5xx/network already returned above as indefinite.
+    if 400 <= resp.status_code < 500:
+        return AdapterResult(
+            False, True, data, f"status={resp.status_code}", code=error_code
+        )
+    return AdapterResult(
+        False, False, data, f"status={resp.status_code}", code=error_code
+    )
+
+
+async def create_reservation(
+    settings: Settings,
+    token: str,
+    *,
+    mandate_id: str,
+    order_id: str,
+    amount_minor: int,
+    currency: str,
+    proposal_hash: str,
+    cart: dict[str, Any],
+) -> AdapterResult:
+    return await _reservation_call(
+        settings,
+        token,
+        "POST",
+        f"/mandates/{mandate_id}/reservations",
+        {
+            "order_id": order_id,
+            "amount_minor": amount_minor,
+            "currency": currency,
+            "proposal_hash": proposal_hash,
+            "cart": cart,
+        },
+    )
+
+
+async def authorize_capture_reservation(
+    settings: Settings,
+    token: str,
+    reservation_id: str,
+    *,
+    order_id: str,
+    amount_minor: int,
+) -> AdapterResult:
+    return await _reservation_call(
+        settings,
+        token,
+        "POST",
+        f"/reservations/{reservation_id}/authorize-capture",
+        {"order_id": order_id, "amount_minor": amount_minor},
+    )
+
+
+async def commit_reservation(
+    settings: Settings,
+    token: str,
+    reservation_id: str,
+    *,
+    capture_id: str,
+    captured_amount_minor: int,
+    currency: str,
+    captured_at: str,
+) -> AdapterResult:
+    return await _reservation_call(
+        settings,
+        token,
+        "POST",
+        f"/reservations/{reservation_id}/commit",
+        {
+            "capture_id": capture_id,
+            "captured_amount_minor": captured_amount_minor,
+            "currency": currency,
+            "captured_at": captured_at,
+        },
+    )
+
+
+async def mark_reservation_unknown(
+    settings: Settings, token: str, reservation_id: str, *, reason_code: str
+) -> AdapterResult:
+    return await _reservation_call(
+        settings,
+        token,
+        "POST",
+        f"/reservations/{reservation_id}/mark-unknown",
+        {"reason_code": reason_code},
+    )
+
+
+async def release_reservation(
+    settings: Settings,
+    token: str,
+    reservation_id: str,
+    *,
+    reason_code: str,
+    capture_outcome: str | None = None,
+) -> AdapterResult:
+    return await _reservation_call(
+        settings,
+        token,
+        "POST",
+        f"/reservations/{reservation_id}/release",
+        {"reason_code": reason_code, "capture_outcome": capture_outcome},
+    )
