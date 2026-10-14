@@ -45,6 +45,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Add PRD and architecture docs
 - Rewrite README without links into the untracked .claude/ dir
 - Update audit README to reflect Wave 5 status
+- Record live webhook signature verification (#85)
 
 ### Miscellaneous Tasks
 
@@ -53,6 +54,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Remove .claude internal docs/config from the public repo
 - Reduce CI/Dependabot noise and add CHANGELOG.md
 - Auto-generate CHANGELOG.md via git-cliff
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
