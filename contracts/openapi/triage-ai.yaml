@@ -5,8 +5,10 @@ info:
   description: >
     Classify/draft/brief for buyer problem reports. Derived from
     .claude/prd/services/triage-ai/api.md. ADR-010: AI never decides money; every output is
-    schema-validated and fails closed. Wave 4: /classify, /draft, /brief are stubs
-    returning 501 after auth + schema validation; health/readyz are real.
+    schema-validated and fails closed. /classify, /draft, /brief run the real pipeline
+    (app/service.py): untrusted-text handling, the LLM gateway call, fail-closed routing, and
+    the regex draft gate. Model/provider failures are never transport errors -- they return
+    HTTP 200 with a fail-closed payload.
 servers:
   - url: /
 paths:
@@ -50,7 +52,6 @@ paths:
         "403": { description: FORBIDDEN_CALLER }
         "422": { description: INVALID_REQUEST }
         "500": { description: INTERNAL (genuine bug, not a model/provider failure) }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
   /draft:
     post:
       operationId: draft
@@ -70,7 +71,6 @@ paths:
         "403": { description: FORBIDDEN_CALLER }
         "422": { description: INVALID_REQUEST }
         "500": { description: INTERNAL }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
   /brief:
     post:
       operationId: brief
@@ -90,7 +90,6 @@ paths:
         "403": { description: FORBIDDEN_CALLER }
         "422": { description: INVALID_REQUEST }
         "500": { description: INTERNAL }
-        "501": { description: Wave 5 pending (current Wave 4 behavior) }
 components:
   securitySchemes:
     internalJwt:
