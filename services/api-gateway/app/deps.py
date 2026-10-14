@@ -133,3 +133,11 @@ async def require_staff(principal: Principal = Depends(require_session)) -> Prin
     if principal.role not in ("merchant", "operator"):
         raise HTTPException(status_code=403, detail="FORBIDDEN")
     return principal
+
+
+async def require_reviewer(
+    principal: Principal = Depends(require_session),
+) -> Principal:
+    if principal.role != "reviewer":
+        raise HTTPException(status_code=403, detail="FORBIDDEN")
+    return principal

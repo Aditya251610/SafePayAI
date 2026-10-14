@@ -70,6 +70,11 @@ gateway interface) lives in [`libs/common`](libs/common).
 - `services/audit` — append-only, hash-chained audit log
 - `services/web` — Next.js frontend (built after the backend, per the current build order)
 
+Building the frontend (or any other client of the gateway)? Start with
+[`contracts/frontend-integration-contract.md`](contracts/frontend-integration-contract.md) —
+every `/api/*` route, role, CSRF, and idempotency requirement, read directly from the
+gateway's own code. No need to read any backend service's source to integrate against it.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).

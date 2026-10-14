@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     max_ephemeral_buyers: int = 500
 
     csrf_key: str = "dev-only-change-me"
+    csrf_ttl_s: int = 3600
     session_cookie_key: str | None = None
 
     signing_key_pem: str | None = None

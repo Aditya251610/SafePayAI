@@ -1,9 +1,9 @@
 """Gateway-owned session endpoints (spec.md section 5.1 / api.md section 3).
 
 Real argon2id verify, sliding-expiry sessions, `__Host-` cookie, and the in-process
-rate limiter live here. CSRF token issuance (`GET /api/auth/csrf`) remains a Wave-5
-scope cut for this pass - not in this task's numbered IMPLEMENT list and not in its
-TEST checklist - and is left as the existing 501 stub; flagged in the final report.
+rate limiter live here. CSRF token issuance (`GET /api/auth/csrf`) is real -- see
+app/csrf.py for the full design (single-use, purpose-scoped, session-bound tokens
+backed by `gateway.csrf_uses`).
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.passwords import verify_password
+from app.csrf import issue_csrf_token
 from app.db import get_db_session
 from app.deps import Principal, clear_session_cookie, require_session
 from app.ratelimit import limiter
@@ -221,12 +222,16 @@ async def me(principal: Principal = Depends(require_session)) -> dict:
 
 @router.get("/csrf")
 async def csrf(
-    response: Response,
     purpose: str = "general",
     principal: Principal = Depends(require_session),
+    db: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
-    response.status_code = 501
+    token, expires_at = await issue_csrf_token(
+        db, sid_hash=principal.sid_hash, purpose=purpose, settings=settings
+    )
     return {
-        "error": "not_implemented",
-        "detail": "GET /api/auth/csrf pending (out of this task's scope)",
+        "csrf_token": token,
+        "purpose": purpose,
+        "expires_at": expires_at.isoformat(),
     }

@@ -68,10 +68,90 @@ async def test_merchant_rejected_on_operator_only_demo_route(app_client, make_us
 async def test_operator_allowed_past_role_guard_on_demo_route(app_client, make_user):
     """Operator passes the role guard; it then hits the (expected, since no
     tracking upstream is configured in this test env) 503 from the proxy layer -
-    proving the 403 above was a role decision, not a path/config coincidence."""
+    proving the earlier 403 (for merchant) was a role decision, not a path/config
+    coincidence. A real CSRF token is required too, now that CSRF is real."""
     await _login_operator(app_client, make_user)
-    resp = await app_client.post("/api/tracking/demo/clock/advance")
+    csrf_resp = await app_client.get("/api/auth/csrf")
+    assert csrf_resp.status_code == 200
+    token = csrf_resp.json()["csrf_token"]
+
+    resp = await app_client.post(
+        "/api/tracking/demo/clock/advance", headers={"X-CSRF-Token": token}
+    )
     assert resp.status_code != 403
+
+
+async def test_buyer_rejected_on_reviewer_only_route(app_client):
+    await _login_buyer_via_demo_session(app_client)
+    resp = await app_client.get("/api/resolution/review/queue")
+    assert resp.status_code == 403
+    assert resp.json()["error"] == "FORBIDDEN"
+
+
+async def test_merchant_rejected_on_reviewer_only_route(app_client, make_user):
+    await _login_merchant(app_client, make_user)
+    resp = await app_client.get("/api/resolution/review/queue")
+    assert resp.status_code == 403
+
+
+async def test_reviewer_allowed_past_role_guard_on_review_queue(app_client, make_user):
+    await make_user(
+        handle="reviewer-role-test",
+        role="reviewer",
+        actor_type="reviewer",
+        password_hash=hash_password("correct-password"),
+    )
+    resp = await app_client.post(
+        "/api/auth/login",
+        json={"handle": "reviewer-role-test", "password": "correct-password"},
+    )
+    assert resp.status_code == 200
+
+    resp = await app_client.get("/api/resolution/review/queue")
+    assert resp.status_code != 403
+
+
+async def test_buyer_rejected_on_refunds_frozen_route(app_client):
+    await _login_buyer_via_demo_session(app_client)
+    resp = await app_client.get("/api/resolution/controls/refunds-frozen")
+    assert resp.status_code == 403
+
+
+async def test_buyer_allowed_past_role_guard_on_return_cancel_and_decline(app_client):
+    """Buyer passes the role guard (require_buyer) on all three; each still needs its
+    own CSRF token (single-use). What happens past that is upstream's concern (these
+    hit a real FORBIDDEN only if the role guard itself rejected them)."""
+    await _login_buyer_via_demo_session(app_client)
+    tokens = [
+        (await app_client.get("/api/auth/csrf")).json()["csrf_token"] for _ in range(3)
+    ]
+
+    return_resp = await app_client.post(
+        "/api/checkout/orders/return",
+        json={"state": "x", "token": "x", "payer_id": "x"},
+        headers={"X-CSRF-Token": tokens[0]},
+    )
+    assert not (
+        return_resp.status_code == 403 and return_resp.json()["error"] == "FORBIDDEN"
+    )
+
+    cancel_resp = await app_client.post(
+        "/api/checkout/orders/cancel",
+        json={"state": "x"},
+        headers={"X-CSRF-Token": tokens[1]},
+    )
+    assert not (
+        cancel_resp.status_code == 403 and cancel_resp.json()["error"] == "FORBIDDEN"
+    )
+
+    decline_resp = await app_client.post(
+        "/api/resolution/offers/some-offer-id/decline",
+        json={"reason_code": "NOT_WANTED"},
+        headers={"X-CSRF-Token": tokens[2], "Idempotency-Key": "test-decline-1"},
+    )
+    assert not (
+        decline_resp.status_code == 403 and decline_resp.json()["error"] == "FORBIDDEN"
+    )
 
 
 async def test_anon_rejected_on_protected_routes(app_client):
