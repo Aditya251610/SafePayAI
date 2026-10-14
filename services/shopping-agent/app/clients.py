@@ -33,23 +33,55 @@ class MandateNotFoundError(Exception):
     """Raised when the mandate does not exist or is not owned by the caller (404)."""
 
 
+_CATALOG_PAGE_LIMIT = 100  # catalog/app/routers/items.py's own MAX_LIMIT
+_CATALOG_FETCH_CEILING = 1000  # hard stop so a runaway catalog can't stall a request
+
+
+def _to_agent_item(raw: dict[str, Any]) -> dict[str, Any]:
+    """Maps catalog's real `Item` shape (category_id, unit_price_minor) to the field
+    names the agent's own internals (prompts.py, catalog_filter.py, form_fallback.py)
+    have always used (category, price_minor) -- one mapping at the boundary instead of
+    rewriting every internal call site, and the only place this divergence can hide
+    again."""
+    mapped = dict(raw)
+    if "category_id" in mapped:
+        mapped["category"] = mapped.pop("category_id")
+    if "unit_price_minor" in mapped:
+        mapped["price_minor"] = mapped.pop("unit_price_minor")
+    return mapped
+
+
 async def fetch_catalog_items(
     *, base_url: str, bearer_token: str | None, timeout_s: float = 5.0
 ) -> list[dict[str, Any]]:
     headers = {"Authorization": f"Bearer {bearer_token}"} if bearer_token else {}
+    items: list[dict[str, Any]] = []
+    offset = 0
     try:
         async with build_client(base_url) as client:
-            response = await client.get("/items", headers=headers, timeout=timeout_s)
-        response.raise_for_status()
-        body = response.json()
+            while True:
+                response = await client.get(
+                    "/items",
+                    params={"limit": _CATALOG_PAGE_LIMIT, "offset": offset},
+                    headers=headers,
+                    timeout=timeout_s,
+                )
+                response.raise_for_status()
+                body = response.json()
+                page = body.get("items")
+                if not isinstance(page, list):
+                    raise CatalogUnavailableError(
+                        "catalog /items returned no items array"
+                    )
+                items.extend(page)
+                if not body.get("has_more") or len(items) >= _CATALOG_FETCH_CEILING:
+                    break
+                offset += _CATALOG_PAGE_LIMIT
     except (httpx.HTTPError, ValueError) as exc:
         raise CatalogUnavailableError(
             f"catalog /items unreachable or invalid: {exc}"
         ) from exc
-    items = body.get("items")
-    if not isinstance(items, list):
-        raise CatalogUnavailableError("catalog /items returned no items array")
-    return items
+    return [_to_agent_item(item) for item in items if item.get("active", True)]
 
 
 async def fetch_mandate_summary(

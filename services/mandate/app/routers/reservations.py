@@ -61,6 +61,16 @@ async def create_reservation(
     bare_secrets = get_bare_secrets()
     cart = body.cart.model_dump()
     mandate_logic.check_malformed_cart(cart)
+    if body.amount_minor != body.cart.total_minor:
+        raise MandateError(
+            422,
+            "AMOUNT_CART_MISMATCH",
+            "amount_minor must equal cart.total_minor",
+            {
+                "amount_minor": body.amount_minor,
+                "cart_total_minor": body.cart.total_minor,
+            },
+        )
 
     async with session.begin():
         existing = await repo.get_reservation_by_order(
