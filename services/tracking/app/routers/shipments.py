@@ -78,6 +78,18 @@ async def create_shipment_route(
     )
 
 
+@router.get("/shipments/pending-count")
+async def get_pending_count(
+    claims: dict = Depends(require_internal_jwt),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Platform-wide count of active, non-terminal shipments -- backs bff's
+    merchant-queue `tracking_pending` field (gateway has no equivalent of its
+    own; tracking owns carrier/delivery state per 00-context-brief.md s3)."""
+    pending = await repo.count_active_nonterminal_shipments(session)
+    return {"pending": pending}
+
+
 @router.get("/shipments/{order_id}")
 async def get_shipments(
     order_id: str,

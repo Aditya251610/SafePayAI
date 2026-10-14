@@ -104,20 +104,20 @@ async def assemble_facts_and_decide(
     # resolution's own usecase, not in libs/common or the thin clients.py adapter.
     order_date = case["opened_at"].date()  # fallback proxy if checkout is unreachable
     order_state_raw: str | None = None
+    item_titles: list[str] = []
     if case.get("order_id"):
         order_state_facts = await clients.get_order_state_facts(case["order_id"])
         if order_state_facts is not None:
             order_date = order_state_facts.created_at.date()
             order_state_raw = order_state_facts.status
+            item_titles = order_state_facts.item_titles
     order_facts_payload = {
         "order_ref": case["order_id"] or str(case_id),
         "order_date": order_date.isoformat(),
         "promised_by": protected_until.date().isoformat() if protected_until else None,
         "demo_now": now.isoformat(),
         "state": order_state_raw or (capture.status if capture else "UNKNOWN"),
-        # checkout's GET /orders/{id} does not expose line-item titles today (known gap,
-        # see this module's clients.py docstring) -- empty list, which the schema defaults to.
-        "item_titles": [],
+        "item_titles": item_titles,
         "amount_minor": capture.amount_minor if capture else None,
         "currency": capture.currency if capture else None,
     }

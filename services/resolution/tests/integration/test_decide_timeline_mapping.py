@@ -1,10 +1,13 @@
 """assemble_facts_and_decide maps tracking's own ShipmentStatus vocabulary onto
 triage-ai's exact ShipStatus contract before calling classify_triage -- this used
 to always send an empty timeline regardless of real shipment history (see
-decide.py's _TRACKING_TO_TRIAGE_STATUS)."""
+decide.py's _TRACKING_TO_TRIAGE_STATUS), and always sent item_titles=[] since
+checkout's GET /orders/{id} never carried any (now it does, via
+clients.OrderStateFacts.item_titles)."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -64,11 +67,19 @@ async def test_timeline_payload_is_mapped_from_tracking_events(
             ],
         )
 
+    async def fake_order_state(order_id: str, token: str | None = None):
+        return clients.OrderStateFacts(
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            status="CAPTURED",
+            item_titles=["Trail Running Socks, 3-pack"],
+        )
+
     async def fake_classify(**kwargs):
         captured.update(kwargs)
 
     monkeypatch.setattr(clients, "get_order_identity", fake_identity)
     monkeypatch.setattr(clients, "get_tracking_agreement", fake_tracking)
+    monkeypatch.setattr(clients, "get_order_state_facts", fake_order_state)
     monkeypatch.setattr(clients, "classify_triage", fake_classify)
 
     opened = await open_case(
@@ -94,3 +105,6 @@ async def test_timeline_payload_is_mapped_from_tracking_events(
     # event_id is regenerated here, not tracking's own id -- only this usecase's
     # mapping shape matters to triage-ai's schema (pattern-constrained field).
     assert timeline[0]["event_id"] != "ignored-tracking-side-id"
+
+    order_facts = captured["order"]
+    assert order_facts["item_titles"] == ["Trail Running Socks, 3-pack"]

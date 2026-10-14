@@ -450,6 +450,9 @@ async def confirm_cart(
             invoice_id=order_id,
             merchant_ids=cart_row["merchant_ids"],
             mandate_reservation_id=mandate_reservation_id,
+            item_titles=[
+                line_["title"] for line_ in cart_row["lines"] if line_.get("title")
+            ][:5],
         )
         await repo.insert_return_binding(
             session,

@@ -1,16 +1,10 @@
 """Read-only BFF aggregators - spec.md section 9 / api.md section 3.
 
-`buyer-home` is deliberately left unimplemented: spec.md C9 flags it as needing
-"mandate list by buyer" and "checkout orders by buyer" list endpoints that don't
-exist anywhere in the service-map (mandate has no GET /mandates list; checkout's
-GET /orders requires an explicit mandate_id, it can't enumerate a buyer's
-mandates to know which ones to ask for) -- the spec's own documented contingency
-is "if not added, buyer-home is cut, UI uses direct proxied reads" (api.md
-section 9). Building a new list-by-buyer endpoint on mandate or checkout is a
-separate, bigger piece of work, not a gateway-only aggregation job.
-
-`orders/{id}` and `merchant-queue` have no such missing dependency -- every piece
-they aggregate already exists -- so those are implemented for real below.
+spec.md C9 flagged buyer-home as needing "mandate list by buyer" and "checkout
+orders by buyer" list endpoints that supposedly didn't exist -- turned out both
+already did (mandate's GET /mandates was already buyer-scoped; checkout's
+GET /orders just needed mandate_id made optional for the buyer role, since
+buyer_id is an authoritative scope on its own). C9 was stale, not a real gap.
 """
 
 from __future__ import annotations
@@ -72,7 +66,30 @@ async def _get(
 async def buyer_home(
     response: Response, principal: Principal = Depends(require_buyer)
 ) -> dict:
-    return _not_implemented(response, "GET /api/bff/buyer-home")
+    mandates = await _get(
+        "mandate", "/mandates", principal=principal, scope=["mandate:read"]
+    )
+    orders = await _get(
+        "checkout", "/orders", principal=principal, scope=["checkout:read"]
+    )
+    cases = await _get(
+        "resolution", "/cases", principal=principal, scope=["resolution:read"]
+    )
+
+    order_items = (orders or {}).get("items") or []
+    case_items = [
+        c for c in (cases or {}).get("items") or [] if c.get("state") != "CLOSED"
+    ]
+    active_case = (
+        max(case_items, key=lambda c: c.get("opened_at", "")) if case_items else None
+    )
+
+    response.status_code = 200
+    return {
+        "mandates": (mandates or {}).get("items") or [],
+        "latest_order": order_items[0] if order_items else None,
+        "active_case": active_case,
+    }
 
 
 @router.get("/orders/{order_id}")
@@ -125,10 +142,14 @@ async def merchant_queue(
         scope=["resolution:read"],
         params={"status": "HUMAN_REVIEW"},
     )
+    tracking_pending = await _get(
+        "tracking",
+        "/shipments/pending-count",
+        principal=principal,
+        scope=["tracking:read"],
+    )
     response.status_code = 200
     return {
         "cases": (cases or {}).get("items") or [],
-        # tracking has no "list shipments pending" endpoint (only per-order lookup)
-        # to aggregate a platform-wide pending count from -- flagged, not faked.
-        "tracking_pending": None,
+        "tracking_pending": (tracking_pending or {}).get("pending"),
     }

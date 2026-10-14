@@ -77,6 +77,7 @@ def _order_view(row: dict, capture_row: dict | None = None) -> dict:
         "capture_id": capture_row["capture_id"] if capture_row else None,
         "capture_status": capture_row["paypal_status"] if capture_row else None,
         "mandate_reservation_id": row.get("mandate_reservation_id"),
+        "item_titles": _row_item_titles(row),
     }
 
 
@@ -940,28 +941,51 @@ def _row_merchant_ids(row: dict) -> list[str]:
     return [str(m) for m in merchant_ids]
 
 
+def _row_item_titles(row: dict) -> list[str]:
+    item_titles = row.get("item_titles") or []
+    if isinstance(item_titles, str):
+        import json
+
+        item_titles = json.loads(item_titles)
+    return [str(t) for t in item_titles]
+
+
 @router.get("/orders")
 async def list_orders(
     mandate_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
     principal: Principal = Depends(require_service_jwt),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    if mandate_id is None:
+    buyer_id = _buyer_id(principal)
+    if mandate_id is None and principal.role != "buyer":
+        # Buyer-home aggregation (bff/orders-by-buyer, spec.md C9) needs a buyer's
+        # recent orders across every mandate they have, not just one -- buyer_id
+        # is already an authoritative scope on its own for that role. Every other
+        # role still needs an explicit mandate_id; there's no equivalent
+        # unscoped-but-safe query for them.
         raise CheckoutError(
             422, "VALIDATION_ERROR", "mandate_id query param is required"
         )
     async with session.begin():
         from sqlalchemy import text
 
-        query = "SELECT * FROM checkout.orders WHERE mandate_id = :mandate_id"
-        params: dict[str, object] = {"mandate_id": mandate_id}
+        if mandate_id is None:
+            where = "buyer_id = :buyer_id"
+            params: dict[str, object] = {"buyer_id": buyer_id}
+        else:
+            where = "mandate_id = :mandate_id"
+            params = {"mandate_id": mandate_id}
         if status is not None:
-            query += " AND status = :status"
+            where += " AND status = :status"
             params["status"] = status
+        query = f"SELECT * FROM checkout.orders WHERE {where} ORDER BY created_at DESC"
+        if mandate_id is None:
+            query += " LIMIT :limit"
+            params["limit"] = limit
         result = await session.execute(text(query), params)
         rows = [dict(r) for r in result.mappings().all()]
-    buyer_id = _buyer_id(principal)
     if principal.role == "buyer":
         rows = [r for r in rows if str(r["buyer_id"]) == buyer_id]
     elif principal.role == "merchant":

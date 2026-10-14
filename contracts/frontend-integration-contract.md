@@ -192,7 +192,7 @@ needs `Idempotency-Key`. **$** = money-route gated.
 | POST | `/api/checkout/orders/{order_id}/capture` | buyer | yes | yes | yes | |
 | GET | `/api/checkout/orders/{order_id}` | session | — | — | | |
 | GET | `/api/checkout/orders/{order_id}/receipt` | session | — | — | | 409 `RECEIPT_NOT_READY` until captured |
-| GET | `/api/checkout/orders` | session | — | — | | **requires** `?mandate_id=`; buyer-scoped for buyers, merchant-scoped (by the caller's own `merchant_id`) for merchants, unscoped for operators |
+| GET | `/api/checkout/orders` | session | — | — | | `?mandate_id=` optional for buyers (omit it to list their own orders across every mandate, newest first, `?limit=` default 20 max 100); **required** for merchant/operator. Buyer-scoped for buyers, merchant-scoped (by the caller's own `merchant_id`) for merchants, unscoped for operators |
 | POST | `/api/checkout/orders/return` | buyer | yes | — | | body: `{state, token, payer_id}` from the PayPal return redirect |
 | POST | `/api/checkout/orders/cancel` | buyer | yes | — | | body: `{state}` from the PayPal cancel redirect |
 
@@ -243,22 +243,11 @@ mode status to the frontend; infer it from a 404 on first use, or wire one if ne
 | Method | Path | Role | CSRF | Notes |
 |---|---|---|---|---|
 | GET | `/api/bff/orders/{id}` | buyer | — | Aggregates checkout order + tracking shipment + resolution case + audit chain health into one read. 404 if the order itself isn't found/owned; the other three legs degrade to `null` individually (never fail the whole call) |
-| GET | `/api/bff/merchant-queue` | merchant or operator | — | `{"cases": [...], "tracking_pending": null}` — `tracking_pending` is always `null`; tracking has no list-pending-shipments endpoint to aggregate from (see §8) |
-| GET | `/api/bff/buyer-home` | buyer | — | **Still 501.** See §8 — this one has a real missing dependency, not just unbuilt |
+| GET | `/api/bff/merchant-queue` | merchant or operator | — | `{"cases": [...], "tracking_pending": <int\|null>}` — `cases` is every `HUMAN_REVIEW` case; `tracking_pending` is a platform-wide count of active, non-terminal shipments (`null` only if tracking is unreachable) |
+| GET | `/api/bff/buyer-home` | buyer | — | `{"mandates": [...], "latest_order": {...}\|null, "active_case": {...}\|null}` — mandates is the buyer's own mandate list, latest_order their single most recent order across every mandate, active_case their most recently opened non-`CLOSED` case. Each leg individually degrades to `[]`/`null` if its upstream is unreachable, never fails the whole call |
 
 ## 8. Known gaps — do not build against these yet
 
-- **`/api/bff/buyer-home` is unimplemented and genuinely blocked, not just unbuilt.**
-  It needs "mandate list by buyer" and "checkout orders by buyer" endpoints that
-  don't exist anywhere in the service map (mandate has no `GET /mandates` list;
-  checkout's `GET /orders` requires an explicit `mandate_id`, it can't enumerate a
-  buyer's mandates on its own). Adding those is a new feature on mandate/checkout,
-  not a gateway-only fix. Build the buyer home screen from direct proxied reads
-  (`GET /api/checkout/orders?mandate_id=`, `GET /api/mandate/mandates/{id}/terms`,
-  etc.) instead.
-- **`/api/bff/merchant-queue`'s `tracking_pending` is always `null`.** Tracking has
-  no endpoint to list shipments platform-wide (only per-order lookup), so there's
-  nothing to aggregate a pending count from without adding one. Flagged, not faked.
 - **The OpenAPI specs under `contracts/openapi/*.yaml` may be stale** relative to this
   document and the real route set in `app/routers/proxy.py` — they were not
   regenerated as part of this pass. Trust this file and the gateway source over the

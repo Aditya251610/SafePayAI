@@ -176,6 +176,19 @@ async def get_active_nonterminal_shipments(
     return [dict(row) for row in result.mappings().all()]
 
 
+async def count_active_nonterminal_shipments(session: AsyncSession) -> int:
+    """Read-only platform-wide count for GET /shipments/pending-count (bff's
+    merchant-queue). No row lock -- unlike get_active_nonterminal_shipments
+    above (the tick/detector's own locking read), this is a plain read API."""
+    result = await session.execute(
+        text(
+            "SELECT count(*) FROM tracking.shipments "
+            "WHERE active = true AND status NOT IN ('DELIVERED', 'CANCELLED')"
+        )
+    )
+    return int(result.scalar() or 0)
+
+
 async def insert_shipment(session: AsyncSession, **fields: Any) -> None:
     columns = [
         "id",

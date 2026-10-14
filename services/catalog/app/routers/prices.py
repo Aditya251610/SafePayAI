@@ -170,6 +170,7 @@ async def resolve_prices(
         priced_lines.append(
             PricedLine(
                 sku=line.sku,
+                title=item.title,
                 merchant_id=item.merchant_id,
                 category_id=item.category_id,
                 qty=line.qty,

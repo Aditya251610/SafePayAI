@@ -310,7 +310,7 @@ ORDER_COLUMNS = """
     order_id, cart_id, buyer_id, mandate_id, status, total_minor, currency,
     paypal_order_id, create_request_id, capture_request_id, custom_id, invoice_id,
     approve_url, last_paypal_status, failure_code, version, created_at, updated_at,
-    mandate_reservation_id
+    mandate_reservation_id, item_titles
 """
 
 
@@ -328,11 +328,13 @@ async def insert_order(session: AsyncSession, **fields: Any) -> None:
         "invoice_id",
         "merchant_ids",
         "mandate_reservation_id",
+        "item_titles",
     ]
-    optional = {"merchant_ids", "mandate_reservation_id"}
+    optional = {"merchant_ids", "mandate_reservation_id", "item_titles"}
     params = {k: fields[k] for k in columns if k not in optional}
     params["merchant_ids"] = to_jsonb_text(fields.get("merchant_ids") or [])
     params["mandate_reservation_id"] = fields.get("mandate_reservation_id")
+    params["item_titles"] = to_jsonb_text(fields.get("item_titles") or [])
     await session.execute(
         text(
             f"INSERT INTO checkout.orders ({', '.join(columns)}) VALUES "

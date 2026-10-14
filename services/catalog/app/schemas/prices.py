@@ -32,6 +32,7 @@ class PriceResolveRequest(BaseModel):
 
 class PricedLine(BaseModel):
     sku: str
+    title: str
     merchant_id: str
     category_id: str
     qty: int
