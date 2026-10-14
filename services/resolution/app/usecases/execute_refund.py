@@ -38,7 +38,13 @@ from app.domain.checks import (
 from app.domain.policy import PolicyConfig, config_from_settings
 from app.domain.proposal import Action, ProposalFields, hashes_match, proposal_hash
 from app.domain.refund import RefundAttemptStatus
-from app.domain.states import Actor, CaseKind, CaseState
+from app.domain.states import (
+    Actor,
+    CaseKind,
+    CaseState,
+    ConcurrentModification,
+    IllegalTransition,
+)
 from app.settings import settings
 from app.usecases.decide import assemble_facts_and_decide
 from app.usecases.transitions import TransitionRequest, apply_transition
@@ -625,6 +631,144 @@ async def execute_refund(session: AsyncSession, case_id: UUID) -> ExecuteOutcome
     )
 
 
+async def _reconcile_one_attempt(
+    session: AsyncSession, attempt: dict, *, frozen: bool
+) -> dict[str, int]:
+    """One iteration of reconcile_attempts's loop body, extracted so the caller can wrap
+    it in a per-attempt SAVEPOINT + narrow except (see reconcile_attempts's own comment)."""
+    counts = {
+        "finalized_completed": 0,
+        "finalized_failed": 0,
+        "still_unknown": 0,
+        "needs_review": 0,
+        "frozen_skipped_replays": 0,
+    }
+    case = await repo.get_case(session, attempt["case_id"])
+    if case is None:
+        return counts
+
+    if attempt["paypal_refund_id"]:
+        result = await clients.get_refund(attempt["paypal_refund_id"])
+        body = result.body or {}
+        paypal_status = body.get("status")
+        if result.status_code == 200 and paypal_status == "COMPLETED":
+            await repo.update_attempt_status(
+                session,
+                attempt_id=attempt["id"],
+                new_status=RefundAttemptStatus.COMPLETED.value,
+            )
+            await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=case["id"],
+                    expected_from=CaseState(case["state"]),
+                    to_state=CaseState.RESOLVED_REFUNDED,
+                    expected_version=case["version"],
+                    transition_id="T18",
+                    actor=Actor.SYSTEM,
+                    reason_code=None,
+                ),
+            )
+            counts["finalized_completed"] += 1
+            return counts
+        if result.status_code == 200 and paypal_status in ("FAILED", "CANCELLED"):
+            await repo.update_attempt_status(
+                session,
+                attempt_id=attempt["id"],
+                new_status=RefundAttemptStatus.FAILED.value,
+            )
+            await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=case["id"],
+                    expected_from=CaseState(case["state"]),
+                    to_state=CaseState.HUMAN_REVIEW,
+                    expected_version=case["version"],
+                    transition_id="T19",
+                    actor=Actor.SYSTEM,
+                    reason_code=None,
+                ),
+            )
+            counts["finalized_failed"] += 1
+            return counts
+        await repo.update_attempt_status(
+            session,
+            attempt_id=attempt["id"],
+            new_status=attempt["status"],
+            bump_reconcile=True,
+        )
+        counts["still_unknown"] += 1
+    else:
+        if frozen:
+            # Reads still run; a replay-send never happens while frozen (spec s9).
+            counts["frozen_skipped_replays"] += 1
+            return counts
+        result = await clients.reconcile_refund(attempt["request_id"])
+        body = result.body or {}
+        if result.status_code in (200, 201) and body.get("status") == "COMPLETED":
+            await repo.update_attempt_status(
+                session,
+                attempt_id=attempt["id"],
+                new_status=RefundAttemptStatus.COMPLETED.value,
+                paypal_refund_id=body.get("refund_id") or body.get("id"),
+            )
+            await apply_transition(
+                session,
+                TransitionRequest(
+                    case_id=case["id"],
+                    expected_from=CaseState(case["state"]),
+                    to_state=CaseState.RESOLVED_REFUNDED,
+                    expected_version=case["version"],
+                    transition_id="T18",
+                    actor=Actor.SYSTEM,
+                    reason_code=None,
+                ),
+            )
+            counts["finalized_completed"] += 1
+            return counts
+        await repo.update_attempt_status(
+            session,
+            attempt_id=attempt["id"],
+            new_status=RefundAttemptStatus.UNKNOWN.value,
+            bump_reconcile=True,
+        )
+        counts["still_unknown"] += 1
+
+    if attempt["reconcile_count"] + 1 > settings.reconcile_max_attempts:
+        await repo.update_attempt_status(
+            session,
+            attempt_id=attempt["id"],
+            new_status=RefundAttemptStatus.UNKNOWN.value,
+        )
+        await apply_transition(
+            session,
+            TransitionRequest(
+                case_id=case["id"],
+                expected_from=CaseState(case["state"]),
+                to_state=CaseState.HUMAN_REVIEW,
+                expected_version=case["version"],
+                transition_id="T19",
+                actor=Actor.SYSTEM,
+                reason_code=None,
+            ),
+        )
+        await repo.insert_outbox_event(
+            session,
+            event_id=uuid4(),
+            event_type="refund.unknown",
+            aggregate_id=str(case["id"]),
+            payload={
+                "case_id": str(case["id"]),
+                "order_id": case["order_id"],
+                "attempt_id": str(attempt["id"]),
+                "reconcile_count": attempt["reconcile_count"] + 1,
+            },
+        )
+        counts["needs_review"] += 1
+
+    return counts
+
+
 async def reconcile_attempts(session: AsyncSession, limit: int) -> ReconcileSummary:
     """Reconcile SENT/UNKNOWN attempts older than the minimum age, oldest first, with SKIP LOCKED.
 
@@ -649,128 +793,21 @@ async def reconcile_attempts(session: AsyncSession, limit: int) -> ReconcileSumm
 
     for attempt in attempts:
         examined += 1
-        case = await repo.get_case(session, attempt["case_id"])
-        if case is None:
+        try:
+            # Nested transaction (SAVEPOINT): one bad attempt (IllegalTransition,
+            # ConcurrentModification -- e.g. a concurrent review-decision raced this same
+            # case) rolls back ONLY this attempt's partial writes, not the whole batch --
+            # previously an uncaught exception here aborted reconcile_attempts entirely,
+            # so every attempt AFTER the first bad one in a tick never got examined.
+            async with session.begin_nested():
+                counts = await _reconcile_one_attempt(session, attempt, frozen=frozen)
+        except (IllegalTransition, ConcurrentModification):
             continue
-
-        if attempt["paypal_refund_id"]:
-            result = await clients.get_refund(attempt["paypal_refund_id"])
-            body = result.body or {}
-            paypal_status = body.get("status")
-            if result.status_code == 200 and paypal_status == "COMPLETED":
-                await repo.update_attempt_status(
-                    session,
-                    attempt_id=attempt["id"],
-                    new_status=RefundAttemptStatus.COMPLETED.value,
-                )
-                await apply_transition(
-                    session,
-                    TransitionRequest(
-                        case_id=case["id"],
-                        expected_from=CaseState(case["state"]),
-                        to_state=CaseState.RESOLVED_REFUNDED,
-                        expected_version=case["version"],
-                        transition_id="T18",
-                        actor=Actor.SYSTEM,
-                        reason_code=None,
-                    ),
-                )
-                finalized_completed += 1
-                continue
-            if result.status_code == 200 and paypal_status in ("FAILED", "CANCELLED"):
-                await repo.update_attempt_status(
-                    session,
-                    attempt_id=attempt["id"],
-                    new_status=RefundAttemptStatus.FAILED.value,
-                )
-                await apply_transition(
-                    session,
-                    TransitionRequest(
-                        case_id=case["id"],
-                        expected_from=CaseState(case["state"]),
-                        to_state=CaseState.HUMAN_REVIEW,
-                        expected_version=case["version"],
-                        transition_id="T19",
-                        actor=Actor.SYSTEM,
-                        reason_code=None,
-                    ),
-                )
-                finalized_failed += 1
-                continue
-            await repo.update_attempt_status(
-                session,
-                attempt_id=attempt["id"],
-                new_status=attempt["status"],
-                bump_reconcile=True,
-            )
-            still_unknown += 1
-        else:
-            if frozen:
-                # Reads still run; a replay-send never happens while frozen (spec s9).
-                frozen_skipped_replays += 1
-                continue
-            result = await clients.reconcile_refund(attempt["request_id"])
-            body = result.body or {}
-            if result.status_code in (200, 201) and body.get("status") == "COMPLETED":
-                await repo.update_attempt_status(
-                    session,
-                    attempt_id=attempt["id"],
-                    new_status=RefundAttemptStatus.COMPLETED.value,
-                    paypal_refund_id=body.get("refund_id") or body.get("id"),
-                )
-                await apply_transition(
-                    session,
-                    TransitionRequest(
-                        case_id=case["id"],
-                        expected_from=CaseState(case["state"]),
-                        to_state=CaseState.RESOLVED_REFUNDED,
-                        expected_version=case["version"],
-                        transition_id="T18",
-                        actor=Actor.SYSTEM,
-                        reason_code=None,
-                    ),
-                )
-                finalized_completed += 1
-                continue
-            await repo.update_attempt_status(
-                session,
-                attempt_id=attempt["id"],
-                new_status=RefundAttemptStatus.UNKNOWN.value,
-                bump_reconcile=True,
-            )
-            still_unknown += 1
-
-        if attempt["reconcile_count"] + 1 > settings.reconcile_max_attempts:
-            await repo.update_attempt_status(
-                session,
-                attempt_id=attempt["id"],
-                new_status=RefundAttemptStatus.UNKNOWN.value,
-            )
-            await apply_transition(
-                session,
-                TransitionRequest(
-                    case_id=case["id"],
-                    expected_from=CaseState(case["state"]),
-                    to_state=CaseState.HUMAN_REVIEW,
-                    expected_version=case["version"],
-                    transition_id="T19",
-                    actor=Actor.SYSTEM,
-                    reason_code=None,
-                ),
-            )
-            await repo.insert_outbox_event(
-                session,
-                event_id=uuid4(),
-                event_type="refund.unknown",
-                aggregate_id=str(case["id"]),
-                payload={
-                    "case_id": str(case["id"]),
-                    "order_id": case["order_id"],
-                    "attempt_id": str(attempt["id"]),
-                    "reconcile_count": attempt["reconcile_count"] + 1,
-                },
-            )
-            needs_review += 1
+        finalized_completed += counts["finalized_completed"]
+        finalized_failed += counts["finalized_failed"]
+        still_unknown += counts["still_unknown"]
+        needs_review += counts["needs_review"]
+        frozen_skipped_replays += counts["frozen_skipped_replays"]
 
     return ReconcileSummary(
         examined=examined,

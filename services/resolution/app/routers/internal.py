@@ -25,7 +25,7 @@ from app.domain.states import (
 )
 from app.schemas.cases import InternalEventEnvelope
 from app.settings import settings
-from app.usecases.execute_refund import reconcile_attempts
+from app.usecases.execute_refund import execute_refund, reconcile_attempts
 from app.usecases.open_case import OpenCaseCommand
 from app.usecases.open_case import open_case as uc_open_case
 from app.usecases.transitions import TransitionRequest, apply_transition
@@ -162,6 +162,24 @@ async def internal_tick(
     reconcile_summary = await reconcile_attempts(session, settings.tick_reconcile_limit)
     await session.commit()
 
+    # Queued-while-frozen retry: execute_refund's own "frozen -> stay APPROVED,
+    # QUEUED_FROZEN, no attempt row" path (spec s9) never creates a retry mechanism of
+    # its own -- reconcile_attempts can't see these cases either, since it only reads
+    # refund_attempts rows and these have none. Skipped entirely while still frozen (no
+    # point re-running a check that will just queue again); each case gets its own
+    # attempt + commit so one failure doesn't block the rest.
+    queued_retried = 0
+    flags = await repo.get_control_flags(session)
+    if flags is not None and not flags["refunds_frozen"]:
+        for row in await repo.get_approved_cases_without_attempt(session):
+            try:
+                await execute_refund(session, row["id"])
+                await session.commit()
+                queued_retried += 1
+            except (IllegalTransition, ConcurrentModification, ValueError):
+                await session.rollback()
+                continue
+
     relay_result = await relay_flush_outbox(session, _relay_config())
     await session.commit()
 
@@ -254,4 +272,5 @@ async def internal_tick(
         "offers_expired_to_review": offers_expired_to_review,
         "resolved_closed": resolved_closed,
         "declined_closed": declined_closed,
+        "queued_retried": queued_retried,
     }

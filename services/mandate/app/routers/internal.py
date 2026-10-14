@@ -6,6 +6,8 @@ Never routed by the gateway (404 externally).
 
 from __future__ import annotations
 
+import hmac
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from safepayai_common.auth.jwt import ServiceJWTConfig
 from safepayai_common.outbox import OutboxRelayConfig, flush_outbox
@@ -38,10 +40,9 @@ def _relay_config(settings: Settings) -> OutboxRelayConfig:
 
 def _require_tick_secret(x_tick_secret: str | None) -> None:
     secrets = get_bare_secrets()
-    if (
-        not secrets.internal_tick_secret
-        or x_tick_secret != secrets.internal_tick_secret
-    ):
+    if not x_tick_secret or not secrets.internal_tick_secret:
+        raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
+    if not hmac.compare_digest(x_tick_secret, secrets.internal_tick_secret):
         raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
 
 

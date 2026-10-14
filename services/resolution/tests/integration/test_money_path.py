@@ -645,6 +645,130 @@ async def test_reconcile_resolves_unknown_attempt_to_failed(
     assert attempt["status"] == "FAILED"
 
 
+async def test_reconcile_picks_up_a_stranded_requested_attempt(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None
+) -> None:
+    """A crash between execute_refund's "durable intent" commit (insert REQUESTED attempt
+    + CAS APPROVED->REFUNDING, committed BEFORE the external refund_capture call) and that
+    call ever returning leaves the attempt at REQUESTED with sent_at NULL forever --
+    get_reconcilable_attempts previously only aged attempts off sent_at, which a REQUESTED
+    row never has, so it was never picked up. Simulates this directly: force a real
+    UNKNOWN attempt back to REQUESTED/sent_at=NULL/old created_at, then confirm reconcile
+    finds and resolves it via the same no-known-refund-id path an UNKNOWN attempt uses."""
+    case_id, attempt_id = await _drive_to_unknown_attempt(
+        session,
+        monkeypatch,
+        mandate_id="mandate-stranded",
+        capture_id="cap-stranded",
+        buyer_id="buyer-stranded",
+    )
+
+    from sqlalchemy import text as sa_text
+
+    await session.execute(
+        sa_text(
+            "UPDATE resolution.refund_attempts SET status = 'REQUESTED', sent_at = NULL, "
+            "created_at = now() - interval '1 hour' WHERE id = :id"
+        ),
+        {"id": attempt_id},
+    )
+    await session.commit()
+
+    async def fake_reconcile_refund(request_id, token=None):
+        return clients.AdapterResult(
+            True, 200, {"status": "COMPLETED", "id": "R-STRANDED-1"}, "ok"
+        )
+
+    monkeypatch.setattr(clients, "reconcile_refund", fake_reconcile_refund)
+
+    summary = await reconcile_attempts(session, 25)
+    await session.commit()
+
+    assert summary.examined == 1
+    assert summary.finalized_completed == 1
+
+    case = await repo.get_case(session, case_id)
+    assert case is not None
+    assert case["state"] == "RESOLVED_REFUNDED"
+    attempt = await repo.get_attempt_for_case(session, case_id)
+    assert attempt is not None
+    assert attempt["status"] == "COMPLETED"
+
+
+async def test_reconcile_one_bad_attempt_does_not_abort_the_rest_of_the_batch(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None
+) -> None:
+    """Poison-pill fix: apply_transition raising IllegalTransition for one attempt (e.g.
+    its case was concurrently pushed into a terminal state by something else) previously
+    aborted reconcile_attempts entirely -- every attempt AFTER the bad one in the same
+    tick never got examined. Drives two cases to UNKNOWN, forces ONE into CLOSED (so its
+    own reconcile-driven transition to RESOLVED_REFUNDED is illegal), and asserts the
+    OTHER still finalizes in the same reconcile_attempts call."""
+    case_id_bad, attempt_id_bad = await _drive_to_unknown_attempt(
+        session,
+        monkeypatch,
+        mandate_id="mandate-poison",
+        capture_id="cap-poison",
+        buyer_id="buyer-poison",
+    )
+    await repo.update_attempt_status(
+        session,
+        attempt_id=attempt_id_bad,
+        new_status="UNKNOWN",
+        paypal_refund_id="R-BAD",
+    )
+    case_bad = await repo.get_case(session, case_id_bad)
+    assert case_bad is not None
+    closed = await repo.cas_case_state(
+        session,
+        case_id=case_id_bad,
+        expected_state=case_bad["state"],
+        expected_version=case_bad["version"],
+        new_state="CLOSED",
+    )
+    assert closed
+    await session.commit()
+
+    case_id_good, attempt_id_good = await _drive_to_unknown_attempt(
+        session,
+        monkeypatch,
+        mandate_id="mandate-poison-2",
+        capture_id="cap-poison-2",
+        buyer_id="buyer-poison-2",
+    )
+    await repo.update_attempt_status(
+        session,
+        attempt_id=attempt_id_good,
+        new_status="UNKNOWN",
+        paypal_refund_id="R-GOOD",
+    )
+    await session.commit()
+
+    async def fake_get_refund(refund_id, token=None):
+        return clients.AdapterResult(
+            True, 200, {"status": "COMPLETED", "id": refund_id}, "ok"
+        )
+
+    monkeypatch.setattr(clients, "get_refund", fake_get_refund)
+
+    summary = await reconcile_attempts(session, 25)
+    await session.commit()
+
+    assert summary.examined == 2
+    assert summary.finalized_completed == 1
+
+    bad_case = await repo.get_case(session, case_id_bad)
+    assert bad_case is not None
+    assert bad_case["state"] == "CLOSED"  # untouched -- the bad attempt was skipped
+
+    good_case = await repo.get_case(session, case_id_good)
+    assert good_case is not None
+    assert good_case["state"] == "RESOLVED_REFUNDED"
+    good_attempt = await repo.get_attempt_for_case(session, case_id_good)
+    assert good_attempt is not None
+    assert good_attempt["status"] == "COMPLETED"
+
+
 async def test_reconcile_leaves_still_ambiguous_attempt_as_unknown(
     session: AsyncSession, monkeypatch: pytest.MonkeyPatch, unfrozen: None
 ) -> None:
