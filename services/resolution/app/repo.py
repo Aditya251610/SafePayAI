@@ -438,6 +438,29 @@ async def get_attempt_for_case(
     return dict(row) if row else None
 
 
+async def get_approved_cases_without_attempt(
+    session: AsyncSession, *, limit: int = 50
+) -> list[dict[str, Any]]:
+    """Cases stuck at APPROVED with no refund_attempts row at all -- execute_refund's own
+    "frozen -> stay APPROVED, execution=QUEUED_FROZEN, no attempt row" path (spec s9)
+    never creates a retry mechanism of its own: once the kill switch is lifted, nothing
+    previously re-drove these cases through execute_refund. reconcile_attempts can't see
+    them either -- it only reads refund_attempts rows, and these have none."""
+    result = await session.execute(
+        text(
+            """
+            SELECT c.id, c.state, c.version FROM resolution.cases c
+            LEFT JOIN resolution.refund_attempts a ON a.case_id = c.id
+            WHERE c.state = 'APPROVED' AND a.id IS NULL
+            ORDER BY c.opened_at ASC
+            LIMIT :limit
+            """
+        ),
+        {"limit": limit},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
 async def get_live_attempt_for_order(
     session: AsyncSession, order_id: str
 ) -> dict[str, Any] | None:
@@ -552,14 +575,27 @@ async def update_policy_decision_checks(
 async def get_reconcilable_attempts(
     session: AsyncSession, *, min_age_seconds: int, limit: int
 ) -> list[dict[str, Any]]:
+    """SENT/UNKNOWN attempts are aged off `sent_at` (set once the refund_capture call
+    returns, spec s7). REQUESTED attempts have `sent_at IS NULL` by definition -- the
+    row is committed BEFORE the external call is even made (execute_refund's own "durable
+    intent" comment) -- so a crash between that commit and the call returning previously
+    stranded the attempt at REQUESTED forever, never picked up here. Aged off `created_at`
+    instead, with no known paypal_refund_id, a stranded REQUESTED attempt falls through to
+    the SAME no-known-refund-id path (reconcile_refund(request_id)) an UNKNOWN attempt
+    without a refund_id already uses -- no new handling needed downstream."""
     result = await session.execute(
         text(
             f"""
             SELECT {ATTEMPT_COLUMNS} FROM resolution.refund_attempts
-            WHERE status IN ('SENT', 'UNKNOWN')
-              AND sent_at IS NOT NULL
-              AND sent_at < now() - make_interval(secs => :min_age_seconds)
-            ORDER BY sent_at ASC
+            WHERE (
+                status IN ('SENT', 'UNKNOWN')
+                AND sent_at IS NOT NULL
+                AND sent_at < now() - make_interval(secs => :min_age_seconds)
+            ) OR (
+                status = 'REQUESTED'
+                AND created_at < now() - make_interval(secs => :min_age_seconds)
+            )
+            ORDER BY COALESCE(sent_at, created_at) ASC
             LIMIT :limit
             FOR UPDATE SKIP LOCKED
             """
@@ -587,11 +623,19 @@ async def get_notifications(
     session: AsyncSession, *, buyer_id: str | None, limit: int = 100
 ) -> list[dict[str, Any]]:
     """GET /notifications (api.md section 2: "B(own), M"). buyer_id=None means unscoped
-    (merchant sees all); a buyer's own id scopes to their rows only."""
-    where_clause = "WHERE buyer_id = :buyer_id" if buyer_id else ""
+    (merchant sees all); a buyer's own id scopes to their rows only.
+
+    APPROVAL_LINK notifications are ALWAYS excluded from the unscoped (merchant) view,
+    regardless of buyer_id -- their body is a single-use bearer consent token/URL
+    (insert_notification's own docstring: "the ONLY delivery path for a tier-2
+    approval-link token"). A merchant seeing it could read or exercise another buyer's
+    consent, which api.md section 2's "M sees all" was never meant to grant."""
     params: dict[str, Any] = {"limit": limit}
     if buyer_id:
+        where_clause = "WHERE buyer_id = :buyer_id"
         params["buyer_id"] = buyer_id
+    else:
+        where_clause = "WHERE type != 'APPROVAL_LINK'"
     result = await session.execute(
         text(
             "SELECT id, case_id, buyer_id, type, body, created_at FROM resolution.notifications "

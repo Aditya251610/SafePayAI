@@ -261,15 +261,40 @@ async def insert_cart_check(
     )
 
 
+async def lock_mandate_for_cap_check(session: AsyncSession, mandate_id: str) -> None:
+    """Transaction-scoped advisory lock keyed by mandate_id (spec.md sec 4 step 6):
+    serializes confirm_cart's check-then-insert against this same mandate, closing the
+    race where two carts, each checked before either is confirmed, could both pass the
+    cumulative cap independently. Auto-released at COMMIT/ROLLBACK -- never held past
+    the transaction that acquires it."""
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:mandate_id)::bigint)"),
+        {"mandate_id": mandate_id},
+    )
+
+
 async def sum_committed_minor(session: AsyncSession, mandate_id: str) -> int:
-    """spec.md section 4 step 6: cumulative cap across orders in flight/complete."""
+    """spec.md section 4 step 6: cumulative cap across orders in flight/complete.
+
+    Includes CREATING and CREATE_UNKNOWN -- an order is inserted at CREATING before the
+    external create_order call to PayPal is even made, and only moves to
+    AWAITING_APPROVAL afterwards (orders.py's own create flow). Excluding CREATING left
+    a real race window: confirm_cart's cap re-check, run inside the same transaction
+    that inserts the order (closing the check-then-act race against OTHER confirms), would
+    read 0 committed spend for an order that had just been inserted and committed one
+    advisory-lock-turn earlier, because that order hadn't reached AWAITING_APPROVAL yet.
+    CREATE_UNKNOWN (ambiguous create -- PayPal may have succeeded despite a timeout) is
+    counted the same way other ambiguous/uncertain states are treated elsewhere in this
+    service: fail closed on the cap, not fail open. CREATE_FAILED is a definite failure
+    and correctly excluded -- money never moved."""
     result = await session.execute(
         text(
             """
             SELECT COALESCE(SUM(total_minor), 0) FROM checkout.orders
             WHERE mandate_id = :mandate_id
-              AND status IN ('AWAITING_APPROVAL', 'APPROVED', 'CAPTURING',
-                              'CAPTURE_PENDING', 'CAPTURE_UNKNOWN', 'CAPTURED')
+              AND status IN ('CREATING', 'CREATE_UNKNOWN', 'AWAITING_APPROVAL',
+                              'APPROVED', 'CAPTURING', 'CAPTURE_PENDING',
+                              'CAPTURE_UNKNOWN', 'CAPTURED')
             """
         ),
         {"mandate_id": mandate_id},

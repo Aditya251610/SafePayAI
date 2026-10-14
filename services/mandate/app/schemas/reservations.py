@@ -10,11 +10,11 @@ class CartLine(BaseModel):
 
     sku: str
     qty: int = Field(ge=1)
-    unit_minor: int
-    line_minor: int
+    unit_minor: int = Field(ge=0)
+    line_minor: int = Field(ge=0)
     merchant_id: str
     sku_known: bool
-    stated_unit_minor: int | None = None
+    stated_unit_minor: int | None = Field(default=None, ge=0)
 
 
 class Cart(BaseModel):
@@ -22,7 +22,7 @@ class Cart(BaseModel):
 
     currency: str
     lines: list[CartLine]
-    total_minor: int
+    total_minor: int = Field(ge=0)
 
 
 class EvaluateRequest(BaseModel):
@@ -36,7 +36,7 @@ class ReservationCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     order_id: str
-    amount_minor: int
+    amount_minor: int = Field(gt=0)
     currency: str
     proposal_hash: str
     cart: Cart
@@ -46,7 +46,7 @@ class AuthorizeCaptureRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     order_id: str
-    amount_minor: int
+    amount_minor: int = Field(gt=0)
 
 
 class MarkUnknownRequest(BaseModel):
@@ -59,7 +59,7 @@ class CommitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     capture_id: str
-    captured_amount_minor: int
+    captured_amount_minor: int = Field(gt=0)
     currency: str
     captured_at: str
 

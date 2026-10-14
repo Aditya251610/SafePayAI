@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from safepayai_common.auth.jwt import ServiceJWTConfig
 from safepayai_common.outbox import OutboxRelayConfig
@@ -37,10 +39,9 @@ def _require_tick_secret(x_tick_secret: str | None, settings: Settings) -> None:
     """`/internal/outbox/flush` is driven by the scheduled-workflow cron caller (S2-06),
     matching mandate/checkout/tracking/resolution's INTERNAL_TICK_SECRET convention
     (conventions doc section 2) rather than require_service_jwt's live-JWKS check."""
-    if (
-        not settings.internal_tick_secret
-        or x_tick_secret != settings.internal_tick_secret
-    ):
+    if not x_tick_secret or not settings.internal_tick_secret:
+        raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
+    if not hmac.compare_digest(x_tick_secret, settings.internal_tick_secret):
         raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
 
 

@@ -16,6 +16,7 @@ prior committed spend is accounted for.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -133,3 +134,68 @@ async def test_second_cart_blocked_once_prior_order_consumes_cap(
         c["name"] == "mandate_evaluate" and c["result"] == "BLOCK"
         for c in body_2["checks"]
     )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_confirms_race_has_exactly_one_winner(
+    client, monkeypatch
+) -> None:
+    """Closes the check-then-act race: sum_committed_minor at cart-creation time only
+    counts orders that already exist, so two carts checked before either is confirmed
+    could previously both pass the cap independently. confirm_cart now re-checks the
+    cap (with a per-mandate advisory lock serializing it) at insert time -- the actual
+    money-committing moment -- so only one of two concurrent confirms, each individually
+    under cap but not together, can win."""
+    mandate_id = str(uuid.uuid4())
+    create_order_calls = {"n": 0}
+
+    async def _resolve(*a, **k):
+        return _priced_response(2000)
+
+    async def _evaluate(settings, token, mandate_id_arg, cart, committed_minor=None):
+        return _eval_response_enforcing_cap(cart, committed_minor or 0, mandate_id_arg)
+
+    async def _create_order(settings, token, *, return_url, cancel_url, **k):
+        create_order_calls["n"] += 1
+        return clients.AdapterResult(
+            True,
+            True,
+            {
+                "order_id": f"PAY-RACE-{create_order_calls['n']}",
+                "approve_url": "https://paypal.test/approve",
+            },
+            "created",
+        )
+
+    monkeypatch.setattr(clients, "resolve_prices", _resolve)
+    monkeypatch.setattr(clients, "evaluate_mandate", _evaluate)
+    monkeypatch.setattr(clients, "create_order", _create_order)
+
+    # Two carts, each 2000 against a 3000 cap -- fine alone, not together (4000 > 3000).
+    cart_ids = []
+    for _ in range(2):
+        resp = await client.post(
+            "/carts",
+            json={"mandate_id": mandate_id, "lines": [{"sku": "sku-1", "qty": 1}]},
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["status"] == "CHECKED"
+        cart_ids.append((body["cart_id"], body["proposal_hash"]))
+
+    async def _confirm(cart_id: str, proposal_hash: str, idem: str):
+        return await client.post(
+            f"/carts/{cart_id}/confirm",
+            json={"proposal_hash": proposal_hash},
+            headers={"Idempotency-Key": idem},
+        )
+
+    responses = await asyncio.gather(
+        _confirm(cart_ids[0][0], cart_ids[0][1], "race-confirm-1"),
+        _confirm(cart_ids[1][0], cart_ids[1][1], "race-confirm-2"),
+    )
+
+    statuses = sorted(r.status_code for r in responses)
+    assert statuses == [201, 409]
+    blocked = next(r for r in responses if r.status_code == 409)
+    assert blocked.json()["error"] == "OVER_CAP"

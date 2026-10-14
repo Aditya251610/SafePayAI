@@ -165,6 +165,11 @@ async def get_case_route(
     case = await repo.get_case(session, UUID(case_id))
     if case is None:
         raise HTTPException(status_code=404, detail="CASE_NOT_FOUND")
+    # IDOR guard: a buyer may only read their own case -- matches list_cases_route's own
+    # buyer_id scoping. 404, not 403, so existence of another buyer's case isn't leaked.
+    role = (claims.get("act") or {}).get("role")
+    if role == "buyer" and str(case["buyer_id"]) != str(claims.get("buyer_id")):
+        raise HTTPException(status_code=404, detail="CASE_NOT_FOUND")
     return CaseDetailResponse(
         case_id=str(case["id"]),
         order_id=case["order_id"],
@@ -206,7 +211,7 @@ async def list_cases_route(
 
 @router.get("/review/queue")
 async def review_queue(
-    claims: dict = Depends(require_internal_jwt),
+    claims: dict = Depends(role_required("reviewer")),
     session: AsyncSession = Depends(get_session),
 ) -> ReviewQueueResponse:
     rows = await repo.get_review_queue(session)
@@ -465,6 +470,16 @@ async def consent_approval(
     case = await repo.get_case_for_update(session, offer["case_id"])
     if case is None:
         raise HTTPException(status_code=404, detail="APPROVAL_NOT_FOUND")
+    # Defense in depth: the token itself is the primary bearer-credential (single-use,
+    # time-limited, unguessable -- lookup_approval's own docstring), but a caller
+    # authenticated AS a specific buyer should never be able to consent on a DIFFERENT
+    # buyer's case even if they somehow obtained that buyer's token (e.g. the
+    # notifications.body leak this same pass fixed in get_notifications). Non-buyer
+    # callers (a merchant/service relaying on the real buyer's behalf) are unaffected --
+    # same convention as get_case_route/list_notifications in this file.
+    role = (claims.get("act") or {}).get("role")
+    if role == "buyer" and str(case["buyer_id"]) != str(claims.get("sub", "")):
+        raise HTTPException(status_code=404, detail="APPROVAL_NOT_FOUND")
 
     consumed = await repo.consume_approval(session, looked_up.approval_id)
     if not consumed:
@@ -659,6 +674,14 @@ async def appeal_case(
     case = await repo.get_case_for_update(session, cid)
     if case is None or case.get("buyer_id") != buyer_id:
         raise HTTPException(status_code=404, detail="CASE_NOT_FOUND")
+    # T24 is specifically DECLINED -> HUMAN_REVIEW ("buyer appeals a declined case"),
+    # but apply_transition's is_legal_transition only checks the (from, to) STATE pair,
+    # not which transition_id is allowed to produce it -- REFUNDING -> HUMAN_REVIEW is
+    # ALSO a legal pair (a different, system-initiated escalation), so without this
+    # explicit check a buyer could call appeal while their case is mid-refund and push
+    # it into HUMAN_REVIEW while the refund still completes at PayPal.
+    if CaseState(case["state"]) != CaseState.DECLINED:
+        raise HTTPException(status_code=409, detail="ILLEGAL_TRANSITION")
 
     if body.note:
         await repo.insert_case_signal(

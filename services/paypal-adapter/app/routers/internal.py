@@ -11,6 +11,8 @@ Wired into app/main.py's `app.include_router` block.
 
 from __future__ import annotations
 
+import hmac
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from safepayai_common.auth.jwt import ServiceJWTConfig
 from safepayai_common.outbox import OutboxRelayConfig
@@ -24,7 +26,9 @@ router = APIRouter(prefix="/internal", tags=["internal"])
 
 
 def _require_flush_secret(x_tick_secret: str | None, settings: Settings) -> None:
-    if not settings.outbox_flush_secret or x_tick_secret != settings.outbox_flush_secret:
+    if not x_tick_secret or not settings.outbox_flush_secret:
+        raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
+    if not hmac.compare_digest(x_tick_secret, settings.outbox_flush_secret):
         raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
 
 

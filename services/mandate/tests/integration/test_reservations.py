@@ -107,13 +107,89 @@ async def test_reserve_same_order_id_different_amount_is_conflict(
         headers={"Authorization": f"Bearer {svc}"},
     )
     assert first.status_code == 201
+    # amount_minor must equal cart.total_minor (AMOUNT_CART_MISMATCH), so the second
+    # attempt's cart is bumped to 3000 too -- still the same order_id with a genuinely
+    # different amount, which is what RESERVATION_CONFLICT is about.
     second = await client.post(
         f"/mandates/{mandate_id}/reservations",
-        json={**base, "amount_minor": 3000},
+        json={
+            **base,
+            "amount_minor": 3000,
+            "cart": sample_cart(
+                total_minor=3000,
+                lines=[
+                    {
+                        "sku": "sku-1",
+                        "qty": 1,
+                        "unit_minor": 3000,
+                        "line_minor": 3000,
+                        "merchant_id": "shop-a",
+                        "sku_known": True,
+                        "stated_unit_minor": 3000,
+                    }
+                ],
+            ),
+        },
         headers={"Authorization": f"Bearer {svc}"},
     )
     assert second.status_code == 409
     assert second.json()["error"]["code"] == "RESERVATION_CONFLICT"
+
+
+async def test_reserve_amount_not_matching_cart_total_is_rejected(
+    client, buyer_token, service_token
+):
+    svc = service_token()
+    mandate = await _sign(client, buyer_token())
+    mandate_id = mandate["mandate_id"]
+
+    resp = await client.post(
+        f"/mandates/{mandate_id}/reservations",
+        json={
+            "order_id": str(uuid.uuid4()),
+            "amount_minor": 999,
+            "currency": "USD",
+            "proposal_hash": "h" * 10,
+            "cart": sample_cart(),  # total_minor=2500, deliberately not 999
+        },
+        headers={"Authorization": f"Bearer {svc}"},
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error"]["code"] == "AMOUNT_CART_MISMATCH"
+
+
+async def test_reserve_negative_line_amounts_rejected_by_schema(
+    client, buyer_token, service_token
+):
+    svc = service_token()
+    mandate = await _sign(client, buyer_token())
+    mandate_id = mandate["mandate_id"]
+
+    resp = await client.post(
+        f"/mandates/{mandate_id}/reservations",
+        json={
+            "order_id": str(uuid.uuid4()),
+            "amount_minor": -2500,
+            "currency": "USD",
+            "proposal_hash": "h" * 10,
+            "cart": sample_cart(
+                total_minor=-2500,
+                lines=[
+                    {
+                        "sku": "sku-1",
+                        "qty": 1,
+                        "unit_minor": -2500,
+                        "line_minor": -2500,
+                        "merchant_id": "shop-a",
+                        "sku_known": True,
+                        "stated_unit_minor": -2500,
+                    }
+                ],
+            ),
+        },
+        headers={"Authorization": f"Bearer {svc}"},
+    )
+    assert resp.status_code == 422
 
 
 async def test_reserve_over_cap_is_refused(client, buyer_token, service_token):

@@ -20,6 +20,8 @@ unilaterally here.
 
 from __future__ import annotations
 
+import hmac
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from safepayai_common.auth.jwt import ServiceJWTConfig
 from safepayai_common.outbox import OutboxRelayConfig
@@ -33,10 +35,9 @@ router = APIRouter(prefix="/internal", tags=["internal"])
 
 
 def _require_tick_secret(x_tick_secret: str | None) -> None:
-    if (
-        not settings.internal_tick_secret
-        or x_tick_secret != settings.internal_tick_secret
-    ):
+    if not x_tick_secret or not settings.internal_tick_secret:
+        raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
+    if not hmac.compare_digest(x_tick_secret, settings.internal_tick_secret):
         raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
 
 

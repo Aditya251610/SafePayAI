@@ -48,6 +48,28 @@ def _buyer_id(principal: Principal) -> str:
     return bid
 
 
+def _build_cart_for_eval(lines: list[dict], total_minor: int, currency: str) -> dict:
+    """Catalog's priced-line shape (sku, qty, unit_price_minor, line_total_minor,
+    merchant_id) -> mandate's /evaluate cart shape (unit_minor, line_minor, sku_known).
+    `cart_row["lines"]` is stored in catalog's shape (same `priced["lines"]` this reads
+    from at cart-creation time), so this is reusable for confirm_cart's own re-check."""
+    return {
+        "lines": [
+            {
+                "sku": line_["sku"],
+                "qty": line_["qty"],
+                "unit_minor": line_["unit_price_minor"],
+                "line_minor": line_["line_total_minor"],
+                "merchant_id": line_["merchant_id"],
+                "sku_known": True,
+            }
+            for line_ in lines
+        ],
+        "total_minor": total_minor,
+        "currency": currency,
+    }
+
+
 async def _run_check_pipeline(
     settings: Settings,
     buyer_id: str,
@@ -98,21 +120,9 @@ async def _run_check_pipeline(
         checks.append(logic.CheckResult("price_mismatch", "PASS", None, "checkout"))
 
     token = mint_outbound_token(settings, "mandate")
-    cart_for_eval = {
-        "lines": [
-            {
-                "sku": line_["sku"],
-                "qty": line_["qty"],
-                "unit_minor": line_["unit_price_minor"],
-                "line_minor": line_["line_total_minor"],
-                "merchant_id": line_["merchant_id"],
-                "sku_known": True,
-            }
-            for line_ in priced["lines"]
-        ],
-        "total_minor": priced["total_minor"],
-        "currency": priced["currency"],
-    }
+    cart_for_eval = _build_cart_for_eval(
+        priced["lines"], priced["total_minor"], priced["currency"]
+    )
     try:
         async with session.begin():
             committed_minor = await repo.sum_committed_minor(session, body.mandate_id)
@@ -368,6 +378,38 @@ async def confirm_cart(
 
     # R4: state written BEFORE the external paypal-adapter call, same transaction.
     async with session.begin():
+        # spec.md sec 4 step 6: close the check-then-act race -- two carts under the
+        # same mandate, each checked (POST /carts) before either is confirmed, could
+        # otherwise both pass the cumulative cap independently (sum_committed_minor at
+        # cart-creation time only counts orders that already exist). The advisory lock
+        # serializes confirm_cart calls per-mandate; the re-check uses a FRESH
+        # committed_minor read while holding it.
+        await repo.lock_mandate_for_cap_check(session, str(cart_row["mandate_id"]))
+        committed_minor = await repo.sum_committed_minor(
+            session, str(cart_row["mandate_id"])
+        )
+        cart_for_eval = _build_cart_for_eval(
+            cart_row["lines"], cart_row["total_minor"], cart_row["currency"]
+        )
+        recheck_token = mint_outbound_token(settings, "mandate")
+        try:
+            mandate_recheck = await clients.evaluate_mandate(
+                settings,
+                recheck_token,
+                str(cart_row["mandate_id"]),
+                cart_for_eval,
+                committed_minor=committed_minor,
+            )
+        except UpstreamError as exc:
+            raise CheckoutError(503, "MANDATE_UNAVAILABLE", exc.detail) from exc
+        if mandate_recheck.get("decision") == "BLOCK":
+            codes = [b.get("code") for b in mandate_recheck.get("hard_blocks", [])]
+            raise CheckoutError(
+                409,
+                "OVER_CAP" if "OVER_CAP" in codes else "MANDATE_BLOCKED",
+                f"mandate re-check failed at confirm time: {codes}",
+            )
+
         await repo.insert_order(
             session,
             order_id=order_id,

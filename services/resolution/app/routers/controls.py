@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import repo
 from app.db import get_session
-from app.deps import require_internal_jwt
+from app.deps import require_internal_jwt, role_required
 from app.schemas.cases import (
     ReconcileRequest,
     ReconcileResponse,
@@ -35,7 +35,7 @@ def _not_implemented(endpoint: str) -> HTTPException:
 
 @router.get("/controls/refunds-frozen")
 async def get_refunds_frozen(
-    claims: dict = Depends(require_internal_jwt),
+    claims: dict = Depends(role_required("operator")),
     session: AsyncSession = Depends(get_session),
 ) -> RefundsFrozenState:
     flags = await repo.get_control_flags(session)
@@ -102,7 +102,7 @@ async def put_refunds_frozen(
 @router.post("/refunds/reconcile")
 async def reconcile_refunds(
     body: ReconcileRequest,
-    claims: dict = Depends(require_internal_jwt),
+    claims: dict = Depends(role_required("operator")),
     session: AsyncSession = Depends(get_session),
 ) -> ReconcileResponse:
     summary = await reconcile_attempts(session, body.limit)

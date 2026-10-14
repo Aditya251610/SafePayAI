@@ -42,16 +42,109 @@ async def test_fetch_catalog_items_raises_on_5xx(monkeypatch) -> None:
         )
 
 
+def _real_catalog_item(**overrides) -> dict:
+    """catalog's real Item schema (services/catalog/app/schemas/items.py) -- NOT the
+    {category, price_minor} shape the agent's own internals use. Mocking the wrong shape
+    here is exactly how the real category_id/unit_price_minor vs category/price_minor
+    mismatch went uncaught."""
+    item = {
+        "sku": "A",
+        "merchant_id": "shop-a",
+        "category_id": "cat-1",
+        "title": "Widget",
+        "description": "a widget",
+        "unit_price_minor": 2500,
+        "currency": "USD",
+        "active": True,
+    }
+    item.update(overrides)
+    return item
+
+
 @pytest.mark.asyncio
 async def test_fetch_catalog_items_returns_items_on_success(monkeypatch) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"catalog_version": 1, "items": [{"sku": "A"}]})
+        return httpx.Response(
+            200,
+            json={
+                "catalog_version": 1,
+                "items": [_real_catalog_item()],
+                "limit": 100,
+                "offset": 0,
+                "has_more": False,
+            },
+        )
 
     _patched_client(monkeypatch, handler)
     items = await clients.fetch_catalog_items(
         base_url="http://catalog.test", bearer_token="t"
     )
-    assert items == [{"sku": "A"}]
+    assert len(items) == 1
+    assert items[0]["category"] == "cat-1"
+    assert items[0]["price_minor"] == 2500
+    assert "category_id" not in items[0]
+    assert "unit_price_minor" not in items[0]
+
+
+@pytest.mark.asyncio
+async def test_fetch_catalog_items_drops_inactive_items(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "catalog_version": 1,
+                "items": [
+                    _real_catalog_item(sku="active-1", active=True),
+                    _real_catalog_item(sku="inactive-1", active=False),
+                ],
+                "limit": 100,
+                "offset": 0,
+                "has_more": False,
+            },
+        )
+
+    _patched_client(monkeypatch, handler)
+    items = await clients.fetch_catalog_items(
+        base_url="http://catalog.test", bearer_token="t"
+    )
+    assert [i["sku"] for i in items] == ["active-1"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_catalog_items_follows_has_more_pagination(monkeypatch) -> None:
+    seen_offsets: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        offset = int(request.url.params["offset"])
+        seen_offsets.append(offset)
+        if offset == 0:
+            return httpx.Response(
+                200,
+                json={
+                    "catalog_version": 1,
+                    "items": [_real_catalog_item(sku="a")],
+                    "limit": 100,
+                    "offset": 0,
+                    "has_more": True,
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "catalog_version": 1,
+                "items": [_real_catalog_item(sku="b")],
+                "limit": 100,
+                "offset": offset,
+                "has_more": False,
+            },
+        )
+
+    _patched_client(monkeypatch, handler)
+    items = await clients.fetch_catalog_items(
+        base_url="http://catalog.test", bearer_token="t"
+    )
+    assert [i["sku"] for i in items] == ["a", "b"]
+    assert seen_offsets == [0, 100]
 
 
 @pytest.mark.asyncio
