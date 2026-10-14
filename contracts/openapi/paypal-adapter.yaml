@@ -3,10 +3,19 @@ info:
   title: paypal-adapter
   version: "0.1.0"
   description: >
-    Internal-only anti-corruption layer over PayPal sandbox REST. Wave 4: contract only;
-    every /v1/* route returns 501 until Wave 5; /healthz, /health, /readyz are real.
-    Never routed by api-gateway. Derived from .claude/prd/services/paypal-adapter/api.md.
-    MCP tool schemas live in api.md section 8 (not expressed here; this file covers REST).
+    Internal-only anti-corruption layer over PayPal sandbox REST. All routes below are real
+    (not stubs): create_order/get_order/capture_order/refund_capture/get_refund/get_capture/
+    reconcile make live PayPal sandbox calls via app.ops, gated by the call_ledger/refund_ledger
+    idempotency flow; add_tracking/get_tracking/cancel_tracking make live PayPal Order Tracking
+    API calls; control status/freeze/unfreeze read/write this service's own DB kill switch; the
+    webhook receiver is disabled by default (PS_PAYPALADAPTER_WEBHOOK_ENABLED=false) and returns
+    a clear {"ok": false, "status": "DISABLED"} rather than pretending to process webhooks.
+    Full authorization-ticket HMAC verification (api.md section 5) is still deferred -- the
+    router dependency only checks the X-Authorization-Ticket header is present, not its
+    signature, pending checkout/resolution as ticket minters. Never routed by api-gateway.
+    Derived from .claude/prd/services/paypal-adapter/api.md and the real app/ source
+    (app/ops.py, app/routers/*.py, app/schemas/orders.py). MCP tool schemas live in api.md
+    section 8 (not expressed here; this file covers REST).
 servers:
   - url: /
 paths:
@@ -31,13 +40,28 @@ paths:
             schema: { $ref: "#/components/schemas/CreateOrderRequest" }
       responses:
         "201":
-          description: Order created
+          description: Order created (envelope ok=true, status=OK)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
-        "403": { $ref: "#/components/responses/NotPermitted" }
+        "200":
+          description: Replayed/non-OK outcome of a previously-seen request_id (idempotent replay)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "202":
+          description: IN_PROGRESS -- an identical request_id is still in flight
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "403": { $ref: "#/components/responses/NotPermittedOrTicketMissing" }
         "422": { $ref: "#/components/responses/ValidationError" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "504":
+          description: UNKNOWN -- PayPal call outcome ambiguous (timeout/5xx); caller must reconcile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
   /v1/orders/{order_id}:
     get:
       operationId: getOrder
@@ -56,7 +80,9 @@ paths:
               schema: { $ref: "#/components/schemas/Envelope" }
         "403": { $ref: "#/components/responses/NotPermitted" }
         "404": { description: NOT_FOUND }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "422": { description: UPSTREAM_REJECTED }
+        "502": { description: UPSTREAM_UNAVAILABLE (retryable) }
+        "503": { description: UPSTREAM_AUTH_FAILED }
   /v1/orders/{order_id}/capture:
     post:
       operationId: captureOrder
@@ -78,16 +104,37 @@ paths:
             schema: { $ref: "#/components/schemas/CaptureOrderRequest" }
       responses:
         "201":
-          description: Captured
+          description: Captured (envelope ok=true, status=OK)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
-        "403": { $ref: "#/components/responses/NotPermitted" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "200":
+          description: Replayed/non-OK outcome of a previously-seen request_id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "202":
+          description: IN_PROGRESS -- an identical request_id is still in flight
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "403": { $ref: "#/components/responses/NotPermittedOrTicketMissing" }
+        "409":
+          description: ORDER_NOT_APPROVED | AUTHORIZATION_MISMATCH (mandate_id vs order custom_id)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "504":
+          description: UNKNOWN -- PayPal call outcome ambiguous; caller must reconcile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
   /v1/captures/{capture_id}:
     get:
       operationId: getCapture
-      summary: get_capture (READ)
+      summary: get_capture (READ) -- plain upstream passthrough, no ledger, no money decision
       security: [{ internalJwt: [] }]
       parameters:
         - name: capture_id
@@ -96,16 +143,25 @@ paths:
           schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
       responses:
         "200":
-          description: Capture
+          description: >
+            Capture. data = {capture_id, status, amount_minor, currency, invoice_id, custom_id,
+            final_capture}
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
         "403": { $ref: "#/components/responses/NotPermitted" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "404": { description: NOT_FOUND }
+        "422": { description: UPSTREAM_REJECTED }
+        "502": { description: UPSTREAM_UNAVAILABLE (retryable) }
+        "503": { description: UPSTREAM_AUTH_FAILED }
   /v1/captures/{capture_id}/refund:
     post:
       operationId: refundCapture
-      summary: refund_capture (MONEY, ticket required; NOT create_refund, per the confirmed rename)
+      summary: >
+        refund_capture (MONEY, ticket required; NOT create_refund, per the confirmed rename).
+        Also registered at the bare compat path POST /captures/{capture_id}/refund (no /v1
+        prefix) -- see the path below; resolution's real client calls the bare path, so both
+        resolve to the same handler.
       security: [{ internalJwt: [] }]
       parameters:
         - name: capture_id
@@ -114,7 +170,11 @@ paths:
           schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
         - name: X-Authorization-Ticket
           in: header
-          required: true
+          required: false
+          description: >
+            Required unless the ticket is instead supplied in the request body's `ticket`
+            field -- the handler accepts either (header takes precedence); at least one must
+            be present or the call is rejected with 403 TICKET_INVALID.
           schema: { type: string, maxLength: 2048 }
       requestBody:
         required: true
@@ -123,17 +183,83 @@ paths:
             schema: { $ref: "#/components/schemas/RefundCaptureRequest" }
       responses:
         "201":
-          description: Refunded
+          description: Refunded (envelope ok=true, status=OK)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
-        "403": { $ref: "#/components/responses/NotPermitted" }
-        "422": { description: "REFUND_AMOUNT_EXCEEDED | DUPLICATE_INVOICE_ID" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "200":
+          description: Replayed/non-OK outcome of a previously-seen request_id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "202":
+          description: IN_PROGRESS -- in flight, or PayPal returned 409 on write (never blind-retry)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400":
+          description: AMOUNT_OVER_CEILING | CURRENCY_UNSUPPORTED | VALIDATION_ERROR
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403":
+          description: NOT_PERMITTED | TICKET_INVALID (no ticket in header or body) | MONEY_FROZEN
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "404":
+          description: NOT_FOUND -- capture not recorded in our own ledger
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "409":
+          description: REFUND_AMOUNT_EXCEEDED -- amount exceeds our own derived refundable_remaining
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "422": { description: "REFUND_AMOUNT_EXCEEDED | DUPLICATE_INVOICE_ID | UPSTREAM_REJECTED (PayPal-side rejection)" }
+        "504":
+          description: UNKNOWN -- PayPal call outcome ambiguous; reservation held, caller must reconcile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+  /captures/{capture_id}/refund:
+    post:
+      operationId: refundCaptureCompat
+      summary: >
+        Compat alias of POST /v1/captures/{capture_id}/refund, same handler, no /v1 prefix.
+        Exists because resolution's real client (services/resolution/app/clients.py
+        `refund_capture`) calls the bare path, not /v1/captures/...; api.md section 4 says
+        "all under /v1" but this deliberate compat shim is documented here rather than
+        changing resolution's already-merged client.
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: capture_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        - name: X-Authorization-Ticket
+          in: header
+          required: false
+          schema: { type: string, maxLength: 2048 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundCaptureRequest" }
+      responses:
+        "201":
+          description: Refunded (see POST /v1/captures/{capture_id}/refund for the full response matrix)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
   /v1/refunds/{refund_id}:
     get:
       operationId: getRefund
-      summary: get_refund (READ)
+      summary: >
+        get_refund (READ). Fast path reads our own refund_ledger (<20ms) when we minted the
+        refund; falls back to a live PayPal lookup otherwise. Also registered at the bare
+        compat path GET /refunds/{refund_id} (no /v1 prefix) for resolution's real client.
       security: [{ internalJwt: [] }]
       parameters:
         - name: refund_id
@@ -142,16 +268,35 @@ paths:
           schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
       responses:
         "200":
-          description: Refund
+          description: Refund. data = {refund_id, status, amount_minor, currency, capture_id}
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
         "403": { $ref: "#/components/responses/NotPermitted" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "404": { description: NOT_FOUND }
+        "422": { description: UPSTREAM_REJECTED }
+        "502": { description: UPSTREAM_UNAVAILABLE (retryable) }
+        "503": { description: UPSTREAM_AUTH_FAILED }
+  /refunds/{refund_id}:
+    get:
+      operationId: getRefundCompat
+      summary: Compat alias of GET /v1/refunds/{refund_id}, same handler, no /v1 prefix.
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: refund_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+      responses:
+        "200":
+          description: Refund (see GET /v1/refunds/{refund_id})
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
   /v1/orders/{order_id}/track:
     post:
       operationId: addTracking
-      summary: add_tracking (WRITE, caller tracking only)
+      summary: add_tracking (WRITE, caller tracking only) -- real PayPal Order Tracking API call
       security: [{ internalJwt: [] }]
       parameters:
         - name: order_id
@@ -165,16 +310,29 @@ paths:
             schema: { $ref: "#/components/schemas/AddTrackingRequest" }
       responses:
         "201":
-          description: Tracker created
+          description: Tracker created. data = {order_id, tracker_id, status}
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "200":
+          description: >
+            Replayed -- PayPal rejected a duplicate add (natural-key dedupe on
+            capture_id+tracking_number) and the existing tracker was read back instead of
+            surfacing an error.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
         "403": { $ref: "#/components/responses/NotPermitted" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "422": { description: UPSTREAM_REJECTED (non-duplicate PayPal rejection) }
+        "503": { description: UPSTREAM_AUTH_FAILED }
+        "504": { description: UPSTREAM_UNAVAILABLE }
   /v1/orders/{order_id}/trackers/{tracker_id}:
     get:
       operationId: getTracking
-      summary: get_tracking (READ; path unverified, U2)
+      summary: >
+        get_tracking (READ). `carrier_status` is always null and `verified` always false here
+        -- an honest statement that late/lost/delivered state lives only in the tracking
+        service's own DB (SIMULATED CARRIER); this endpoint never merges or guesses at it.
       security: [{ internalJwt: [] }]
       parameters:
         - name: order_id
@@ -187,61 +345,188 @@ paths:
           schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
       responses:
         "200":
-          description: Tracker
+          description: Tracker. data = {order_id, tracker_id, paypal_status, carrier_status, verified}
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
         "403": { $ref: "#/components/responses/NotPermitted" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "404": { description: NOT_FOUND }
+        "422": { description: UPSTREAM_REJECTED }
+        "502": { description: UPSTREAM_UNAVAILABLE (retryable) }
+        "503": { description: UPSTREAM_AUTH_FAILED }
+  /v1/orders/{order_id}/trackers/{tracker_id}/status:
+    patch:
+      operationId: cancelTracking
+      summary: >
+        cancel_tracking (WRITE, caller tracking only). Only status="CANCELLED" is a legal
+        target (irreversible) -- PayPal itself rejects ON_HOLD/DELIVERED with 400
+        INVALID_PARAMETER_VALUE, not this adapter; a second cancel on an already-CANCELLED
+        tracker likewise gets PayPal's own 400, mapped to UPSTREAM_REJECTED below.
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        - name: tracker_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTrackerStatusRequest" }
+      responses:
+        "204":
+          description: Cancelled -- no body, matching PayPal's own PATCH response
+        "403": { $ref: "#/components/responses/NotPermitted" }
+        "404":
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "422":
+          description: UPSTREAM_REJECTED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "502":
+          description: UPSTREAM_UNAVAILABLE (retryable)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "503":
+          description: UPSTREAM_AUTH_FAILED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
   /v1/reconcile/{request_id}:
     post:
       operationId: reconcile
-      summary: Reconcile a non-terminal call by request_id
+      summary: >
+        Reconcile a non-terminal call by request_id (spec.md section 6) -- idempotent,
+        read-only lookup against our own call_ledger; never re-calls PayPal, never mutates
+        state. Also registered at the bare compat path POST /reconcile/{request_id} (no /v1
+        prefix) for resolution's real client (`reconcile_refund`).
       security: [{ internalJwt: [] }]
       parameters:
         - name: request_id
           in: path
           required: true
-          schema: { type: string, format: uuid }
+          schema: { type: string, pattern: "^[0-9a-fA-F-]{36}$" }
       responses:
         "200":
-          description: Reconciled
+          description: OK -- terminal DONE_OK outcome, replayed=true
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "202":
+          description: IN_PROGRESS -- still in flight or awaiting a remote retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "404":
+          description: NOT_FOUND -- unknown request_id, or REJECTED outcome
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "504":
+          description: UNKNOWN -- ambiguous outcome, keep polling
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+  /reconcile/{request_id}:
+    post:
+      operationId: reconcileCompat
+      summary: Compat alias of POST /v1/reconcile/{request_id}, same handler, no /v1 prefix.
+      security: [{ internalJwt: [] }]
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[0-9a-fA-F-]{36}$" }
+      responses:
+        "200":
+          description: Reconciled (see POST /v1/reconcile/{request_id})
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
   /v1/control/status:
     get:
       operationId: controlStatus
-      summary: "{money_enabled, frozen}"
+      summary: This service's own DB-backed kill switch status (independent of the static env var)
       security: [{ internalJwt: [] }]
       responses:
-        "200": { description: Status }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "200":
+          description: Control flags
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlStatusResponse" }
   /v1/control/freeze:
     post:
       operationId: controlFreeze
-      summary: Operator-only freeze
+      summary: >
+        Sets this service's own DB control_flags.frozen=true. No additional operator-role
+        check here beyond internal JWT -- this endpoint is itself resolution's mirror-push
+        target (see module docstring in app/routers/control.py); the operator-role gate lives
+        on resolution's own PUT /controls/refunds-frozen.
       security: [{ internalJwt: [] }]
       responses:
-        "200": { description: Frozen }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "200":
+          description: Frozen
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlStatusResponse" }
+        "503": { description: CONTROL_FLAGS_ROW_MISSING -- control_flags row absent post-migration (should not happen) }
   /v1/control/unfreeze:
     post:
       operationId: controlUnfreeze
-      summary: Operator-only unfreeze
+      summary: Sets this service's own DB control_flags.frozen=false
       security: [{ internalJwt: [] }]
       responses:
-        "200": { description: Unfrozen }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "200":
+          description: Unfrozen
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlStatusResponse" }
+        "503": { description: CONTROL_FLAGS_ROW_MISSING }
   /v1/webhooks/paypal:
     post:
       operationId: paypalWebhook
-      summary: Optional hint-only receiver, default disabled
+      summary: >
+        Optional hint-only receiver, disabled by default (PS_PAYPALADAPTER_WEBHOOK_ENABLED=
+        false). When disabled, returns 200 {"ok": false, "status": "DISABLED"} rather than a
+        404/501 -- an honest statement that this deployment was never configured to receive
+        webhooks, not a missing route. When enabled, verifies the signature via PayPal's own
+        POST /v1/notifications/verify-webhook-signature API before recording anything (never
+        a home-grown HMAC check). NOT exercised live against a real PayPal-sent webhook in
+        this pass -- there is no public endpoint in local/sandbox dev to receive one, so
+        signature verification is implemented but unverified end-to-end against a genuine
+        PayPal transmission.
       security: []
       responses:
-        "404": { description: "Disabled (PS_PAYPALADAPTER_WEBHOOK_ENABLED=false)" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
+        "200":
+          description: >
+            Either {"ok": false, "status": "DISABLED"} (default, webhook disabled) or
+            {"ok": true, "status": "OK", "data": {"event_type": ...}} (verified and recorded).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebhookResponse" }
+        "400":
+          description: >
+            INVALID_BODY | MISSING_HEADERS:<names> | REJECTED (signature verification returned
+            a non-SUCCESS status)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebhookResponse" }
+        "422": { description: UPSTREAM_ERROR (PayPal 4xx on the verify-signature call) }
+        "502": { description: UPSTREAM_ERROR (PayPal 5xx on the verify-signature call) }
+        "503":
+          description: MISCONFIGURED (PS_PAYPALADAPTER_PAYPAL_WEBHOOK_ID not set) | UPSTREAM_AUTH_FAILED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebhookResponse" }
   /healthz:
     get:
       operationId: healthz
@@ -275,12 +560,12 @@ components:
       description: NOT_PERMITTED (caller not in the allowlist for this tool)
       content:
         application/json: { schema: { $ref: "#/components/schemas/Envelope" } }
-    ValidationError:
-      description: VALIDATION_ERROR
+    NotPermittedOrTicketMissing:
+      description: NOT_PERMITTED (caller not in the allowlist) | TICKET_INVALID (missing X-Authorization-Ticket header)
       content:
         application/json: { schema: { $ref: "#/components/schemas/Envelope" } }
-    NotImplemented:
-      description: Wave 4 stub
+    ValidationError:
+      description: VALIDATION_ERROR | MONEY_FROZEN | return_url/cancel_url origin not allowed
       content:
         application/json: { schema: { $ref: "#/components/schemas/Envelope" } }
   schemas:
@@ -314,42 +599,91 @@ components:
       required:
         [request_id, mandate_id, proposal_hash, internal_order_id, amount_minor, currency, return_url, cancel_url]
       properties:
-        request_id: { type: string, format: uuid }
+        request_id: { type: string, pattern: "^[0-9a-fA-F-]{36}$" }
         mandate_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
         proposal_hash: { type: string }
         internal_order_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
         amount_minor: { type: integer, minimum: 1 }
-        currency: { type: string, enum: [USD] }
-        return_url: { type: string, format: uri }
-        cancel_url: { type: string, format: uri }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        return_url: { type: string }
+        cancel_url: { type: string }
     CaptureOrderRequest:
       type: object
       additionalProperties: false
       required: [request_id, mandate_id, proposal_hash, amount_minor, currency]
       properties:
-        request_id: { type: string, format: uuid }
+        request_id: { type: string, pattern: "^[0-9a-fA-F-]{36}$" }
         mandate_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
         proposal_hash: { type: string }
         amount_minor: { type: integer, minimum: 1 }
-        currency: { type: string, enum: [USD] }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
     RefundCaptureRequest:
       type: object
       additionalProperties: false
-      required: [request_id, mandate_id, proposal_hash, amount_minor, currency]
+      description: >
+        Matches resolution's real Wave 5B client exactly (services/resolution/app/clients.py
+        `refund_capture`): {request_id, invoice_id, amount_minor, currency, ticket}.
+        mandate_id/proposal_hash are optional, forward-compat fields not required by this
+        service's current verification (full ticket HMAC verification is deferred, same as
+        create_order/capture_order). `ticket` may be sent in the body as a fallback for callers
+        that cannot set the X-Authorization-Ticket header; at least one of the two is required.
+      required: [request_id, amount_minor, currency]
       properties:
-        request_id: { type: string, format: uuid }
-        mandate_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
-        proposal_hash: { type: string }
+        request_id: { type: string, pattern: "^[0-9a-fA-F-]{36}$" }
         amount_minor: { type: integer, minimum: 1 }
-        currency: { type: string, enum: [USD] }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
         invoice_id: { type: ["string", "null"], pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        ticket: { type: ["string", "null"] }
+        mandate_id: { type: ["string", "null"], pattern: "^[A-Za-z0-9_-]{1,64}$" }
+        proposal_hash: { type: ["string", "null"] }
     AddTrackingRequest:
       type: object
       additionalProperties: false
       required: [request_id, capture_id, tracking_number, carrier_name_other]
       properties:
-        request_id: { type: string, format: uuid }
+        request_id: { type: string, pattern: "^[0-9a-fA-F-]{36}$" }
         capture_id: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
         tracking_number: { type: string, maxLength: 64 }
         carrier_name_other: { type: string, maxLength: 64 }
         notify_payer: { type: boolean, default: false }
+    UpdateTrackerStatusRequest:
+      type: object
+      additionalProperties: false
+      description: >
+        Only status="CANCELLED" is accepted (irreversible) -- ON_HOLD/DELIVERED are rejected
+        by PayPal itself per a documented sandbox spike, not by this adapter; anything other
+        than the literal "CANCELLED" fails schema validation (422 VALIDATION_ERROR).
+      required: [status]
+      properties:
+        status: { type: string, pattern: "^CANCELLED$" }
+    ControlStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [money_enabled, frozen, updated_at, env_money_enabled, seeded, trace_id]
+      properties:
+        money_enabled: { type: boolean }
+        frozen: { type: boolean }
+        updated_at: { type: ["string", "null"], format: date-time }
+        env_money_enabled:
+          type: boolean
+          description: Static PS_PAYPALADAPTER_MONEY_ENABLED env var, independent of the DB flag above.
+        seeded:
+          type: boolean
+          description: false only in the defensive/should-not-happen case of an absent control_flags row (fails closed).
+        trace_id: { type: string }
+    WebhookResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        status: { type: string, enum: [DISABLED, MISCONFIGURED, REJECTED, OK] }
+        data:
+          type: ["object", "null"]
+          properties:
+            event_type: { type: string }
+        error:
+          type: ["object", "null"]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            retryable: { type: boolean }
+        trace_id: { type: string }
