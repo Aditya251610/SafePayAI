@@ -393,6 +393,27 @@ async def next_shipment_event_seq(session: AsyncSession, shipment_id: uuid.UUID)
     return int(result.scalar() or 1)
 
 
+async def get_shipment_events_by_order(
+    session: AsyncSession, order_id: str
+) -> list[dict[str, Any]]:
+    """All applied transitions for every shipment on this order, oldest first --
+    the real per-event history behind the aggregate `consistency` summary already
+    returned by GET /shipments/{order_id}, used to build triage-ai's timeline."""
+    result = await session.execute(
+        text(
+            """
+            SELECT e.shipment_id, e.seq, e.to_status, e.occurred_at_sim, e.note_code
+            FROM tracking.shipment_events e
+            JOIN tracking.shipments s ON s.id = e.shipment_id
+            WHERE s.order_id = :order_id
+            ORDER BY e.occurred_at_sim ASC, e.seq ASC
+            """
+        ),
+        {"order_id": order_id},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
 async def get_last_event_sim(
     session: AsyncSession, shipment_id: uuid.UUID
 ) -> datetime | None:

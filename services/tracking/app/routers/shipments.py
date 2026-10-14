@@ -95,6 +95,7 @@ async def get_shipments(
     rows = await repo.get_shipments_by_order(session, order_id)
     delivered = any(r["status"] == ShipmentStatus.DELIVERED.value for r in rows)
     detection_kinds = await repo.get_detection_kinds_for_order(session, order_id)
+    event_rows = await repo.get_shipment_events_by_order(session, order_id)
     return {
         "order_id": order_id,
         "sim_now": sim_now_val.isoformat(),
@@ -107,6 +108,21 @@ async def get_shipments(
                 "anomaly": r["anomaly"],
             }
             for r in rows
+        ],
+        # Real per-event history behind the "consistency" summary above -- each
+        # shipment's full applied-transition log, oldest first. `status` is this
+        # service's own ShipmentStatus vocabulary (LABEL_CREATED/IN_TRANSIT/
+        # OUT_FOR_DELIVERY/EXCEPTION/LOST/DELIVERED/CANCELLED), not translated for
+        # any particular downstream consumer -- that mapping is the caller's job.
+        "events": [
+            {
+                "event_id": f"{e['shipment_id']}-{e['seq']}",
+                "shipment_id": str(e["shipment_id"]),
+                "status": e["to_status"],
+                "occurred_at_sim": e["occurred_at_sim"].isoformat(),
+                "note_code": e["note_code"],
+            }
+            for e in event_rows
         ],
         "consistency": {
             "delivered": delivered,

@@ -175,3 +175,31 @@ async def test_cancel_shipment_moves_to_cancelled(session: AsyncSession) -> None
     assert row is not None
     assert row["status"] == ShipmentStatus.CANCELLED.value
     assert row["active"] is False
+
+
+async def test_get_shipment_events_by_order_returns_full_history(
+    session: AsyncSession,
+) -> None:
+    """Real per-event history backing GET /shipments/{order_id}'s new `events`
+    field (built for triage-ai's timeline input, see resolution's decide.py)."""
+    cmd = CreateShipmentCommand(
+        order_id="order-events",
+        tracking_number="TRACKEVENTS",
+        carrier_name="DemoCarrier",
+        outcome_profile=OutcomeProfile.ON_TIME,
+        actor_sub="merchant-1",
+        idempotency_key=None,
+    )
+    created = await create_shipment(session, cmd)
+    await session.commit()
+
+    await cancel_shipment(session, created.shipment_id, "MERCHANT_CANCEL", "merchant-1")
+    await session.commit()
+
+    events = await repo.get_shipment_events_by_order(session, "order-events")
+    assert [e["to_status"] for e in events] == [
+        ShipmentStatus.LABEL_CREATED.value,
+        ShipmentStatus.CANCELLED.value,
+    ]
+    assert events[0]["occurred_at_sim"] <= events[1]["occurred_at_sim"]
+    assert all(e["shipment_id"] == created.shipment_id for e in events)
