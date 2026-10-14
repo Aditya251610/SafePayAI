@@ -360,7 +360,9 @@ def _override_principal(role: str, merchant_id: str | None = None) -> None:
 
 @pytest.mark.asyncio
 async def test_list_orders_buyer_scoped_to_own_orders(client, monkeypatch) -> None:
-    order_id = await _create_confirmed_order(client, monkeypatch, idem_key="idem-list-1")
+    order_id = await _create_confirmed_order(
+        client, monkeypatch, idem_key="idem-list-1"
+    )
 
     resp = await client.get(
         "/orders", params={"mandate_id": "22222222-2222-2222-2222-222222222222"}
@@ -374,7 +376,9 @@ async def test_list_orders_buyer_scoped_to_own_orders(client, monkeypatch) -> No
 async def test_list_orders_merchant_scoped_to_own_merchant_id(
     client, monkeypatch
 ) -> None:
-    order_id = await _create_confirmed_order(client, monkeypatch, idem_key="idem-list-2")
+    order_id = await _create_confirmed_order(
+        client, monkeypatch, idem_key="idem-list-2"
+    )
 
     _override_principal("merchant", merchant_id="merchant-1")
     resp = await client.get(
