@@ -212,6 +212,7 @@ def mint_token(
 ) -> str:
     now = int(time.time())
     payload = {
+        "iss": "api-gateway",
         "sub": sub,
         "aud": "mandate",
         "role": role,

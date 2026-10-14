@@ -30,9 +30,19 @@ def mint_service_token(subject: str, config: ServiceJWTConfig) -> str:
 
 
 def verify_service_token(token: str, jwks_client: jwt.PyJWKClient, audience: str, trusted_issuers: list[str]) -> dict:
-    """Raises jwt.PyJWTError subclasses on any failure. Callers must fail closed (401/403), never swallow."""
+    """Raises jwt.PyJWTError subclasses on any failure. Callers must fail closed (401/403), never swallow.
+
+    `require: ["exp"]` -- PyJWT's default `verify_exp=True` only checks `exp` if the claim
+    is PRESENT; a token minted without an `exp` claim at all previously never expired here.
+    """
     signing_key = jwks_client.get_signing_key_from_jwt(token)
-    claims = jwt.decode(token, signing_key.key, algorithms=["RS256"], audience=audience)
+    claims = jwt.decode(
+        token,
+        signing_key.key,
+        algorithms=["RS256"],
+        audience=audience,
+        options={"require": ["exp"]},
+    )
     if claims.get("iss") not in trusted_issuers:
         raise jwt.InvalidIssuerError(f"issuer {claims.get('iss')!r} not trusted")
     return claims

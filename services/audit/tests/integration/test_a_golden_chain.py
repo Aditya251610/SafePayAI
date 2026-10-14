@@ -42,6 +42,28 @@ async def test_append_single_event_then_verify(client) -> None:
     assert verify_body["head_seq"] == 2
 
 
+async def test_append_event_with_null_payload_field_verifies_clean(client) -> None:
+    """`payload` is stored raw (nulls intact) but hashed canonically (nulls dropped,
+    spec.md sec 4) -- comparing the two forms naively in /verify would report
+    PAYLOAD_MISMATCH for every event with a null-valued payload field, even though
+    nothing was tampered. resolution's `case.state_changed` event genuinely emits a null
+    `reason_code` in normal operation, so this is a real, reachable shape, not just an
+    edge case."""
+    token = mint_token("checkout")
+    envelope = make_envelope(event_type="ORDER_CAPTURED", order_id="ord_null_payload")
+    envelope["payload"] = {"order_id": "ord_null_payload", "total": 100, "reason_code": None}
+
+    resp = await client.post(
+        "/internal/events", json=envelope, headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 201, resp.text
+
+    verify_resp = await client.get("/verify", headers={"Authorization": f"Bearer {token}"})
+    verify_body = verify_resp.json()
+    assert verify_body["ok"] is True
+    assert verify_body.get("reason") is None
+
+
 async def test_append_n_events_chain_still_verifies(client) -> None:
     token = mint_token("checkout")
     n = 10

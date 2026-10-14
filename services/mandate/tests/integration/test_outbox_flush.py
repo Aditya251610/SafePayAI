@@ -68,3 +68,32 @@ async def test_flush_is_a_noop_when_outbox_empty(client, db_conn):
     body = resp.json()
     assert body["delivered"] == 0
     assert body["pending"] == 0
+
+
+async def test_outbox_pull_requires_tick_secret(client):
+    # Was unauthenticated before this fix -- anyone reaching this port could read every
+    # buyer's mandate/nonce outbox payloads with no credentials at all.
+    resp = await client.get("/internal/outbox")
+    assert resp.status_code == 401
+
+
+async def test_outbox_pull_returns_events_after_seq(client, db_conn):
+    event_id = str(uuid.uuid4())
+    await db_conn.execute(
+        """
+        INSERT INTO mandate.outbox (event_id, type, version, aggregate_id, payload, trace_id)
+        VALUES ($1, 'mandate.signed', 1, $2, $3::jsonb, $4)
+        """,
+        event_id,
+        str(uuid.uuid4()),
+        json.dumps({"hello": "world"}),
+        str(uuid.uuid4()),
+    )
+
+    resp = await client.get(
+        "/internal/outbox",
+        headers={"X-Tick-Secret": os.environ["INTERNAL_TICK_SECRET"]},
+    )
+    assert resp.status_code == 200, resp.text
+    events = resp.json()["events"]
+    assert any(e["event_id"] == event_id for e in events)
