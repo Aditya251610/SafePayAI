@@ -24,6 +24,9 @@ SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 
 TEST_SECRET = "test-only-hs256-secret-not-for-production-use"
 TEST_KID = "test-kid"
+TEST_CHECKOUT_TICKET_KEY = "test-checkout-ticket-hmac-key"
+TEST_RESOLUTION_TICKET_KEY = "test-resolution-ticket-hmac-key"
+TEST_TICKET_KID = "test-ticket-kid"
 
 
 def _asyncpg_dsn(db: str, user: str = "postgres", password: str = "postgres") -> str:
@@ -91,6 +94,13 @@ async def pg_env(test_db_name):
         "PS_PAYPALADAPTER_INTERNAL_JWT_AUD": "paypal-adapter",
         "PS_PAYPALADAPTER_MONEY_ENABLED": "true",
         "PS_PAYPALADAPTER_PAYPAL_RETURN_URL_ALLOWED_ORIGINS": "http://localhost:3000",
+        # Explicit Field(alias=...) in Settings, named after the MINTING service -- these
+        # deliberately do NOT take the PS_PAYPALADAPTER_ prefix (settings.py's own docstring:
+        # "named after the minting services (checkout, resolution) and consumed here").
+        "PS_CHECKOUT_TICKET_HMAC_KEY": TEST_CHECKOUT_TICKET_KEY,
+        "PS_CHECKOUT_TICKET_HMAC_KID": TEST_TICKET_KID,
+        "PS_RESOLUTION_TICKET_HMAC_KEY": TEST_RESOLUTION_TICKET_KEY,
+        "PS_RESOLUTION_TICKET_HMAC_KID": TEST_TICKET_KID,
     }
     for k, v in env_vars.items():
         os.environ[k] = v
@@ -137,6 +147,32 @@ async def _clean_tables(pg_env):
     finally:
         await conn.close()
     yield
+
+
+def mint_ticket(
+    minter: str,
+    *,
+    mandate_id: str,
+    proposal_hash: str,
+    amount_minor: int,
+    currency: str,
+    expires_in: int = 120,
+) -> str:
+    """Mints a real HMAC authorization_ticket matching what checkout/resolution would
+    produce (app.tickets.mint_ticket in each of those services), using the same test key
+    this conftest configures paypal-adapter to verify against. `minter` is "checkout" or
+    "resolution" -- picks which test key to sign with."""
+    from safepayai_common.auth.ticket import TicketPayload, sign_ticket
+
+    key = TEST_CHECKOUT_TICKET_KEY if minter == "checkout" else TEST_RESOLUTION_TICKET_KEY
+    payload = TicketPayload(
+        mandate_id=mandate_id,
+        proposal_hash=proposal_hash,
+        amount_minor=amount_minor,
+        currency=currency,
+        expires_at=int(time.time()) + expires_in,
+    )
+    return sign_ticket(payload, key.encode(), TEST_TICKET_KID)
 
 
 def mint_token(sub: str, *, aud: str = "paypal-adapter") -> str:

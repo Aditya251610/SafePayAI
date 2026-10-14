@@ -2,11 +2,11 @@
 cannot diverge. S1-08 scope: create_order, get_order, capture_order with the call_ledger
 idempotency flow (spec.md section 6) and the token-cache/401-retry PayPal client.
 
-Out of scope for S1-08 (deferred, see sprint-plan row S1-08 vs S2-07/S3-06 and the dispatch
-prompt): full authorization-ticket HMAC verification (spec.md section 5 -- needs the
-checkout/resolution minters, not built yet; the router dependency only checks the ticket
-header is present), the MONEY_FROZEN DB control-flag path beyond PS_PAYPALADAPTER_MONEY_ENABLED,
-rate limiting, and outbox event types beyond `paypal.call_recorded`.
+Full authorization-ticket HMAC verification (spec.md section 5) is real now -- see
+app.deps.verify_authorization_ticket, called from the routers (orders.py, captures.py)
+before this layer runs, not inside it. The MONEY_FROZEN DB control-flag path is also real
+(app.control_flags, OR'd with PS_PAYPALADAPTER_MONEY_ENABLED). Still out of scope: rate
+limiting, and outbox event types beyond `paypal.call_recorded`.
 """
 
 from __future__ import annotations
@@ -581,12 +581,11 @@ async def refund_capture(
     (our own capture_order record, not PayPal's live response, per spec C13's documented
     fallback: derive from our own data, rely on PayPal's 422 as backstop) is the source of
     truth for `captured_amount_minor`; `ledger.sum_committed_refunds` is the source of truth
-    for what has already been committed against it. `ticket` is accepted but (like
-    create_order/capture_order in this Wave) full HMAC verification is deferred -- only
-    presence is required by the caller (router dependency / body fallback).
+    for what has already been committed against it. `ticket` is real HMAC-verified by the
+    router (app.deps.verify_authorization_ticket) before this function is ever called.
     """
-    del ticket  # presence-only check happens in the router; kept as an explicit param here
-    # so a future HMAC-verification pass has an obvious single call site to extend.
+    del ticket  # already verified by the router; kept as an explicit param for the call
+    # signature / call_ledger body_hash shape, not re-checked here.
     await _check_money_enabled(settings, session, trace_id)
 
     if amount_minor > settings.refund_max_minor:

@@ -2,8 +2,10 @@
 
 Wave 5B (S1-08): real PayPal calls via app.ops, backed by app.paypal_client (token cache +
 401 retry) and the call_ledger idempotency flow. Full authorization-ticket HMAC
-verification (spec.md section 5) is deferred to S2/S3 once checkout/resolution exist as
-ticket minters -- require_authorization_ticket only checks the header is present.
+verification (spec.md section 5) is now real: require_authorization_ticket still checks
+the header is present (fast 403 for a missing ticket before any body processing), then each
+handler calls deps.verify_authorization_ticket with the real request body fields (mandate_id,
+proposal_hash, amount_minor, currency) once the body is parsed.
 """
 
 from __future__ import annotations
@@ -16,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ops
 from app.db import get_db
-from app.deps import Caller, require_authorization_ticket, require_tool_permission
+from app.deps import (
+    Caller,
+    require_authorization_ticket,
+    require_tool_permission,
+    verify_authorization_ticket,
+)
 from app.paypal_client import PayPalClient, get_paypal_client
 from app.schemas.orders import CaptureOrderRequest, CreateOrderRequest
 from app.settings import Settings, get_settings
@@ -47,12 +54,21 @@ async def create_order(
     request: Request,
     body: CreateOrderRequest,
     caller: Caller = Depends(_require_create_order),
-    _ticket: str = Depends(require_authorization_ticket),
+    ticket: str = Depends(require_authorization_ticket),
     session: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     client: PayPalClient = Depends(get_paypal_client),
 ) -> JSONResponse:
     trace_id = _trace_id(request)
+    verify_authorization_ticket(
+        ticket,
+        caller_sub=caller.sub,
+        mandate_id=body.mandate_id,
+        proposal_hash=body.proposal_hash,
+        amount_minor=body.amount_minor,
+        currency=body.currency,
+        settings=settings,
+    )
     try:
         envelope = await ops.create_order(
             session,
@@ -127,12 +143,21 @@ async def capture_order(
     order_id: str,
     body: CaptureOrderRequest,
     caller: Caller = Depends(_require_capture_order),
-    _ticket: str = Depends(require_authorization_ticket),
+    ticket: str = Depends(require_authorization_ticket),
     session: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     client: PayPalClient = Depends(get_paypal_client),
 ) -> JSONResponse:
     trace_id = _trace_id(request)
+    verify_authorization_ticket(
+        ticket,
+        caller_sub=caller.sub,
+        mandate_id=body.mandate_id,
+        proposal_hash=body.proposal_hash,
+        amount_minor=body.amount_minor,
+        currency=body.currency,
+        settings=settings,
+    )
     try:
         envelope = await ops.capture_order(
             session,

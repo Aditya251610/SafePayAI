@@ -14,6 +14,8 @@ import pytest
 import respx
 from httpx import Response
 
+from .conftest import mint_ticket
+
 PAYPAL_BASE = "https://api-m.sandbox.paypal.com"
 
 
@@ -50,9 +52,19 @@ async def _capture_order(client, checkout_token, mock, *, order_id: str, capture
             },
         )
     )
+    capture_ticket = mint_ticket(
+        "checkout",
+        mandate_id="mdt_1",
+        proposal_hash="sha256:abc",
+        amount_minor=4999,
+        currency="USD",
+    )
     resp = await client.post(
         f"/v1/orders/{order_id}/capture",
-        headers={"Authorization": f"Bearer {checkout_token}", "X-Authorization-Ticket": "t"},
+        headers={
+            "Authorization": f"Bearer {checkout_token}",
+            "X-Authorization-Ticket": capture_ticket,
+        },
         json={
             "request_id": str(uuid.uuid4()),
             "mandate_id": "mdt_1",
@@ -62,6 +74,20 @@ async def _capture_order(client, checkout_token, mock, *, order_id: str, capture
         },
     )
     assert resp.status_code == 201, resp.text
+
+
+def _refund_ticket(amount_minor: int, currency: str = "USD") -> str:
+    """Matches the mandate_id/proposal_hash every test in this file uses for its capture
+    (see _capture_order above) -- resolution's own refund_capture call always sends these
+    two fields now (services/resolution/app/usecases/execute_refund.py), so the ticket must
+    bind the same values or real verification correctly rejects it."""
+    return mint_ticket(
+        "resolution",
+        mandate_id="mdt_1",
+        proposal_hash="sha256:abc",
+        amount_minor=amount_minor,
+        currency=currency,
+    )
 
 
 @pytest.mark.asyncio
@@ -88,7 +114,9 @@ async def test_refund_capture_happy_path(client, checkout_token, resolution_toke
                 "invoice_id": "ord_1",
                 "amount_minor": 1000,
                 "currency": "USD",
-                "ticket": "opaque",
+                "mandate_id": "mdt_1",
+                "proposal_hash": "sha256:abc",
+                "ticket": _refund_ticket(1000),
             },
         )
         assert resp.status_code == 201, resp.text
@@ -115,7 +143,9 @@ async def test_refund_capture_replay_same_body_no_second_paypal_call(
             "invoice_id": "ord_1",
             "amount_minor": 1000,
             "currency": "USD",
-            "ticket": "opaque",
+            "mandate_id": "mdt_1",
+            "proposal_hash": "sha256:abc",
+            "ticket": _refund_ticket(1000),
         }
         headers = {"Authorization": f"Bearer {resolution_token}"}
 
@@ -150,12 +180,17 @@ async def test_refund_capture_replay_with_mutated_amount_rejected(
             "invoice_id": "ord_1",
             "amount_minor": 1000,
             "currency": "USD",
-            "ticket": "opaque",
+            "mandate_id": "mdt_1",
+            "proposal_hash": "sha256:abc",
+            "ticket": _refund_ticket(1000),
         }
         resp1 = await client.post("/v1/captures/CAP_R3/refund", headers=headers, json=base_body)
         assert resp1.status_code == 201
 
-        mutated = {**base_body, "amount_minor": 2000}
+        # A correctly-signed ticket for the mutated amount, isolating the ops-layer
+        # idempotency-key-reuse check from ticket verification (same reasoning as
+        # test_create_order_replay_with_different_body_rejected).
+        mutated = {**base_body, "amount_minor": 2000, "ticket": _refund_ticket(2000)}
         resp2 = await client.post("/v1/captures/CAP_R3/refund", headers=headers, json=mutated)
         assert resp2.status_code == 409
         assert resp2.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
@@ -178,7 +213,9 @@ async def test_refund_capture_amount_exceeds_refundable_remaining_rejected(
                 "invoice_id": "ord_1",
                 "amount_minor": 5000,  # captured amount was 4999
                 "currency": "USD",
-                "ticket": "opaque",
+                "mandate_id": "mdt_1",
+                "proposal_hash": "sha256:abc",
+                "ticket": _refund_ticket(5000),
             },
         )
         assert resp.status_code == 409
@@ -197,7 +234,9 @@ async def test_refund_capture_unknown_capture_rejected_not_found(client, resolut
                 "request_id": str(uuid.uuid4()),
                 "amount_minor": 100,
                 "currency": "USD",
-                "ticket": "opaque",
+                "mandate_id": "mdt_1",
+                "proposal_hash": "sha256:abc",
+                "ticket": _refund_ticket(100),
             },
         )
         assert resp.status_code == 404
@@ -239,7 +278,9 @@ async def test_refund_capture_409_from_paypal_is_in_progress_not_rejected(
                 "request_id": str(uuid.uuid4()),
                 "amount_minor": 1000,
                 "currency": "USD",
-                "ticket": "opaque",
+                "mandate_id": "mdt_1",
+                "proposal_hash": "sha256:abc",
+                "ticket": _refund_ticket(1000),
             },
         )
         assert resp.status_code == 202
@@ -261,7 +302,9 @@ async def test_get_refund_fast_path_from_own_ledger(client, checkout_token, reso
                 "request_id": str(uuid.uuid4()),
                 "amount_minor": 1000,
                 "currency": "USD",
-                "ticket": "opaque",
+                "mandate_id": "mdt_1",
+                "proposal_hash": "sha256:abc",
+                "ticket": _refund_ticket(1000),
             },
         )
 
@@ -331,7 +374,9 @@ async def test_reconcile_replays_done_ok_without_calling_paypal_again(
                 "request_id": request_id,
                 "amount_minor": 1000,
                 "currency": "USD",
-                "ticket": "opaque",
+                "mandate_id": "mdt_1",
+                "proposal_hash": "sha256:abc",
+                "ticket": _refund_ticket(1000),
             },
         )
         assert resp1.status_code == 201
@@ -373,7 +418,9 @@ async def test_compat_routes_without_v1_prefix_match_resolutions_client(
                 "invoice_id": "ord_1",
                 "amount_minor": 1000,
                 "currency": "USD",
-                "ticket": "opaque",
+                "mandate_id": "mdt_1",
+                "proposal_hash": "sha256:abc",
+                "ticket": _refund_ticket(1000),
             },
         )
         assert refund_resp.status_code == 201, refund_resp.text
@@ -415,7 +462,9 @@ async def test_mcp_refund_capture_wired_to_real_ops(client, checkout_token, reso
                         "request_id": str(uuid.uuid4()),
                         "amount_minor": 1000,
                         "currency": "USD",
-                        "ticket": "opaque",
+                        "mandate_id": "mdt_1",
+                        "proposal_hash": "sha256:abc",
+                        "ticket": _refund_ticket(1000),
                     },
                 },
             },

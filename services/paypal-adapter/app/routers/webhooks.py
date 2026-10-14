@@ -7,12 +7,14 @@ receive (CLAUDE.md honesty rule). When enabled, verifies the signature via PayPa
 documented POST /v1/notifications/verify-webhook-signature API (never a home-grown HMAC
 check, per CLAUDE.md) before recording anything.
 
-NOT exercised live in this pass: there is no public endpoint in local/sandbox dev to receive
-a genuine PayPal-sent webhook, so signature verification correctness against a real PayPal
-transmission is implemented but unverified end-to-end. api.md section 9 only approves
-`paypal.call_recorded` as an event type so far (`paypal.hint_received` is proposed, not
-confirmed) -- a verified webhook receipt is folded into `paypal.call_recorded` rather than
-emitting an unapproved event type.
+Verified live (2026-10-14): registered a real sandbox webhook subscription via PayPal's own
+REST API, exposed this endpoint through a temporary public tunnel, approved a real checkout,
+and confirmed PayPal delivered a genuine `CHECKOUT.ORDER.APPROVED` transmission that this
+handler verified successfully (200 OK) -- the subscription and tunnel were torn down
+immediately after; this path stays disabled by default as documented above. api.md section 9
+only approves `paypal.call_recorded` as an event type so far (`paypal.hint_received` is
+proposed, not confirmed) -- a verified webhook receipt is folded into `paypal.call_recorded`
+rather than emitting an unapproved event type.
 """
 
 from __future__ import annotations

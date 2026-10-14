@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     audit_base_url: str = "http://localhost:8000"
 
     ticket_hmac_key: str | None = None
+    ticket_hmac_kid: str = "k1"
+    ticket_ttl_seconds: int = 120
     return_base_url: str = "http://localhost:3000"
     return_state_ttl_seconds: int = 1800
     order_approval_ttl_seconds: int = 3600

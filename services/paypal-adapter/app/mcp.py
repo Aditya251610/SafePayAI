@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 
 from app import ops
 from app.db import get_session_factory
-from app.deps import DEFAULT_ALLOWLIST, verify_internal_jwt
+from app.deps import DEFAULT_ALLOWLIST, authorization_ticket_is_valid, verify_internal_jwt
 from app.ops import OpError
 from app.paypal_client import get_paypal_client_for
 from app.settings import get_settings
@@ -170,15 +170,27 @@ async def _dispatch_tool(name: str, caller_sub: str, args: dict[str, Any]) -> di
         required = (
             "request_id",
             "mandate_id",
+            "proposal_hash",
             "internal_order_id",
             "amount_minor",
             "currency",
             "return_url",
             "cancel_url",
+            "ticket",
         )
         missing = _missing(args, *required)
         if missing:
             raise OpError("REJECTED", "VALIDATION_ERROR", f"missing {missing}", http_status=422)
+        if not authorization_ticket_is_valid(
+            args["ticket"],
+            caller_sub=caller_sub,
+            mandate_id=args["mandate_id"],
+            proposal_hash=args["proposal_hash"],
+            amount_minor=int(args["amount_minor"]),
+            currency=args["currency"],
+            settings=settings,
+        ):
+            raise OpError("REJECTED", "TICKET_INVALID", "ticket did not verify", http_status=403)
         async with get_session_factory()() as session:
             return await ops.create_order(
                 session,
@@ -196,9 +208,28 @@ async def _dispatch_tool(name: str, caller_sub: str, args: dict[str, Any]) -> di
             )
 
     if name == "capture_order":
-        missing = _missing(args, "order_id", "request_id", "mandate_id", "amount_minor", "currency")
+        capture_required = (
+            "order_id",
+            "request_id",
+            "mandate_id",
+            "proposal_hash",
+            "amount_minor",
+            "currency",
+            "ticket",
+        )
+        missing = _missing(args, *capture_required)
         if missing:
             raise OpError("REJECTED", "VALIDATION_ERROR", f"missing {missing}", http_status=422)
+        if not authorization_ticket_is_valid(
+            args["ticket"],
+            caller_sub=caller_sub,
+            mandate_id=args["mandate_id"],
+            proposal_hash=args["proposal_hash"],
+            amount_minor=int(args["amount_minor"]),
+            currency=args["currency"],
+            settings=settings,
+        ):
+            raise OpError("REJECTED", "TICKET_INVALID", "ticket did not verify", http_status=403)
         async with get_session_factory()() as session:
             return await ops.capture_order(
                 session,
@@ -214,9 +245,28 @@ async def _dispatch_tool(name: str, caller_sub: str, args: dict[str, Any]) -> di
             )
 
     if name == "refund_capture":
-        missing = _missing(args, "capture_id", "request_id", "amount_minor", "currency", "ticket")
+        refund_required = (
+            "capture_id",
+            "request_id",
+            "amount_minor",
+            "currency",
+            "ticket",
+            "mandate_id",
+            "proposal_hash",
+        )
+        missing = _missing(args, *refund_required)
         if missing:
             raise OpError("REJECTED", "VALIDATION_ERROR", f"missing {missing}", http_status=422)
+        if not authorization_ticket_is_valid(
+            args["ticket"],
+            caller_sub=caller_sub,
+            mandate_id=args["mandate_id"],
+            proposal_hash=args["proposal_hash"],
+            amount_minor=int(args["amount_minor"]),
+            currency=args["currency"],
+            settings=settings,
+        ):
+            raise OpError("REJECTED", "TICKET_INVALID", "ticket did not verify", http_status=403)
         async with get_session_factory()() as session:
             return await ops.refund_capture(
                 session,

@@ -36,6 +36,7 @@ from app.schemas.carts import (
     CreateCartResponse,
 )
 from app.settings import Settings, get_settings
+from app.tickets import mint_ticket
 
 router = APIRouter(tags=["carts"])
 
@@ -128,10 +129,29 @@ async def _run_check_pipeline(
         return checks, priced, None
 
     if mandate_eval.get("decision") != "ALLOW":
-        reasons = mandate_eval.get("hard_blocks") or ["MANDATE_UNAVAILABLE"]
-        for reason in reasons:
+        # mandate's real /mandates/{id}/evaluate response shape (mandate_logic.py
+        # EvaluateResult.hard_blocks): list[{"code": str, "details": dict}], never plain
+        # strings -- iterating these as bare reason codes passed a dict straight into
+        # CheckResult.reason_code (a str column), which crashed with a raw DB error on
+        # any revoked/expired/exhausted/over-cap mandate instead of a clean 422 BLOCK.
+        hard_blocks = mandate_eval.get("hard_blocks") or [
+            {"code": "MANDATE_UNAVAILABLE", "details": {}}
+        ]
+        for block in hard_blocks:
+            code = (
+                block.get("code", "MANDATE_UNAVAILABLE")
+                if isinstance(block, dict)
+                else block
+            )
+            detail = block.get("details") if isinstance(block, dict) else None
             checks.append(
-                logic.CheckResult("mandate_evaluate", "BLOCK", reason, "mandate")
+                logic.CheckResult(
+                    "mandate_evaluate",
+                    "BLOCK",
+                    code,
+                    "mandate",
+                    str(detail) if detail else None,
+                )
             )
     else:
         checks.append(logic.CheckResult("mandate_evaluate", "PASS", None, "mandate"))
@@ -374,6 +394,13 @@ async def confirm_cart(
     token = mint_outbound_token(settings, "paypal-adapter")
     return_url = f"{settings.return_base_url}/checkout/return?state={return_state}"
     cancel_url = f"{settings.return_base_url}/checkout/cancel?state={cancel_state}"
+    ticket = mint_ticket(
+        settings,
+        mandate_id=str(cart_row["mandate_id"]),
+        proposal_hash=cart_row["proposal_hash"],
+        amount_minor=cart_row["total_minor"],
+        currency=cart_row["currency"],
+    )
     result = await clients.create_order(
         settings,
         token,
@@ -385,7 +412,7 @@ async def confirm_cart(
         currency=cart_row["currency"],
         return_url=return_url,
         cancel_url=cancel_url,
-        ticket=create_request_id,  # placeholder until PS_CHECKOUT_TICKET_HMAC_KEY wiring lands
+        ticket=ticket or create_request_id,
     )
 
     async with session.begin():

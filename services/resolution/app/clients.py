@@ -286,9 +286,15 @@ async def refund_capture(
     amount_minor: int,
     currency: str,
     ticket: str,
+    mandate_id: str = "",
+    proposal_hash: str = "",
     token: str | None = None,
 ) -> AdapterResult:
-    """POST /captures/{capture_id}/refund on paypal-adapter (spec s7 step 2)."""
+    """POST /captures/{capture_id}/refund on paypal-adapter (spec s7 step 2).
+
+    mandate_id/proposal_hash are sent so paypal-adapter can reconstruct the exact
+    TicketPayload it needs for real HMAC ticket verification (RefundCaptureRequest already
+    has these as optional fields; this is the first caller to actually populate them)."""
     token = token or mint_outbound_token("paypal-adapter")
     headers = {"PayPal-Request-Id": str(request_id), "X-Authorization-Ticket": ticket}
     if token:
@@ -299,6 +305,8 @@ async def refund_capture(
         "amount_minor": amount_minor,
         "currency": currency,
         "ticket": ticket,
+        "mandate_id": mandate_id or None,
+        "proposal_hash": proposal_hash or None,
     }
     try:
         async with _client(

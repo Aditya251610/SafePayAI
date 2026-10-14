@@ -10,9 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import clients, repo
+from app import clients, repo, tickets
 from app.domain.checks import (
     AmountFacts,
     AuthorizationFacts,
@@ -358,17 +359,49 @@ async def execute_refund(session: AsyncSession, case_id: UUID) -> ExecuteOutcome
     attempt_id = uuid4()
     request_id = uuid4()
     invoice_id = f"PS-{case_id}"
-    await repo.insert_refund_attempt(
-        session,
-        attempt_id=attempt_id,
-        case_id=case_id,
-        order_id=case["order_id"],
-        request_id=request_id,
-        invoice_id=invoice_id,
-        capture_id=case.get("capture_id") or "",
-        amount_minor=offer["amount_minor"],
-        currency=offer["currency"],
-    )
+    try:
+        await repo.insert_refund_attempt(
+            session,
+            attempt_id=attempt_id,
+            case_id=case_id,
+            order_id=case["order_id"],
+            request_id=request_id,
+            invoice_id=invoice_id,
+            capture_id=case.get("capture_id") or "",
+            amount_minor=offer["amount_minor"],
+            currency=offer["currency"],
+        )
+    except IntegrityError:
+        # Lost a genuine race: check 7 (NO_PRIOR_MONEY_ACTION) read "no attempt yet" for
+        # two concurrent callers before either committed, so both reached this insert --
+        # `uq_refund_attempts_case_id` is the real last line of defense here, not check 7
+        # (a read-then-write gap, inherent to running the checks and the insert in
+        # separate statements). The loser gets the winner's result, same principle this
+        # function's own docstring already documents for every other race point (cas_accept_
+        # offer, apply_transition's CAS) -- never a crash, never a second attempt.
+        await session.rollback()
+        fresh_case = await repo.get_case(session, case_id)
+        if fresh_case is None:
+            raise ValueError(f"case {case_id} not found") from None
+        existing_attempt = await repo.get_attempt_for_case(session, case_id)
+        race_attempt_status = (
+            RefundAttemptStatus(existing_attempt["status"])
+            if existing_attempt
+            else None
+        )
+        if fresh_case["state"] == CaseState.RESOLVED_REFUNDED.value:
+            race_execution = "DONE"
+        elif fresh_case["state"] == CaseState.REFUNDING.value:
+            race_execution = "IN_PROGRESS"
+        else:
+            race_execution = "NOT_STARTED"
+        return ExecuteOutcome(
+            case_id=case_id,
+            case_state=fresh_case["state"],
+            attempt_status=race_attempt_status,
+            execution=race_execution,
+            check_report=report,
+        )
     outcome16 = await apply_transition(
         session,
         TransitionRequest(
@@ -400,17 +433,24 @@ async def execute_refund(session: AsyncSession, case_id: UUID) -> ExecuteOutcome
     await session.commit()
 
     # Adapter call happens AFTER commit (durable intent already recorded, spec s7 step 1-2).
+    minted_ticket = tickets.mint_ticket(
+        mandate_id=case.get("mandate_id") or "",
+        proposal_hash=offer["proposal_hash"],
+        amount_minor=offer["amount_minor"],
+        currency=offer["currency"],
+    )
     result = await clients.refund_capture(
         capture_id=case.get("capture_id") or "",
         request_id=request_id,
         invoice_id=invoice_id,
         amount_minor=offer["amount_minor"],
         currency=offer["currency"],
-        # Placeholder until PS_RESOLUTION_TICKET_HMAC_KEY wiring lands (mirrors checkout's
-        # own create_order placeholder, services/checkout/app/routers/carts.py): a non-empty
-        # ticket is required by paypal-adapter's require_authorization_ticket gate, which
-        # today only checks presence, not a real signed ticket.
-        ticket=str(request_id),
+        mandate_id=case.get("mandate_id") or "",
+        proposal_hash=offer["proposal_hash"],
+        # Real HMAC ticket (app.tickets.mint_ticket, PS_RESOLUTION_TICKET_HMAC_KEY) --
+        # falls back to the raw request_id (fails closed, paypal-adapter rejects an
+        # unsigned ticket) only if no signing key is configured.
+        ticket=minted_ticket or str(request_id),
     )
     sent_at = repo.now_utc()
     await repo.update_attempt_status(
