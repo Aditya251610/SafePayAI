@@ -325,13 +325,16 @@ async def insert_order(session: AsyncSession, **fields: Any) -> None:
         "create_request_id",
         "custom_id",
         "invoice_id",
+        "merchant_ids",
     ]
+    params = {k: fields[k] for k in columns if k != "merchant_ids"}
+    params["merchant_ids"] = to_jsonb_text(fields.get("merchant_ids") or [])
     await session.execute(
         text(
             f"INSERT INTO checkout.orders ({', '.join(columns)}) VALUES "
             f"({', '.join(f':{c}' for c in columns)})"
         ),
-        {k: fields[k] for k in columns},
+        params,
     )
 
 

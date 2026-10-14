@@ -1,15 +1,18 @@
 """Seed script for the gateway's seeded accounts (spec.md section 3 / sprint-tasks
-GW-S1-04/05): merchant (shared demo login), operator, and an optional buyer
-persona. Hashes are made here, at seed time, from env-provided passwords; the
-running app never reads `SEED_*` (per spec.md section 13).
+GW-S1-04/05): one login per real catalog merchant (real multi-tenant identity,
+replacing the former single shared "merchant" demo login), operator, and an
+optional buyer persona. Hashes are made here, at seed time, from env-provided
+passwords; the running app never reads `SEED_*` (per spec.md section 13).
 
 Usage:
     uv run python scripts/seed.py
 
 Reads:
-    SEED_MERCHANT_PASSWORD   (required)
-    SEED_OPERATOR_PASSWORD   (required)
-    SEED_BUYER_PASSWORD      (optional - skips the buyer persona if unset)
+    SEED_MERCHANT_TRAILHEAD_PASSWORD   (required)
+    SEED_MERCHANT_HEARTH_PASSWORD      (required)
+    SEED_MERCHANT_PIXELWIRE_PASSWORD   (required)
+    SEED_OPERATOR_PASSWORD             (required)
+    SEED_BUYER_PASSWORD                (optional - skips the buyer persona if unset)
     PS_APIGATEWAY_DATABASE_URL (or PS_APIGATEWAY_MIGRATION_DATABASE_URL)
 
 Idempotent: upserts by handle, re-hashing the password every run (so rotating a
@@ -31,14 +34,33 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.auth.passwords import hash_password
 
 SEED_USERS = [
-    # handle, role, actor_type, display_name, password env var, required
+    # handle, role, actor_type, display_name, password env var, required, merchant_id
     (
+        "merchant-trailhead",
         "merchant",
         "merchant",
-        "merchant_shared",
-        "Shared merchant (demo)",
-        "SEED_MERCHANT_PASSWORD",
+        "Trailhead (demo merchant)",
+        "SEED_MERCHANT_TRAILHEAD_PASSWORD",
         True,
+        "mrc_trailhead",
+    ),
+    (
+        "merchant-hearth",
+        "merchant",
+        "merchant",
+        "Hearth (demo merchant)",
+        "SEED_MERCHANT_HEARTH_PASSWORD",
+        True,
+        "mrc_hearth",
+    ),
+    (
+        "merchant-pixelwire",
+        "merchant",
+        "merchant",
+        "Pixelwire (demo merchant)",
+        "SEED_MERCHANT_PIXELWIRE_PASSWORD",
+        True,
+        "mrc_pixelwire",
     ),
     (
         "operator",
@@ -47,6 +69,7 @@ SEED_USERS = [
         "Operator (demo)",
         "SEED_OPERATOR_PASSWORD",
         True,
+        None,
     ),
     (
         "buyer-persona",
@@ -55,6 +78,7 @@ SEED_USERS = [
         "Buyer persona (demo)",
         "SEED_BUYER_PASSWORD",
         False,
+        None,
     ),
 ]
 
@@ -70,7 +94,15 @@ async def main() -> None:
 
     engine = create_async_engine(database_url)
     async with engine.begin() as conn:
-        for handle, role, actor_type, display_name, env_var, required in SEED_USERS:
+        for (
+            handle,
+            role,
+            actor_type,
+            display_name,
+            env_var,
+            required,
+            merchant_id,
+        ) in SEED_USERS:
             password = os.environ.get(env_var)
             if not password:
                 if required:
@@ -85,13 +117,16 @@ async def main() -> None:
                 text(
                     """
                     INSERT INTO "gateway"."users"
-                        (handle, role, actor_type, display_name, password_hash, is_ephemeral, epoch)
-                    VALUES (:handle, :role, :actor_type, :display_name, :password_hash, false, 0)
+                        (handle, role, actor_type, display_name, password_hash,
+                         is_ephemeral, epoch, merchant_id)
+                    VALUES (:handle, :role, :actor_type, :display_name, :password_hash,
+                            false, 0, :merchant_id)
                     ON CONFLICT (handle) DO UPDATE SET
                         password_hash = EXCLUDED.password_hash,
                         role = EXCLUDED.role,
                         actor_type = EXCLUDED.actor_type,
-                        display_name = EXCLUDED.display_name
+                        display_name = EXCLUDED.display_name,
+                        merchant_id = EXCLUDED.merchant_id
                     """
                 ),
                 {
@@ -100,9 +135,10 @@ async def main() -> None:
                     "actor_type": actor_type,
                     "display_name": display_name,
                     "password_hash": password_hash,
+                    "merchant_id": merchant_id,
                 },
             )
-            print(f"seeded {handle!r} (role={role})")
+            print(f"seeded {handle!r} (role={role}, merchant_id={merchant_id})")
     await engine.dispose()
 
 

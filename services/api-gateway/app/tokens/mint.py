@@ -84,6 +84,8 @@ def mint_for_upstream(
     }
     if mandate_id is not None:
         claims["mandate_id"] = mandate_id
+    if principal is not None and principal.merchant_id is not None:
+        claims["merchant_id"] = principal.merchant_id
 
     return jwt.encode(
         claims, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid}

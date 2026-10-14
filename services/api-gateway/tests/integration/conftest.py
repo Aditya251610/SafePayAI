@@ -77,6 +77,7 @@ async def make_user(db_engine):
         password_hash: str | None = None,
         is_ephemeral: bool = False,
         epoch: int = 0,
+        merchant_id: str | None = None,
     ) -> dict:
         async with db_engine.begin() as conn:
             row = (
@@ -85,9 +86,9 @@ async def make_user(db_engine):
                         """
                         INSERT INTO "gateway"."users"
                             (handle, role, actor_type, display_name, password_hash,
-                             is_ephemeral, epoch)
+                             is_ephemeral, epoch, merchant_id)
                         VALUES (:handle, :role, :actor_type, :display_name,
-                                :password_hash, :is_ephemeral, :epoch)
+                                :password_hash, :is_ephemeral, :epoch, :merchant_id)
                         RETURNING id, epoch
                         """
                     ),
@@ -99,6 +100,7 @@ async def make_user(db_engine):
                         "password_hash": password_hash,
                         "is_ephemeral": is_ephemeral,
                         "epoch": epoch,
+                        "merchant_id": merchant_id,
                     },
                 )
             ).first()

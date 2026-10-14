@@ -21,7 +21,7 @@ from app.tokens.keys import (
 from app.tokens.mint import mint_for_upstream
 
 
-def _principal(role: str = "buyer") -> Principal:
+def _principal(role: str = "buyer", merchant_id: str | None = None) -> Principal:
     return Principal(
         actor_type=role,
         actor_id="user-1",
@@ -29,6 +29,7 @@ def _principal(role: str = "buyer") -> Principal:
         epoch=0,
         sid_hash="deadbeef",
         display_name=None,
+        merchant_id=merchant_id,
     )
 
 
@@ -65,6 +66,33 @@ def test_mint_claims_match_spec_shape():
     assert claims["req"] == "req-1"
     assert claims["scope"] == ["catalog:read"]
     assert "jti" in claims and "iat" in claims and "exp" in claims
+
+
+def test_mint_includes_merchant_id_claim_when_principal_has_one():
+    settings = get_settings()
+    token = mint_for_upstream(
+        _principal(role="merchant", merchant_id="mrc_trailhead"),
+        audience="checkout",
+        request_id="req-1",
+        scope=["checkout:read"],
+    )
+    header = jwt.get_unverified_header(token)
+    jwks_doc = build_jwks_document(settings)
+    key = _jwk_lookup(jwks_doc, header["kid"])
+    claims = jwt.decode(token, key=key, algorithms=["RS256"], audience="checkout")
+    assert claims["merchant_id"] == "mrc_trailhead"
+
+
+def test_mint_omits_merchant_id_claim_when_principal_has_none():
+    settings = get_settings()
+    token = mint_for_upstream(
+        _principal(role="buyer"), audience="checkout", request_id="req-1"
+    )
+    header = jwt.get_unverified_header(token)
+    jwks_doc = build_jwks_document(settings)
+    key = _jwk_lookup(jwks_doc, header["kid"])
+    claims = jwt.decode(token, key=key, algorithms=["RS256"], audience="checkout")
+    assert "merchant_id" not in claims
 
 
 def test_mint_ttl_clamped_to_120s_hard_max(monkeypatch):
