@@ -1,17 +1,14 @@
-"""/internal/outbox/* -- api.md section 7. Never routed by the gateway.
-
-Wave 4: stubs. Outbox relay logic is Wave 5.
-"""
+"""/internal/outbox/* -- api.md section 7. Never routed by the gateway."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi.responses import JSONResponse
 from safepayai_common.auth.jwt import ServiceJWTConfig
 from safepayai_common.outbox import OutboxRelayConfig
 from safepayai_common.outbox import flush_outbox as relay_flush_outbox
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import persistence
 from app.db import get_db
 from app.deps import ServicePrincipal, require_service_jwt
 from app.settings import Settings, get_settings
@@ -63,16 +60,12 @@ async def outbox_flush(
     }
 
 
-@router.get("/outbox", status_code=501)
+@router.get("/outbox")
 async def read_outbox(
     after: int = 0,
     _principal: ServicePrincipal = Depends(require_service_jwt),
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=501,
-        content={
-            "error": "not_implemented",
-            "detail": "GET /internal/outbox pending Wave 5",
-            "request_id": None,
-        },
-    )
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """api.md section 7: pull catch-up (ADR-003) -- read-only, debug/backfill only."""
+    events = await persistence.get_outbox_after(session, after=after)
+    return {"events": events}

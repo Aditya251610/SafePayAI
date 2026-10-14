@@ -125,6 +125,23 @@ async def write_cart_proposed_outbox(
     )
 
 
+async def get_outbox_after(
+    session: AsyncSession, *, after: int, limit: int = 100
+) -> list[dict[str, Any]]:
+    """GET /internal/outbox?after=seq (api.md section 7: pull catch-up, ADR-003)."""
+    result = await session.execute(
+        text(
+            """
+            SELECT seq, event_id, type, version, aggregate_id, payload, attempts,
+                   trace_id, created_at, delivered_to, next_attempt_at, done
+            FROM agent.outbox WHERE seq > :after ORDER BY seq ASC LIMIT :limit
+            """
+        ),
+        {"after": after, "limit": limit},
+    )
+    return [dict(row) for row in result.mappings().all()]
+
+
 async def read_proposal_log(
     session: AsyncSession, proposal_id: uuid.UUID
 ) -> dict[str, Any] | None:
