@@ -8,9 +8,10 @@ global kill switch) — PS_RESOLUTION_REFUNDS_FROZEN_DEFAULT only seeds the firs
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from safepayai_common.outbox import DEV_AUDIT_RELAY_KID, DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
+from safepayai_common.startup_guard import assert_no_placeholder_secrets
 
 
 class Settings(BaseSettings):
@@ -97,6 +98,17 @@ class Settings(BaseSettings):
     tick_secret: str = ""
     demo_mode: bool = True
     log_level: str = "INFO"
+
+    @model_validator(mode="after")
+    def _no_placeholder_secrets(self) -> Settings:
+        assert_no_placeholder_secrets(
+            {
+                "PS_RESOLUTION_TICKET_HMAC_KEY": self.ticket_hmac_key,
+                "PS_RESOLUTION_APPROVAL_LINK_HMAC_KEY": self.approval_link_hmac_key,
+                "PS_RESOLUTION_TICK_SECRET": self.tick_secret,
+            }
+        )
+        return self
 
 
 settings = Settings()

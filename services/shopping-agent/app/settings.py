@@ -8,9 +8,10 @@ that asserts the manifest is clean.
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from safepayai_common.outbox import DEV_AUDIT_RELAY_KID, DEV_AUDIT_RELAY_PRIVATE_KEY_PEM
+from safepayai_common.startup_guard import assert_no_placeholder_secrets
 
 
 class Settings(BaseSettings):
@@ -90,6 +91,17 @@ class Settings(BaseSettings):
     # Bare-name exception (shared cron-trigger secret; conventions doc section 2) -- guards
     # /internal/outbox/flush, which the scheduled workflow calls directly (not via JWKS).
     internal_tick_secret: str | None = Field(default=None, alias="INTERNAL_TICK_SECRET")
+
+    @model_validator(mode="after")
+    def _no_placeholder_secrets(self) -> Settings:
+        assert_no_placeholder_secrets(
+            {
+                "INTERNAL_TICK_SECRET": self.internal_tick_secret,
+                "PS_SHOPPINGAGENT_GEMINI_API_KEY": self.gemini_api_key,
+                "PS_SHOPPINGAGENT_GROQ_API_KEY": self.groq_api_key,
+            }
+        )
+        return self
 
 
 def get_settings() -> Settings:

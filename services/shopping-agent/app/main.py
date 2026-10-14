@@ -13,6 +13,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.routers import health, intent_fit, internal, propose
+from app.settings import get_settings
+
+get_settings()  # fail fast on a placeholder secret before serving any request
 
 app = FastAPI(title="shopping-agent", version="0.1.0")
 

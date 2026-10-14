@@ -30,6 +30,9 @@ from app.routers import (
     tracking,
     webhooks,
 )
+from app.settings import get_settings
+
+get_settings()  # fail fast on a placeholder secret before serving any request
 
 app = FastAPI(title="paypal-adapter", version="0.1.0")
 
