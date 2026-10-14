@@ -5,6 +5,11 @@ forward, response filter, idempotency enforcement, money-routes brake. Request
 bodies here stay untyped dicts since the real schemas live in each owning
 service's OpenAPI contract, not this gateway's (spec.md section 2: "no business
 logic").
+
+Every state-changing route (POST/PUT) also depends on `require_csrf()` (app/csrf.py)
+-- a single-use, session-bound token issued by `GET /api/auth/csrf` and consumed here.
+See `.claude/prd/frontend-integration-contract.md` for the full caller-facing contract
+(which routes need which role, which need a CSRF token, exact request/response shapes).
 """
 
 from __future__ import annotations
@@ -13,11 +18,13 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 
+from app.csrf import require_csrf
 from app.deps import (
     Principal,
     require_buyer,
     require_merchant,
     require_operator,
+    require_reviewer,
     require_session,
     require_staff,
 )
@@ -41,6 +48,7 @@ async def proxy_mandate_sign(
     response: Response,
     body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -99,6 +107,7 @@ async def proxy_mandate_revoke(
     request: Request,
     response: Response,
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -159,6 +168,7 @@ async def proxy_agent_propose(
     response: Response,
     body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -182,6 +192,7 @@ async def proxy_checkout_create_cart(
     response: Response,
     body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -203,6 +214,7 @@ async def proxy_checkout_confirm_cart(
     response: Response,
     body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -225,6 +237,7 @@ async def proxy_checkout_capture(
     response: Response,
     body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -258,6 +271,24 @@ async def proxy_checkout_get_order(
     )
 
 
+@router.get("/checkout/orders/{order_id}/receipt")
+async def proxy_checkout_get_receipt(
+    order_id: str,
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_session),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="checkout",
+        upstream_path=f"/orders/{order_id}/receipt",
+        method="GET",
+        principal=principal,
+        scope=["checkout:read"],
+    )
+
+
 @router.get("/checkout/orders")
 async def proxy_checkout_list_orders(
     request: Request,
@@ -277,6 +308,46 @@ async def proxy_checkout_list_orders(
     )
 
 
+@router.post("/checkout/orders/return")
+async def proxy_checkout_orders_return(
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="checkout",
+        upstream_path="/orders/return",
+        method="POST",
+        principal=principal,
+        scope=["checkout:return"],
+        body=body,
+    )
+
+
+@router.post("/checkout/orders/cancel")
+async def proxy_checkout_orders_cancel(
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="checkout",
+        upstream_path="/orders/cancel",
+        method="POST",
+        principal=principal,
+        scope=["checkout:cancel"],
+        body=body,
+    )
+
+
 # ---- tracking ------------------------------------------------------------------
 
 
@@ -286,6 +357,7 @@ async def proxy_tracking_create_shipment(
     response: Response,
     body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_merchant),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -318,8 +390,8 @@ async def proxy_tracking_get_shipment(
     )
 
 
-@router.post("/tracking/demo/clock/advance")
-async def proxy_tracking_demo_clock_advance(
+@router.get("/tracking/demo/clock")
+async def proxy_tracking_demo_clock_get(
     request: Request,
     response: Response,
     settings: Settings = Depends(get_settings),
@@ -330,10 +402,55 @@ async def proxy_tracking_demo_clock_advance(
         request,
         response,
         service="tracking",
+        upstream_path="/demo/clock",
+        method="GET",
+        principal=principal,
+        scope=["tracking:demo"],
+    )
+
+
+@router.post("/tracking/demo/clock/advance")
+async def proxy_tracking_demo_clock_advance(
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    settings: Settings = Depends(get_settings),
+    principal: Principal = Depends(require_operator),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    _demo_mode_gate(settings)
+    return await forward(
+        request,
+        response,
+        service="tracking",
         upstream_path="/demo/clock/advance",
         method="POST",
         principal=principal,
         scope=["tracking:demo"],
+        body=body,
+        require_idempotency=True,
+    )
+
+
+@router.post("/tracking/demo/clock/reset")
+async def proxy_tracking_demo_clock_reset(
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    settings: Settings = Depends(get_settings),
+    principal: Principal = Depends(require_operator),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    _demo_mode_gate(settings)
+    return await forward(
+        request,
+        response,
+        service="tracking",
+        upstream_path="/demo/clock/reset",
+        method="POST",
+        principal=principal,
+        scope=["tracking:demo"],
+        body=body,
     )
 
 
@@ -344,6 +461,7 @@ async def proxy_tracking_demo_force(
     response: Response,
     settings: Settings = Depends(get_settings),
     principal: Principal = Depends(require_operator),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     _demo_mode_gate(settings)
     return await forward(
@@ -366,6 +484,7 @@ async def proxy_resolution_report(
     response: Response,
     body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -416,12 +535,30 @@ async def proxy_resolution_list_cases(
     )
 
 
+@router.get("/resolution/review/queue")
+async def proxy_resolution_review_queue(
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_reviewer),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="resolution",
+        upstream_path="/review/queue",
+        method="GET",
+        principal=principal,
+        scope=["resolution:review"],
+    )
+
+
 @router.post("/resolution/offers/{offer_id}/accept")
 async def proxy_resolution_offer_accept(
     offer_id: str,
     request: Request,
     response: Response,
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -436,12 +573,53 @@ async def proxy_resolution_offer_accept(
     )
 
 
+@router.post("/resolution/offers/{offer_id}/decline")
+async def proxy_resolution_offer_decline(
+    offer_id: str,
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="resolution",
+        upstream_path=f"/offers/{offer_id}/decline",
+        method="POST",
+        principal=principal,
+        scope=["resolution:decline"],
+        body=body,
+        require_idempotency=True,
+    )
+
+
+@router.get("/resolution/approvals/{token}")
+async def proxy_resolution_approval_preview(
+    token: str,
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_session),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="resolution",
+        upstream_path=f"/approvals/{token}",
+        method="GET",
+        principal=principal,
+        scope=["resolution:read"],
+    )
+
+
 @router.post("/resolution/approvals/{token}/consent")
 async def proxy_resolution_approval_consent(
     token: str,
     request: Request,
     response: Response,
     principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -463,6 +641,7 @@ async def proxy_resolution_merchant_action(
     response: Response,
     body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_merchant),
+    _csrf: None = Depends(require_csrf()),
 ) -> Any:
     return await forward(
         request,
@@ -474,6 +653,44 @@ async def proxy_resolution_merchant_action(
         scope=["resolution:merchant_action"],
         body=body,
         require_idempotency=True,
+    )
+
+
+@router.get("/resolution/controls/refunds-frozen")
+async def proxy_resolution_refunds_frozen_get(
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_operator),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="resolution",
+        upstream_path="/controls/refunds-frozen",
+        method="GET",
+        principal=principal,
+        scope=["resolution:controls"],
+    )
+
+
+@router.put("/resolution/controls/refunds-frozen")
+async def proxy_resolution_refunds_frozen_put(
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    principal: Principal = Depends(require_operator),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="resolution",
+        upstream_path="/controls/refunds-frozen",
+        method="PUT",
+        principal=principal,
+        scope=["resolution:controls"],
+        body=body,
+        money_route=True,
     )
 
 

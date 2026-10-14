@@ -12,11 +12,31 @@ import uuid
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.routers import auth, bff, health, jwks, ops, proxy
+from app.settings import get_settings
 
 app = FastAPI(title="api-gateway", version="0.1.0")
+
+_settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        o.strip() for o in _settings.frontend_origins.split(",") if o.strip()
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=[
+        "Content-Type",
+        "Idempotency-Key",
+        "X-CSRF-Token",
+        "If-Match",
+        "If-None-Match",
+    ],
+    expose_headers=["X-Request-Id"],
+)
 
 app.include_router(health.router)
 app.include_router(jwks.router)
