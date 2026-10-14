@@ -203,3 +203,39 @@ async def test_get_shipment_events_by_order_returns_full_history(
     ]
     assert events[0]["occurred_at_sim"] <= events[1]["occurred_at_sim"]
     assert all(e["shipment_id"] == created.shipment_id for e in events)
+
+
+async def test_count_active_nonterminal_shipments_excludes_cancelled(
+    session: AsyncSession,
+) -> None:
+    """Backs GET /shipments/pending-count (bff merchant-queue's tracking_pending)."""
+    before = await repo.count_active_nonterminal_shipments(session)
+
+    active_cmd = CreateShipmentCommand(
+        order_id="order-pending-count-active",
+        tracking_number="TRACKPENDING",
+        carrier_name="DemoCarrier",
+        outcome_profile=OutcomeProfile.ON_TIME,
+        actor_sub="merchant-1",
+        idempotency_key=None,
+    )
+    await create_shipment(session, active_cmd)
+    await session.commit()
+    assert await repo.count_active_nonterminal_shipments(session) == before + 1
+
+    cancelled_cmd = CreateShipmentCommand(
+        order_id="order-pending-count-cancelled",
+        tracking_number="TRACKPENDINGCANCEL",
+        carrier_name="DemoCarrier",
+        outcome_profile=OutcomeProfile.ON_TIME,
+        actor_sub="merchant-1",
+        idempotency_key=None,
+    )
+    cancelled = await create_shipment(session, cancelled_cmd)
+    await session.commit()
+    await cancel_shipment(
+        session, cancelled.shipment_id, "MERCHANT_CANCEL", "merchant-1"
+    )
+    await session.commit()
+    # Still before + 1: the cancelled one must not count as pending.
+    assert await repo.count_active_nonterminal_shipments(session) == before + 1

@@ -18,6 +18,7 @@ def _priced_response(total_minor: int = 500) -> dict:
         "lines": [
             {
                 "sku": "sku-1",
+                "title": "Trail Running Socks, 3-pack",
                 "merchant_id": "merchant-1",
                 "category_id": "cat-1",
                 "qty": 1,
@@ -531,3 +532,68 @@ async def test_confirm_stores_mandate_reservation_id_on_the_order(
 
     order_resp = await client.get(f"/orders/{order_id}")
     assert order_resp.json()["mandate_reservation_id"] == "res-abc-123"
+
+
+@pytest.mark.asyncio
+async def test_confirm_stores_item_titles_from_catalog_on_the_order(
+    client, monkeypatch
+) -> None:
+    async def _resolve(*a, **k):
+        return _priced_response()
+
+    async def _evaluate(*a, **k):
+        return _allow_eval_response()
+
+    async def _create_order(*a, **k):
+        return clients.AdapterResult(
+            True,
+            True,
+            {"order_id": "PAY-titles", "approve_url": "https://x"},
+            "created",
+        )
+
+    monkeypatch.setattr(clients, "resolve_prices", _resolve)
+    monkeypatch.setattr(clients, "evaluate_mandate", _evaluate)
+    monkeypatch.setattr(clients, "create_order", _create_order)
+
+    create_resp = await client.post(
+        "/carts",
+        json={
+            "mandate_id": "22222222-2222-2222-2222-222222222222",
+            "lines": [{"sku": "sku-1", "qty": 1}],
+        },
+    )
+    cart_body = create_resp.json()
+    confirm_resp = await client.post(
+        f"/carts/{cart_body['cart_id']}/confirm",
+        json={"proposal_hash": cart_body["proposal_hash"]},
+        headers={"Idempotency-Key": "idem-item-titles"},
+    )
+    assert confirm_resp.status_code == 201
+    order_id = confirm_resp.json()["order_id"]
+
+    order_resp = await client.get(f"/orders/{order_id}")
+    assert order_resp.json()["item_titles"] == ["Trail Running Socks, 3-pack"]
+
+
+@pytest.mark.asyncio
+async def test_list_orders_buyer_without_mandate_id_lists_across_mandates(
+    client, monkeypatch
+) -> None:
+    order_id = await _create_confirmed_order(
+        client, monkeypatch, idem_key="idem-list-4"
+    )
+
+    resp = await client.get("/orders")
+    assert resp.status_code == 200
+    order_ids = {item["order_id"] for item in resp.json()["items"]}
+    assert order_id in order_ids
+
+
+@pytest.mark.asyncio
+async def test_list_orders_merchant_without_mandate_id_requires_it(
+    client, monkeypatch
+) -> None:
+    _override_principal("merchant", merchant_id="merchant-1")
+    resp = await client.get("/orders")
+    assert resp.status_code == 422

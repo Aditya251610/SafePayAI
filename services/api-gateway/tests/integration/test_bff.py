@@ -26,10 +26,26 @@ async def _login(app_client, make_user, *, handle, role, actor_type):
     assert resp.status_code == 200
 
 
-async def test_buyer_home_still_not_implemented(app_client):
+async def test_buyer_home_requires_buyer_role(app_client, make_user):
+    await _login(
+        app_client,
+        make_user,
+        handle="merchant-buyer-home",
+        role="merchant",
+        actor_type="merchant",
+    )
+    resp = await app_client.get("/api/bff/buyer-home")
+    assert resp.status_code == 403
+
+
+async def test_buyer_home_degrades_to_nulls_when_upstreams_unreachable(app_client):
     await _login_buyer_via_demo_session(app_client)
     resp = await app_client.get("/api/bff/buyer-home")
-    assert resp.status_code == 501
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["mandates"] == []
+    assert body["latest_order"] is None
+    assert body["active_case"] is None
 
 
 async def test_order_detail_requires_buyer_role(app_client, make_user):

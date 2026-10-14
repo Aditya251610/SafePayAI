@@ -208,6 +208,7 @@ class OrderStateFacts:
 
     created_at: datetime
     status: str
+    item_titles: list[str] = field(default_factory=list)
 
 
 async def get_order_state_facts(
@@ -236,7 +237,10 @@ async def get_order_state_facts(
         created_at = datetime.fromisoformat(str(created_at_raw))
     except ValueError:
         return None
-    return OrderStateFacts(created_at=created_at, status=str(status))
+    item_titles = [str(t) for t in (body.get("item_titles") or [])][:5]
+    return OrderStateFacts(
+        created_at=created_at, status=str(status), item_titles=item_titles
+    )
 
 
 @dataclass(frozen=True, slots=True)
