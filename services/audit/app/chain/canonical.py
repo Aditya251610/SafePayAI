@@ -74,6 +74,19 @@ def _clean(value: Any) -> Any:
     raise CanonicalizationError(f"unsupported type in audit content: {type(value)!r}")
 
 
+def clean_for_compare(value: Any) -> Any:
+    """Public entry point to `_clean`'s null-dropping/NFC-normalizing pass, for callers
+    that need to compare a raw (uncleaned) value against something derived from
+    `canonicalize()` -- e.g. verify.py comparing the `payload` JSONB column (stored with
+    nulls intact) against the payload embedded in the already-canonicalized `canonical`
+    column (nulls dropped). Comparing a raw value directly against a canonicalized one
+    without first applying this would treat every null-valued payload field as tampering
+    (spec.md sec 4's "absent optional keys omitted, never null placeholders" is a
+    canonicalization-time transform, not a storage-time one -- the raw payload column is
+    deliberately stored as submitted, for human/debug legibility)."""
+    return _clean(value)
+
+
 def canonicalize(content: dict[str, Any]) -> bytes:
     """Produces the exact UTF-8 bytes that get hashed for a content object.
 

@@ -124,8 +124,10 @@ async def sweep(
 async def outbox_pull(
     response: Response,
     after: int = 0,
+    x_tick_secret: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
+    _require_tick_secret(x_tick_secret)
     async with session.begin():
         result = await session.execute(
             text(

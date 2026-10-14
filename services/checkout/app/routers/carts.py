@@ -52,6 +52,7 @@ async def _run_check_pipeline(
     settings: Settings,
     buyer_id: str,
     body: CreateCartRequest,
+    session: AsyncSession,
 ) -> tuple[list[logic.CheckResult], dict | None, dict | None]:
     """Runs spec.md section 4 steps 1-7. Returns (checks, priced, mandate_eval)."""
     checks: list[logic.CheckResult] = []
@@ -113,8 +114,14 @@ async def _run_check_pipeline(
         "currency": priced["currency"],
     }
     try:
+        async with session.begin():
+            committed_minor = await repo.sum_committed_minor(session, body.mandate_id)
         mandate_eval = await clients.evaluate_mandate(
-            settings, token, body.mandate_id, cart_for_eval, committed_minor=0
+            settings,
+            token,
+            body.mandate_id,
+            cart_for_eval,
+            committed_minor=committed_minor,
         )
     except UpstreamError as exc:
         checks.append(
@@ -167,7 +174,9 @@ async def create_cart(
     settings: Settings = Depends(get_settings),
 ) -> CreateCartResponse:
     buyer_id = _buyer_id(principal)
-    checks, priced, mandate_eval = await _run_check_pipeline(settings, buyer_id, body)
+    checks, priced, mandate_eval = await _run_check_pipeline(
+        settings, buyer_id, body, session
+    )
 
     status = logic.combine_status(checks, intent_fit_verdict=None)
 

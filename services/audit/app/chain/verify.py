@@ -29,6 +29,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.chain.canonical import clean_for_compare
 from app.chain.hashing import ALGORITHM_LABEL, GENESIS_PREV_HASH
 from app.chain.hashing import row_hash as compute_row_hash
 
@@ -167,7 +168,12 @@ async def verify_chain(
                     duration_ms=_elapsed_ms(),
                 )
 
-            payload_col = _as_dict(row["payload"])
+            # `payload` column is stored as submitted (nulls intact, spec.md sec 4's
+            # null-dropping is a canonicalization-time transform only -- see
+            # canonical.clean_for_compare's docstring). `parsed["payload"]` came from the
+            # already-canonicalized `canonical` column, which has nulls dropped. Comparing
+            # them directly would treat every null-valued payload field as tampering.
+            payload_col = clean_for_compare(_as_dict(row["payload"]))
             if parsed.get("payload") != payload_col:
                 return VerifyResult(
                     ok=False,

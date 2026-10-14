@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db_session
 from app.settings import Settings, get_settings
 
+TRUSTED_ISSUER = "api-gateway"
+
 
 @dataclass(frozen=True)
 class Principal:
@@ -67,6 +69,8 @@ async def verify_internal_jwt(
                 key,
                 algorithms=["EdDSA", "RS256"],
                 audience=settings.internal_jwt_audience,
+                issuer=TRUSTED_ISSUER,
+                options={"require": ["exp", "iss"]},
             )
         elif settings.internal_jwks_url:
             client = jwt.PyJWKClient(settings.internal_jwks_url)
@@ -76,6 +80,8 @@ async def verify_internal_jwt(
                 signing_key.key,
                 algorithms=["EdDSA", "RS256"],
                 audience=settings.internal_jwt_audience,
+                issuer=TRUSTED_ISSUER,
+                options={"require": ["exp", "iss"]},
             )
         else:
             raise HTTPException(
