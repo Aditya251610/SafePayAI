@@ -3,7 +3,7 @@
 Owns the carrier/delivery state machine for SafePayAI. PayPal cannot represent late/lost/
 delivered status (verified sandbox limitation, see `00-context-brief.md` section 3) — this
 service's own DB is the source of truth for shipment status, with a demo clock for
-simulating delays. Wave 4: FastAPI skeleton, health/readyz, stubbed routes, baseline schema.
+simulating delays.
 
 ## Run alone
 
@@ -26,6 +26,12 @@ uv run pytest
 
 ## Status
 
-Wave 4 scaffold only: every route except `/health`, `/healthz`, `/readyz`, `/healthz/deep`
-returns `501 Not Implemented`. Business logic (state machine, poller/tick, demo-clock
-guards, PayPal tracker sync) lands in Wave 5.
+Fully implemented and live-verified: the demo-clock-driven state machine, the late/lost
+detector, and the auto-case-open push to `resolution` all work end to end (verified live
+multiple times, including a fresh real PayPal sandbox order). The real PayPal tracker
+mirror call (`add_tracking`/`cancel_tracking` against `paypal-adapter`) is implemented
+with the correct real field names, but has been observed to get rejected (422) by PayPal
+itself when attempted against an already-fully-refunded sandbox order — a sandbox
+state/data limitation hit during testing, not re-confirmed against a genuinely fresh,
+still-open order. Late/lost/delivered status itself always comes from this service's own
+DB (SIMULATED CARRIER), never from the PayPal mirror call either way.

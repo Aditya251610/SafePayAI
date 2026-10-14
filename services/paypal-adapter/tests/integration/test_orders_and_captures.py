@@ -196,11 +196,23 @@ async def test_capture_order_happy_path(client, checkout_token):
                 json={
                     "id": "ORDEROK",
                     "status": "COMPLETED",
+                    # Real PayPal sandbox behavior (confirmed live): custom_id/invoice_id on
+                    # a capture response come back on the CAPTURE object itself, not echoed
+                    # on the wrapping purchase_unit -- the purchase_unit here deliberately
+                    # omits them so this test fails if ops.capture_order regresses to reading
+                    # capture_pu.get("custom_id") instead of capture.get("custom_id").
                     "purchase_units": [
                         {
-                            "custom_id": "mdt_1",
-                            "invoice_id": "ord_1",
-                            "payments": {"captures": [{"id": "CAP1", "status": "COMPLETED"}]},
+                            "payments": {
+                                "captures": [
+                                    {
+                                        "id": "CAP1",
+                                        "status": "COMPLETED",
+                                        "custom_id": "mdt_1",
+                                        "invoice_id": "ord_1",
+                                    }
+                                ]
+                            },
                         }
                     ],
                 },
@@ -221,6 +233,8 @@ async def test_capture_order_happy_path(client, checkout_token):
         data = resp.json()
         assert data["data"]["capture_id"] == "CAP1"
         assert data["data"]["status"] == "COMPLETED"
+        assert data["data"]["custom_id"] == "mdt_1"
+        assert data["data"]["invoice_id"] == "ord_1"
 
 
 @pytest.mark.asyncio
