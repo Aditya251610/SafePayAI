@@ -165,6 +165,34 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
     [`POST /resolution/cases/${id.case}/merchant-action`]: {
       body: { case_id: id.case, state: "OFFERED", offer_id: id.offer, supersedes: null },
     },
+    "GET /resolution/cases": { body: { items: [f.caseItem] } },
+    "GET /resolution/controls/refunds-frozen": { body: f.refundsFrozen },
+    "POST /ops/freeze": { body: { ...f.refundsFrozen, refunds_frozen: false } },
+    "GET /tracking/demo/clock": { body: { sim_now: f.ISO } },
+    "POST /tracking/demo/clock/advance": {
+      body: {
+        from_sim: f.ISO,
+        to_sim: f.ISO,
+        version: 2,
+        tick: { applied: 1, detected: 0, skipped_lease: false },
+      },
+    },
+    "GET /resolution/review/queue": {
+      body: {
+        items: [
+          {
+            case_id: id.case,
+            kind: "LATE",
+            reason_codes: ["POLICY_CAP"],
+            entered_at: f.ISO,
+            age_s: 3600,
+            sla_target_s: null,
+            sla_state: "NO_TARGET",
+            brief: "Over the policy cap.",
+          },
+        ],
+      },
+    },
     "POST /agent/propose": { body: f.proposal },
     "POST /checkout/carts": { status: 201, body: f.cart },
     "POST /mandate/mandates/preview": () => ({
