@@ -3,16 +3,31 @@ import * as f from "../mocks/fixtures";
 
 type Role = "buyer" | "merchant" | "operator" | "reviewer";
 
+export interface MockOptions {
+  /** Role the session starts with; null means signed out. */
+  role: Role | null;
+  /** Make demo-session answer with this status instead of creating a buyer. */
+  demoStatus?: number;
+}
+
 /**
- * Answers every /api call in the browser. `role` null means signed out.
- * Extra routes can be added per test with page.route before navigation.
+ * Answers every /api call in the browser. Sign-in routes change the role so
+ * the next /auth/me reflects it. Extra routes can be added per test with
+ * page.route before navigation (later registrations win).
  */
-export async function mockApi(page: Page, role: Role | null): Promise<void> {
+export async function mockApi(page: Page, opts: MockOptions): Promise<{ role: () => Role | null }> {
+  let role = opts.role;
   await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
+    const req = route.request();
+    const url = new URL(req.url());
     const path = url.pathname.replace(/^\/api/, "");
-    const json = (status: number, body: unknown) =>
-      route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    const json = (status: number, body: unknown, headers?: Record<string, string>) =>
+      route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+        headers,
+      });
 
     if (path === "/auth/me") {
       if (!role)
@@ -21,7 +36,37 @@ export async function mockApi(page: Page, role: Role | null): Promise<void> {
     }
     if (path === "/auth/csrf")
       return json(200, f.csrf(url.searchParams.get("purpose") ?? "general"));
-    if (path === "/auth/logout") return route.fulfill({ status: 204 });
+    if (path === "/auth/logout") {
+      role = null;
+      return route.fulfill({ status: 204 });
+    }
+    if (path === "/auth/demo-session") {
+      if (opts.demoStatus && opts.demoStatus !== 201) {
+        return json(
+          opts.demoStatus,
+          opts.demoStatus === 429
+            ? { error: "RATE_LIMITED", message: "slow", request_id: "e2e" }
+            : { error: "UPSTREAM_UNAVAILABLE", message: "full", request_id: "e2e" },
+          opts.demoStatus === 429 ? { "Retry-After": "30" } : undefined,
+        );
+      }
+      role = "buyer";
+      return json(201, f.session);
+    }
+    if (path === "/auth/login") {
+      const body = req.postDataJSON() as { handle?: string; password?: string };
+      if (body.handle === "operator" && body.password === "pw") {
+        role = "operator";
+        return json(200, { principal: { ...f.principal, role: "operator" }, expires_at: f.ISO });
+      }
+      return json(401, {
+        error: "UNAUTHENTICATED",
+        detail: "UNAUTHENTICATED",
+        message: "no",
+        request_id: "e2e",
+      });
+    }
     return json(404, { error: "NOT_FOUND", message: "not mocked", request_id: "e2e" });
   });
+  return { role: () => role };
 }
