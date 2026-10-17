@@ -77,7 +77,13 @@ export function defaultHandlers(): HttpHandler[] {
     route("post", "/auth/logout", 204, undefined),
     route("get", "/auth/me", 200, f.me),
 
-    route("post", "/mandate/mandates/preview", 200, f.preview),
+    // The signing window must be in the future whenever a test runs.
+    recorded("post", "/mandate/mandates/preview", () =>
+      HttpResponse.json({
+        ...f.preview,
+        nonce_expires_at: new Date(Date.now() + 120_000).toISOString(),
+      }),
+    ),
     route("post", "/mandate/mandates", 201, f.mandate),
     route("get", `/mandate/mandates/${id.mandate}`, 200, f.mandate),
     route("get", `/mandate/mandates/${id.mandate}/terms`, 200, {

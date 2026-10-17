@@ -28,6 +28,7 @@ describe("normalizeError", () => {
       request_id: "r2",
     });
     expect(e.code).toBe("TERMS_OUT_OF_BOUNDS");
+    expect(e.field).toBe("max_total_minor");
     expect(e.message).toBe("too big");
     expect(e.requestId).toBe("r2");
   });
