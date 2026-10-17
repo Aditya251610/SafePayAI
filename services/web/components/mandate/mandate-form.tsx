@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiErrorNotice } from "@/components/shared/api-error";
+import { ActionBar } from "@/components/ui/action-bar";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Notice } from "@/components/ui/notice";
@@ -398,14 +399,16 @@ export function MandateForm() {
               sign it.
             </p>
           )}
-          <Button size="lg" disabled={!fresh || busy !== null} onClick={() => void sign()}>
-            {busy === "sign" ? "Signing…" : "Sign mandate"}
-          </Button>
           <p className="text-xs text-dim">
             Signing sends the hash of this exact text. Change any field and the text, hash and nonce
             are issued again.
           </p>
         </Slab>
+        <ActionBar>
+          <Button size="lg" disabled={!fresh || busy !== null} onClick={() => void sign()}>
+            {busy === "sign" ? "Signing…" : "Sign mandate"}
+          </Button>
+        </ActionBar>
 
         {preview && !fresh && msLeft <= 0 && (
           <Notice tone="warn" title="Signing window ended">

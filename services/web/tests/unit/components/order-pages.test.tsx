@@ -35,9 +35,33 @@ describe("OrdersList", () => {
     const links = screen.getAllByRole("link", { name: /ORD-/ });
     expect(links.length).toBe(2);
     expect(links[0]).toHaveAttribute("href", `/orders/${f.IDS.order}`);
-    expect(screen.getAllByText("Waiting for PayPal approval").length).toBe(2);
+    expect(screen.getAllByText("Waiting for PayPal approval").length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByText("$48.20").length).toBeGreaterThan(0);
   });
+  it("offers a split view for tablets: pick an order, see it beside the list", async () => {
+    const second = { ...f.capturedOrder, order_id: "99999999-9999-4999-8999-999999999999" };
+    answer("get", "/checkout/orders", 200, { items: [f.order, second] });
+    answer("get", `/bff/orders/${second.order_id}`, 200, {
+      order: second,
+      shipment: null,
+      case: null,
+      audit_verified: true,
+    });
+    renderApp(<OrdersList />);
+    const list = await screen.findByRole("list", { name: "Orders" });
+    const buttons = within(list).getAllByRole("button");
+    expect(buttons[0]).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(buttons[1]!);
+    expect(buttons[1]).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() =>
+      expect(callsTo("GET", `/bff/orders/${second.order_id}`).length).toBeGreaterThan(0),
+    );
+    expect(screen.getByRole("link", { name: "Open as a page →" })).toHaveAttribute(
+      "href",
+      `/orders/${second.order_id}`,
+    );
+  });
+
   it("has a friendly empty state", async () => {
     answer("get", "/checkout/orders", 200, { items: [] });
     renderApp(<OrdersList />);

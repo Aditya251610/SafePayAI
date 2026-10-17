@@ -65,7 +65,7 @@ function Queue() {
             aria-pressed={filter === f.id}
             onClick={() => setFilter(f.id)}
             className={cn(
-              "h-9 border-2 px-3 text-xs font-bold uppercase tracking-[0.08em]",
+              "h-12 border-2 px-3 text-xs font-bold uppercase tracking-[0.08em] md:h-9",
               filter === f.id ? "border-fg text-fg" : "border-line-strong text-dim hover:text-fg",
             )}
           >

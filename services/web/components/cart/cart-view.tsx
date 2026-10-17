@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { AgentWorking, useElapsed } from "@/components/agent/agent-working";
 import { ApiErrorNotice } from "@/components/shared/api-error";
+import { ActionBar } from "@/components/ui/action-bar";
 import { Button } from "@/components/ui/button";
 import { Meter } from "@/components/ui/meter";
 import { Notice } from "@/components/ui/notice";
@@ -287,6 +288,12 @@ function CartBody({ entry }: { entry: CartEntry }) {
             </Notice>
           )}
 
+          <p className="text-xs text-dim">
+            Approve creates the PayPal order and sends you to PayPal to pay. Sandbox: test funds
+            only.
+          </p>
+        </Slab>
+        <ActionBar>
           {busy ? (
             <AgentWorking
               seconds={seconds}
@@ -297,7 +304,7 @@ function CartBody({ entry }: { entry: CartEntry }) {
               }
             />
           ) : (
-            <div className="flex flex-col gap-3">
+            <>
               <Button
                 size="lg"
                 disabled={!canApprove}
@@ -309,13 +316,9 @@ function CartBody({ entry }: { entry: CartEntry }) {
               <Button asChild variant="secondary">
                 <Link href="/intent">Reject</Link>
               </Button>
-            </div>
+            </>
           )}
-          <p className="text-xs text-dim">
-            Approve creates the PayPal order and sends you to PayPal to pay. Sandbox: test funds
-            only.
-          </p>
-        </Slab>
+        </ActionBar>
 
         {blockedLink && (
           <Notice tone="warn" title="Payment link not opened">

@@ -154,7 +154,7 @@ export function IntentForm({ initialMode = "intent" }: { initialMode?: Mode }) {
                 setFailure(null);
               }}
               className={cn(
-                "h-10 border-2 px-4 text-xs font-bold uppercase tracking-[0.1em]",
+                "h-12 border-2 px-4 text-xs font-bold uppercase tracking-[0.1em] md:h-10",
                 mode === m ? "border-fg text-fg" : "border-line-strong text-dim hover:text-fg",
               )}
             >
@@ -229,7 +229,7 @@ export function IntentForm({ initialMode = "intent" }: { initialMode?: Mode }) {
                     key={ex}
                     type="button"
                     onClick={() => setText(ex)}
-                    className="h-9 border-2 border-line-strong px-3 text-xs text-mute hover:border-fg hover:text-fg"
+                    className="h-12 border-2 border-line-strong px-3 text-xs text-mute hover:border-fg hover:text-fg md:h-9"
                   >
                     {ex}
                   </button>
