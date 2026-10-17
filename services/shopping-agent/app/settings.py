@@ -79,7 +79,16 @@ class Settings(BaseSettings):
 
     # Internal auth (auth-gateway.md; stub JWKS fixture until the gateway exists)
     internal_jwks_url: str = "http://localhost:8080/.well-known/jwks.json"
-    service_audience: str = "shopping-agent"
+    # Must match api-gateway's UPSTREAM_SETTINGS_ATTR routing key for this service
+    # ("agent", not "shopping-agent" - chosen for the public /api/agent/* URL), since
+    # that's the literal `audience=` value api-gateway mints every token with
+    # (app/routing/proxy.py's `forward(service="agent", ...)`). Every other service's
+    # default here matches its gateway routing key exactly (mandate->mandate,
+    # checkout->checkout, catalog->catalog); this was the one inconsistent default,
+    # and it meant every /api/agent/propose call failed jwt.decode's audience check
+    # with a generic 401 "UNAUTHENTICATED" - found live, confirmed by tracing the
+    # mismatched literal strings on both sides, not a deploy/config issue.
+    service_audience: str = "agent"
 
     # Outbox relay (S2-06): see mandate/app/settings.py for the full rationale comment.
     outbox_relay_audit_base_url: str = "http://localhost:8000"
