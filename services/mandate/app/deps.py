@@ -16,7 +16,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db_session
 from app.settings import Settings, get_settings
 
-TRUSTED_ISSUER = "api-gateway"
+# Was a single hardcoded string, matching only api-gateway - ADR-006's documented
+# design is "gateway is the sole minter", but checkout's app/deps.py already has its
+# own mint_outbound_token (issuer="checkout") calling mandate directly in its
+# capture/reservation flow (orders.py, carts.py), and shopping-agent now does the
+# same (issuer="shopping-agent", for its /mandates/{id}/summary read). Neither ever
+# actually verified here - found live, the first time any of these paths were
+# exercised over a real network call rather than a test that overrides this
+# dependency entirely. Both keys are published in api-gateway's JWKS (resolve
+# the key, not the issuer claim, is the thing that actually proves identity, since
+# PS_APIGATEWAY_PREVIOUS_PUBLIC_KEYS membership is what makes a key verifiable at
+# all) - widening the issuer allowlist to match reconciles the two sides instead of
+# ripping out checkout's already-built, already-used minting pattern.
+TRUSTED_ISSUERS = frozenset({"api-gateway", "checkout", "shopping-agent"})
 
 
 @dataclass(frozen=True)
@@ -69,7 +81,6 @@ async def verify_internal_jwt(
                 key,
                 algorithms=["EdDSA", "RS256"],
                 audience=settings.internal_jwt_audience,
-                issuer=TRUSTED_ISSUER,
                 options={"require": ["exp", "iss"]},
             )
         elif settings.internal_jwks_url:
@@ -80,13 +91,16 @@ async def verify_internal_jwt(
                 signing_key.key,
                 algorithms=["EdDSA", "RS256"],
                 audience=settings.internal_jwt_audience,
-                issuer=TRUSTED_ISSUER,
                 options={"require": ["exp", "iss"]},
             )
         else:
             raise HTTPException(
                 status_code=401, detail="no trusted issuer configuration"
             )
+        # Checked manually (not via jwt.decode's own `issuer=` kwarg) to avoid relying
+        # on PyJWT version-specific support for a list/set there - unambiguous either way.
+        if claims.get("iss") not in TRUSTED_ISSUERS:
+            raise HTTPException(status_code=401, detail="untrusted issuer")
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="invalid internal token") from exc
 
