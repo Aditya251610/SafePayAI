@@ -16,6 +16,8 @@ export class ApiError extends Error {
   readonly requestId: string | null;
   readonly retryAfterS: number | null;
   readonly fields: FieldIssue[];
+  /** Name of the offending input when the service says which one (mandate bounds). */
+  readonly field: string | null;
 
   constructor(init: {
     code: string;
@@ -24,6 +26,7 @@ export class ApiError extends Error {
     requestId?: string | null;
     retryAfterS?: number | null;
     fields?: FieldIssue[];
+    field?: string | null;
   }) {
     super(init.message);
     this.name = "ApiError";
@@ -32,6 +35,7 @@ export class ApiError extends Error {
     this.requestId = init.requestId ?? null;
     this.retryAfterS = init.retryAfterS ?? null;
     this.fields = init.fields ?? [];
+    this.field = init.field ?? null;
   }
 }
 
@@ -137,10 +141,12 @@ export function normalizeError(
   let code = "UNKNOWN";
   let message: string | null = str(body.message);
   let fields: FieldIssue[] = [];
+  let field: string | null = null;
 
   if (isRecord(rawError)) {
     code = str(rawError.code) ?? code;
     message = message ?? str(rawError.message);
+    if (isRecord(rawError.details)) field = str(rawError.details.field);
   } else if (typeof rawError === "string") {
     if (rawError === "http_error" && detailStr) {
       code = detailStr;
@@ -163,5 +169,6 @@ export function normalizeError(
     requestId,
     retryAfterS,
     fields,
+    field,
   });
 }

@@ -3,24 +3,37 @@ import * as f from "../mocks/fixtures";
 
 type Role = "buyer" | "merchant" | "operator" | "reviewer";
 
+export interface MockResponse {
+  status?: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+}
+
 export interface MockOptions {
   /** Role the session starts with; null means signed out. */
   role: Role | null;
   /** Make demo-session answer with this status instead of creating a buyer. */
   demoStatus?: number;
+  /** Extra answers keyed "METHOD /path" (path without /api). They win over the defaults. */
+  routes?: Record<string, MockResponse | ((body: unknown) => MockResponse)>;
 }
 
 /**
  * Answers every /api call in the browser. Sign-in routes change the role so
- * the next /auth/me reflects it. Extra routes can be added per test with
- * page.route before navigation (later registrations win).
+ * the next /auth/me reflects it.
  */
-export async function mockApi(page: Page, opts: MockOptions): Promise<{ role: () => Role | null }> {
+export async function mockApi(
+  page: Page,
+  opts: MockOptions,
+): Promise<{ role: () => Role | null; calls: string[] }> {
   let role = opts.role;
+  const calls: string[] = [];
   await page.route("**/api/**", async (route) => {
     const req = route.request();
     const url = new URL(req.url());
     const path = url.pathname.replace(/^\/api/, "");
+    const key = `${req.method()} ${path}`;
+    calls.push(key);
     const json = (status: number, body: unknown, headers?: Record<string, string>) =>
       route.fulfill({
         status,
@@ -28,6 +41,19 @@ export async function mockApi(page: Page, opts: MockOptions): Promise<{ role: ()
         body: JSON.stringify(body),
         headers,
       });
+
+    const extra = opts.routes?.[key];
+    if (extra) {
+      let body: unknown;
+      try {
+        body = req.postDataJSON();
+      } catch {
+        body = undefined;
+      }
+      const r = typeof extra === "function" ? extra(body) : extra;
+      if (r.status === 204) return route.fulfill({ status: 204 });
+      return json(r.status ?? 200, r.body ?? {}, r.headers);
+    }
 
     if (path === "/auth/me") {
       if (!role)
@@ -68,5 +94,5 @@ export async function mockApi(page: Page, opts: MockOptions): Promise<{ role: ()
     }
     return json(404, { error: "NOT_FOUND", message: "not mocked", request_id: "e2e" });
   });
-  return { role: () => role };
+  return { role: () => role, calls };
 }
