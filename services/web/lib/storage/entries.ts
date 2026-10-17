@@ -17,3 +17,10 @@ export const loadProposal = (id: string) => loadEntry(`proposal:${id}`, proposal
 
 export const saveCart = (entry: CartEntry) => saveEntry(`cart:${entry.cart.cart_id}`, entry);
 export const loadCart = (id: string) => loadEntry(`cart:${id}`, cartEntrySchema);
+
+const lastOrderSchema = z.object({ orderId: z.string(), mandateId: z.string().optional() });
+
+/** The order the buyer is paying for, so the PayPal return can be matched and re-read. */
+export const saveLastOrder = (orderId: string, mandateId?: string) =>
+  saveEntry("last-order", { orderId, mandateId });
+export const loadLastOrder = () => loadEntry("last-order", lastOrderSchema);

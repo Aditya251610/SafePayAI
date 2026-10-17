@@ -41,3 +41,12 @@ export function useCatalogMerchants() {
     staleTime: 5 * 60_000,
   });
 }
+
+/** Deployment switches. Money screens read this to show the kill switch state up front. */
+export function useOpsStatus() {
+  return useQuery({
+    queryKey: ["ops-status"] as const,
+    queryFn: ({ signal }) => api.ops.status(signal),
+    staleTime: 30_000,
+  });
+}

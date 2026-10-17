@@ -73,9 +73,11 @@ export function checkoutApi(c: ApiClient) {
         },
         signal,
       }),
+    /** Captures the payment, so a timeout is an ambiguous outcome like any money route. */
     completeReturn: async (input: ReturnRequest, signal?: AbortSignal) =>
       c.send("/checkout/orders/return", returnResponseSchema, {
         body: parseBody(returnRequestSchema, input),
+        money: true,
         signal,
       }),
     cancelReturn: async (state: string, signal?: AbortSignal) =>

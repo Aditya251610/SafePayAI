@@ -141,6 +141,56 @@ const COPY: Readonly<Record<string, ErrorCopy>> = {
     text: "Try again in a moment.",
     retryable: true,
   },
+  MANDATE_BLOCKED: {
+    title: "Your mandate blocked this cart",
+    text: "The mandate no longer allows this purchase. Review the checks.",
+    retryable: false,
+  },
+  RESERVATION_REFUSED: {
+    title: "Could not hold the amount",
+    text: "The mandate could not set the amount aside. Nothing was charged.",
+    retryable: false,
+  },
+  CREATE_FAILED: {
+    title: "PayPal order was not created",
+    text: "The sandbox order could not be started. You can try again.",
+    retryable: true,
+  },
+  CREATE_UNKNOWN: {
+    title: "Checking your order",
+    text: "We could not confirm whether the order was created. Do not pay twice; check your orders.",
+    retryable: false,
+  },
+  ORDER_NOT_CAPTURABLE: {
+    title: "This order cannot be paid now",
+    text: "It is already paid, cancelled or expired. Open the order to see where it stands.",
+    retryable: false,
+  },
+  STATE_INVALID: {
+    title: "That PayPal return is not valid",
+    text: "The return link was not recognised. Open your orders to see the current status.",
+    retryable: false,
+  },
+  TOKEN_MISMATCH: {
+    title: "That PayPal return is not valid",
+    text: "The return details did not match the order. Open your orders to see the current status.",
+    retryable: false,
+  },
+  BUYER_MISMATCH: {
+    title: "That order belongs to another account",
+    text: "Sign in as the buyer who started this order.",
+    retryable: false,
+  },
+  STATE_ALREADY_USED_OTHER_ORDER: {
+    title: "That PayPal return was already used",
+    text: "Open your orders to see the current status.",
+    retryable: false,
+  },
+  MANDATE_REVOKED: {
+    title: "Mandate was revoked",
+    text: "You revoked the mandate, so this purchase cannot go ahead.",
+    retryable: false,
+  },
   OVER_CAP: {
     title: "Over your cap",
     text: "This cart is larger than what is left on your mandate.",
