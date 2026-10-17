@@ -139,6 +139,32 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
         anchor: null,
       },
     },
+    "GET /bff/merchant-queue": {
+      body: {
+        cases: [
+          { ...f.caseItem, state: "HUMAN_REVIEW" },
+          { ...f.caseItem, case_id: "99999999-9999-4999-8999-999999999999" },
+        ],
+        tracking_pending: 2,
+      },
+    },
+    "POST /tracking/shipments": {
+      status: 201,
+      body: {
+        id: id.shipment,
+        order_id: id.order,
+        status: "LABEL_CREATED",
+        promised_at_sim: f.ISO,
+        paypal_sync: "ADDED",
+        paypal_tracker_id: "T",
+        simulated: true,
+        carrier_label: "SIMULATED CARRIER",
+      },
+    },
+    [`GET /tracking/shipments/${id.order}`]: { body: f.tracking },
+    [`POST /resolution/cases/${id.case}/merchant-action`]: {
+      body: { case_id: id.case, state: "OFFERED", offer_id: id.offer, supersedes: null },
+    },
     "POST /agent/propose": { body: f.proposal },
     "POST /checkout/carts": { status: 201, body: f.cart },
     "POST /mandate/mandates/preview": () => ({
