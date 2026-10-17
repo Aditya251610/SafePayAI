@@ -19,12 +19,21 @@ jobs:
         working-directory: services/web
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: web PRs must not carry tooling or assistant files
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        run: |
+          bad=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -E '(^|/)(\.claude/|CLAUDE\.md$|AGENTS\.md$)' || true)
+          if [ -n "$bad" ]; then echo "Not allowed in this repo:"; echo "$bad"; exit 1; fi
       - uses: pnpm/action-setup@v6
         with: { version: 9 }
       - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm", cache-dependency-path: services/web/pnpm-lock.yaml }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --check lib tests/unit tests/mocks vitest.config.ts eslint.config.mjs
       - run: pnpm lint
       - run: pnpm run typecheck
-      - run: pnpm test
+      - run: pnpm test:coverage
       - run: pnpm build
