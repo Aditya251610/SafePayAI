@@ -52,7 +52,12 @@ CATALOG_ITEMS = [
     },
 ]
 MANDATE_SUMMARY = {
-    "allowed_merchant_ids": ["M1"],
+    # Field name matches mandate's real GET /mandates/{id}/summary response
+    # (app_mandate/routers/mandates.py) - this fixture previously used
+    # "allowed_merchant_ids", which doesn't exist on the real response and is why
+    # this suite never caught the real production bug (propose.py read that same
+    # wrong key, so it matched this mock but not reality).
+    "merchant_ids": ["M1"],
     "max_total_minor": 10000,
     "currency": "USD",
     "expiry": "2026-12-31",
