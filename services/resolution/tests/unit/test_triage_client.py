@@ -11,8 +11,8 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from app import clients
-from app.domain.states import CaseKind
+from app_resolution import clients
+from app_resolution.domain.states import CaseKind
 
 
 class _FakeResponse:

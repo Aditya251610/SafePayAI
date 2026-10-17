@@ -11,7 +11,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import repo
+from app_resolution import repo
 
 pytestmark = pytest.mark.asyncio
 

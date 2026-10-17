@@ -5,9 +5,14 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from app.domain.detector import DetectionThresholds, ShipmentFacts
-from app.domain.shipment_states import ShipmentStatus
-from app.domain.verify import VerifyClaim, VerifyReasonCode, VerifyResult, verify_claim
+from app_tracking.domain.detector import DetectionThresholds, ShipmentFacts
+from app_tracking.domain.shipment_states import ShipmentStatus
+from app_tracking.domain.verify import (
+    VerifyClaim,
+    VerifyReasonCode,
+    VerifyResult,
+    verify_claim,
+)
 
 THRESHOLDS = DetectionThresholds(
     late_grace_seconds=86400,

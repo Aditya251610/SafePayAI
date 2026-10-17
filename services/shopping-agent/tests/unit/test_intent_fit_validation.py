@@ -3,7 +3,7 @@ of whether the LLM call itself succeeded."""
 
 from __future__ import annotations
 
-from app.eval_validation import tighten_only, validate_intent_fit_output
+from app_shopping_agent.eval_validation import tighten_only, validate_intent_fit_output
 
 
 def test_tighten_only_never_loosens() -> None:

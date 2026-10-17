@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.checks import (
+from app_resolution.domain.checks import (
     AmountFacts,
     AuthorizationFacts,
     CaptureIdentityFacts,

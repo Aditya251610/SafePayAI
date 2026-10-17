@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from app.domain.proposal import Action, ProposalFields, hashes_match, proposal_hash
+from app_resolution.domain.proposal import (
+    Action,
+    ProposalFields,
+    hashes_match,
+    proposal_hash,
+)
 
 
 def _fields(**overrides: object) -> ProposalFields:

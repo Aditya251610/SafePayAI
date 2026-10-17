@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.domain.demo_clock import (
+from app_tracking.domain.demo_clock import (
     DEMO_MIN_ADVANCE_SECONDS,
     DemoClockSnapshot,
     apply_advance,

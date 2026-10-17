@@ -93,7 +93,7 @@ def _default_mandate_reservation_mocks(monkeypatch: pytest.MonkeyPatch):
     evaluate_mandate/create_order don't all need updating individually. A test
     that specifically exercises reservation refusal/unavailability overrides one
     of these with its own monkeypatch.setattr after this fixture runs."""
-    from app import clients
+    from app_checkout import clients
 
     async def _ok_create_reservation(*args, **kwargs):
         return clients.AdapterResult(
@@ -126,9 +126,9 @@ def _default_mandate_reservation_mocks(monkeypatch: pytest.MonkeyPatch):
 async def client(migrated_db: str):
     os.environ["PS_CHECKOUT_DATABASE_URL"] = migrated_db
 
-    import app.db as db_module
-    from app.db import SessionLocal, engine
-    from app.settings import get_settings
+    import app_checkout.db as db_module
+    from app_checkout.db import SessionLocal, engine
+    from app_checkout.settings import get_settings
 
     settings = get_settings()
     settings.db_url = migrated_db
@@ -140,8 +140,8 @@ async def client(migrated_db: str):
     db_module.engine = new_engine
     db_module.SessionLocal = async_sessionmaker(new_engine, expire_on_commit=False)
 
-    from app.deps import Principal, require_service_jwt
-    from app.main import app
+    from app_checkout.deps import Principal, require_service_jwt
+    from app_checkout.main import app
 
     default_principal = Principal(
         sub="test-buyer",

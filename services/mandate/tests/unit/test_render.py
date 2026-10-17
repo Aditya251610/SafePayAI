@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.mandate_logic import BANNED_PHRASES, render_text
+from app_mandate.mandate_logic import BANNED_PHRASES, render_text
 
 
 def _sample_normalized() -> dict:

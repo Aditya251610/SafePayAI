@@ -7,8 +7,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app import clients
-from app.settings import Settings
+from app_checkout import clients
+from app_checkout.settings import Settings
 
 
 def _settings() -> Settings:

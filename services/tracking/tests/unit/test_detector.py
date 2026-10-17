@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.domain.detector import (
+from app_tracking.domain.detector import (
     DetectionKind,
     DetectionThresholds,
     ShipmentFacts,
@@ -18,7 +18,7 @@ from app.domain.detector import (
     select_effective_shipment,
     validate_thresholds,
 )
-from app.domain.shipment_states import Anomaly, ShipmentStatus
+from app_tracking.domain.shipment_states import Anomaly, ShipmentStatus
 
 THRESHOLDS = DetectionThresholds(
     late_grace_seconds=86400,

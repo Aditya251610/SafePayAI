@@ -1,6 +1,6 @@
 """catalog seed v1: 12 items / 3 merchants
 
-Loads services/catalog/app/seed/catalog_seed.json (committed, single source) per
+Loads services/catalog/app_catalog/seed/catalog_seed.json (committed, single source) per
 .claude/prd/services/catalog/spec.md section 2 and section 10 of data-architecture.md.
 catalog is read-only at runtime (service-map), so this data migration is the only
 data migration in Wave 4 (conventions doc section 9).
@@ -27,7 +27,10 @@ depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "catalog"
 SEED_PATH = (
-    pathlib.Path(__file__).resolve().parents[2] / "app" / "seed" / "catalog_seed.json"
+    pathlib.Path(__file__).resolve().parents[2]
+    / "app_catalog"
+    / "seed"
+    / "catalog_seed.json"
 )
 
 

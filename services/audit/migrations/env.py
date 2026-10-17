@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 # invoked from.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.settings import get_settings  # noqa: E402
+from app_audit.settings import get_settings  # noqa: E402
 
 config = context.config
 

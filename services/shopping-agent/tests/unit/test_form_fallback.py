@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.form_fallback import match_form_intent, match_free_text_fallback
+from app_shopping_agent.form_fallback import match_form_intent, match_free_text_fallback
 
 CATALOG = [
     {

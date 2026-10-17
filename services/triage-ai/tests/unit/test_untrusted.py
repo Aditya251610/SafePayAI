@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.untrusted import build_untrusted_block, make_nonce, sanitize_text
+from app_triage_ai.untrusted import build_untrusted_block, make_nonce, sanitize_text
 
 pytestmark = pytest.mark.unit
 

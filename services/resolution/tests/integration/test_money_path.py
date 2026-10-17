@@ -13,16 +13,27 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app import clients, repo
-from app.domain.policy import CaptureFacts, PolicyClass, PolicyConfig, TermsSnapshot
-from app.domain.proposal import Action, ApprovalTier
-from app.domain.states import Actor, CaseKind, CaseOrigin, CaseState, IllegalTransition
-from app.settings import settings as app_settings
-from app.usecases.decide import assemble_facts_and_decide
-from app.usecases.execute_refund import execute_refund, reconcile_attempts
-from app.usecases.offers import accept_offer, create_offer
-from app.usecases.open_case import OpenCaseCommand, open_case
-from app.usecases.transitions import TransitionRequest, apply_transition
+from app_resolution import clients, repo
+from app_resolution.domain.policy import (
+    CaptureFacts,
+    PolicyClass,
+    PolicyConfig,
+    TermsSnapshot,
+)
+from app_resolution.domain.proposal import Action, ApprovalTier
+from app_resolution.domain.states import (
+    Actor,
+    CaseKind,
+    CaseOrigin,
+    CaseState,
+    IllegalTransition,
+)
+from app_resolution.settings import settings as app_settings
+from app_resolution.usecases.decide import assemble_facts_and_decide
+from app_resolution.usecases.execute_refund import execute_refund, reconcile_attempts
+from app_resolution.usecases.offers import accept_offer, create_offer
+from app_resolution.usecases.open_case import OpenCaseCommand, open_case
+from app_resolution.usecases.transitions import TransitionRequest, apply_transition
 
 CFG = PolicyConfig(
     policy_version="v1",
@@ -141,7 +152,7 @@ async def test_apply_transition_rejects_illegal_edge(session: AsyncSession) -> N
 
 
 async def test_apply_transition_cas_mismatch_raises(session: AsyncSession) -> None:
-    from app.domain.states import ConcurrentModification
+    from app_resolution.domain.states import ConcurrentModification
 
     case_id = uuid4()
     await repo.insert_case(

@@ -8,7 +8,7 @@ db `safepayai`) already running on localhost:5432 -- not Neon, per spec.md sec 1
 IMPORTANT: env vars for the app (PS_AUDIT_DATABASE_URL, PS_AUDIT_TRUSTED_ISSUERS, ...)
 are set at MODULE level (not inside a fixture) because `app.main` builds its FastAPI
 `app` object at import time and `app.settings.get_settings()` is `lru_cache`d -- both
-must see the right environment before any test module does `from app.main import app`.
+must see the right environment before any test module does `from app_audit.main import app`.
 conftest.py is imported by pytest before sibling test modules, so this ordering holds.
 """
 
@@ -114,7 +114,7 @@ async def client():
     every test in this session shares one loop, so the pooled asyncpg connections stay
     valid across tests and disposing/recreating the engine per test only adds overhead.
     """
-    from app.main import app
+    from app_audit.main import app
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:

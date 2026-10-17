@@ -9,9 +9,9 @@ from uuid import uuid4
 import pytest
 from safepayai_common.llm.gateway import LLMCallResult, LLMFailClosedError, LLMGateway
 
-from app import service
-from app.schemas.triage import BriefRequest, OrderFacts, TimelineEvent
-from app.settings import Settings
+from app_triage_ai import service
+from app_triage_ai.schemas.triage import BriefRequest, OrderFacts, TimelineEvent
+from app_triage_ai.settings import Settings
 
 pytestmark = pytest.mark.unit
 

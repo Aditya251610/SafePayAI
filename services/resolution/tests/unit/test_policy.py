@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.domain.policy import (
+from app_resolution.domain.policy import (
     CaptureFacts,
     DecisionFacts,
     PolicyClass,
@@ -21,7 +21,7 @@ from app.domain.policy import (
     rule_category_exclusion,
     rule_refund_cap,
 )
-from app.domain.states import CaseKind
+from app_resolution.domain.states import CaseKind
 
 CFG = PolicyConfig(
     policy_version="v1",

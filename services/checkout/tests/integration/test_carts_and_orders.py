@@ -1,5 +1,5 @@
 """Integration tests against a real Postgres (see conftest.py). catalog/mandate/adapter
-calls are monkeypatched at the app.clients function level - no real network - so these
+calls are monkeypatched at the app_checkout.clients function level - no real network - so these
 tests exercise checkout's own DB/transaction logic (R4 ordering, idempotency, CAS) for
 real, which is the part unit tests can't cover.
 """
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from app import clients
+from app_checkout import clients
 
 
 def _priced_response(total_minor: int = 500) -> dict:
@@ -348,8 +348,8 @@ async def _create_confirmed_order(client, monkeypatch, *, idem_key: str) -> str:
 
 
 def _override_principal(role: str, merchant_id: str | None = None) -> None:
-    from app.deps import Principal, require_service_jwt
-    from app.main import app
+    from app_checkout.deps import Principal, require_service_jwt
+    from app_checkout.main import app
 
     app.dependency_overrides[require_service_jwt] = lambda: Principal(
         sub="test-" + role,

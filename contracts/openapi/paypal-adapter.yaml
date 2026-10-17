@@ -228,7 +228,7 @@ paths:
       operationId: refundCaptureCompat
       summary: >
         Compat alias of POST /v1/captures/{capture_id}/refund, same handler, no /v1 prefix.
-        Exists because resolution's real client (services/resolution/app/clients.py
+        Exists because resolution's real client (services/resolution/app_resolution/clients.py
         `refund_capture`) calls the bare path, not /v1/captures/...; api.md section 4 says
         "all under /v1" but this deliberate compat shim is documented here rather than
         changing resolution's already-merged client.
@@ -621,7 +621,7 @@ components:
       type: object
       additionalProperties: false
       description: >
-        Matches resolution's real Wave 5B client exactly (services/resolution/app/clients.py
+        Matches resolution's real Wave 5B client exactly (services/resolution/app_resolution/clients.py
         `refund_capture`): {request_id, invoice_id, amount_minor, currency, ticket}.
         mandate_id/proposal_hash are optional, forward-compat fields not required by this
         service's current verification (full ticket HMAC verification is deferred, same as

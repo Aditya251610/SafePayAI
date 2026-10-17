@@ -7,8 +7,8 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from app.consistency import compute_timeline_flags
-from app.schemas.triage import TimelineEvent
+from app_triage_ai.consistency import compute_timeline_flags
+from app_triage_ai.schemas.triage import TimelineEvent
 
 pytestmark = pytest.mark.unit
 

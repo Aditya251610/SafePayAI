@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from app.chain.canonical import CanonicalizationError, canonicalize
-from app.chain.content import build_content, format_ts
-from app.chain.hashing import GENESIS_PREV_HASH, HASH_DOMAIN, row_hash
+from app_audit.chain.canonical import CanonicalizationError, canonicalize
+from app_audit.chain.content import build_content, format_ts
+from app_audit.chain.hashing import GENESIS_PREV_HASH, HASH_DOMAIN, row_hash
 
 _MIGRATION_PATH = (
     Path(__file__).resolve().parents[2] / "migrations" / "versions" / "0001_baseline.py"

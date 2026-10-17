@@ -5,7 +5,7 @@ check of receipt text against CLAUDE.md's honesty-rule forbidden phrases.
 
 from __future__ import annotations
 
-from app.routers.orders import _amount_major, _build_receipt_json
+from app_checkout.routers.orders import _amount_major, _build_receipt_json
 
 # CLAUDE.md "Honesty rules": never claim these, regardless of case.
 FORBIDDEN_CLAIM_PHRASES = (

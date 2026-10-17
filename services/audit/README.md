@@ -18,7 +18,7 @@ recompute + anchor check), optional Ed25519 head signing, NDJSON export. 36 test
 ## Run locally
 
 ```bash
-uv run uvicorn app.main:app --reload
+uv run uvicorn app_audit.main:app --reload
 ```
 
 ## Test

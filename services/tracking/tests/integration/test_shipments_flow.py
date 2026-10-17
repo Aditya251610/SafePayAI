@@ -1,6 +1,6 @@
 """Integration tests against a real throwaway Postgres: create_shipment -> tick -> detection,
 cancel_shipment, and the demo-clock advance path. checkout/paypal-adapter are mocked via
-monkeypatch on app.clients (no real HTTP calls in tests, real DB underneath).
+monkeypatch on app_tracking.clients (no real HTTP calls in tests, real DB underneath).
 """
 
 from __future__ import annotations
@@ -11,15 +11,19 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import clients, repo
-from app.domain.shipment_states import OutcomeProfile, PaypalSync, ShipmentStatus
-from app.usecases.demo import DemoActor, advance_clock
-from app.usecases.shipments import (
+from app_tracking import clients, repo
+from app_tracking.domain.shipment_states import (
+    OutcomeProfile,
+    PaypalSync,
+    ShipmentStatus,
+)
+from app_tracking.usecases.demo import DemoActor, advance_clock
+from app_tracking.usecases.shipments import (
     CreateShipmentCommand,
     cancel_shipment,
     create_shipment,
 )
-from app.usecases.tick import TickTrigger, run_tick
+from app_tracking.usecases.tick import TickTrigger, run_tick
 
 
 class _FakeOrderFacts:

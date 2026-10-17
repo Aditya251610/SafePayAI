@@ -12,7 +12,7 @@ from typing import Self
 
 import pytest
 
-from app import clients
+from app_resolution import clients
 
 
 class _FakeResponse:

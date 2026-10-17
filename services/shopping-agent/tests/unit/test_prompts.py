@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.prompts import (
+from app_shopping_agent.prompts import (
     CART_STATIC_BLOCK,
     SPOTLIGHT_MARKER,
     build_cart_prompt,

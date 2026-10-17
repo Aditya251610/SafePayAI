@@ -8,7 +8,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app import deps
+from app_shopping_agent import deps
 
 
 async def _fake_require_service_jwt() -> deps.ServicePrincipal:
@@ -17,7 +17,7 @@ async def _fake_require_service_jwt() -> deps.ServicePrincipal:
 
 @pytest.fixture(autouse=True)
 def _patched_auth():
-    from app.main import app as fastapi_app
+    from app_shopping_agent.main import app as fastapi_app
 
     fastapi_app.dependency_overrides[deps.require_service_jwt] = (
         _fake_require_service_jwt
@@ -62,7 +62,7 @@ async def test_internal_outbox_returns_events_after_seq(client, db_engine) -> No
 
 @pytest.mark.asyncio
 async def test_internal_outbox_requires_auth(client, monkeypatch) -> None:
-    from app.main import app as fastapi_app
+    from app_shopping_agent.main import app as fastapi_app
 
     fastapi_app.dependency_overrides.pop(deps.require_service_jwt, None)
     resp = await client.get("/internal/outbox")

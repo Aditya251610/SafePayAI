@@ -91,12 +91,12 @@ async def db_engine(migrated_db: str):
 @pytest_asyncio.fixture
 async def client(migrated_db: str):
     # app/db.py builds its engine from settings.db_url at import time, so the env var
-    # must be set BEFORE app.main (and therefore app.db) is first imported. health.py
+    # must be set BEFORE app_shopping_agent.main (and therefore app_shopping_agent.db) is first imported. health.py
     # uses the module-level SessionLocal directly, not a Depends(get_db) override.
     os.environ["PS_SHOPPINGAGENT_DATABASE_URL"] = migrated_db
 
-    from app.db import engine as app_engine
-    from app.main import app as fastapi_app
+    from app_shopping_agent.db import engine as app_engine
+    from app_shopping_agent.main import app as fastapi_app
 
     async with AsyncClient(
         transport=ASGITransport(app=fastapi_app), base_url="http://test"

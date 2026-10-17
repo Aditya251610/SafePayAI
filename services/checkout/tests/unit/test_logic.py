@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.logic import CheckResult, combine_status, compute_proposal_hash
+from app_checkout.logic import CheckResult, combine_status, compute_proposal_hash
 
 
 def test_combine_status_checked_when_all_pass() -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.gate import check_gate
+from app_triage_ai.gate import check_gate
 
 pytestmark = pytest.mark.unit
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app import clients
+from app_shopping_agent import clients
 
 
 def _patched_client(monkeypatch, handler) -> None:

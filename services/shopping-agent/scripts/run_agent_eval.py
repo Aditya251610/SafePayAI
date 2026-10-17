@@ -2,8 +2,8 @@
 """Eval harness runner (spec.md section 9, sprint-plan S1-12).
 
 Drives the 20-prompt cart set (`evals/cart_eval_set.json`) through the configured LLM
-gateway (`app.llm_providers.build_gateway`, provider-switchable Gemini/Groq per
-ADR-010), validates every output with `app.eval_validation.validate_cart_output`
+gateway (`app_shopping_agent.llm_providers.build_gateway`, provider-switchable Gemini/Groq per
+ADR-010), validates every output with `app_shopping_agent.eval_validation.validate_cart_output`
 (the same deterministic safety layer the live endpoint will use), and writes a
 committed report: `evals/report.json` (machine) + `evals/REPORT.md` (human), with
 model id, prompt_version, and a counted failure breakdown -- never a vibes-based pass.
@@ -33,10 +33,10 @@ sys.path.insert(0, str(SERVICE_DIR))
 
 from safepayai_common.llm.gateway import LLMFailClosedError
 
-from app.eval_schemas import CART_PROPOSAL_JSON_SCHEMA
-from app.eval_validation import validate_cart_output
-from app.llm_providers import build_gateway
-from app.settings import Settings, get_settings
+from app_shopping_agent.eval_schemas import CART_PROPOSAL_JSON_SCHEMA
+from app_shopping_agent.eval_validation import validate_cart_output
+from app_shopping_agent.llm_providers import build_gateway
+from app_shopping_agent.settings import Settings, get_settings
 
 EVAL_SET_PATH = SERVICE_DIR / "evals" / "cart_eval_set.json"
 REPORT_JSON_PATH = SERVICE_DIR / "evals" / "report.json"

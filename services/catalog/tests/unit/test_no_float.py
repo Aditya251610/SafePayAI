@@ -7,12 +7,12 @@ import pathlib
 import re
 
 MONEY_MODULES = [
-    "app/repo.py",
-    "app/routers/prices.py",
-    "app/routers/items.py",
-    "app/routers/merchants.py",
-    "app/schemas/prices.py",
-    "app/schemas/items.py",
+    "app_catalog/repo.py",
+    "app_catalog/routers/prices.py",
+    "app_catalog/routers/items.py",
+    "app_catalog/routers/merchants.py",
+    "app_catalog/schemas/prices.py",
+    "app_catalog/schemas/items.py",
 ]
 
 SERVICE_ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -38,8 +38,8 @@ def test_no_float_token_in_money_modules():
 
 
 def test_money_fields_are_typed_int_not_float():
-    from app.schemas.items import Item
-    from app.schemas.prices import PricedLine, PriceResolveLine
+    from app_catalog.schemas.items import Item
+    from app_catalog.schemas.prices import PricedLine, PriceResolveLine
 
     for model, field_names in (
         (Item, ("unit_price_minor",)),

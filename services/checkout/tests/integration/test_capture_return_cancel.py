@@ -1,6 +1,6 @@
 """Integration tests for POST /orders/{id}/capture, POST /orders/return,
 POST /orders/cancel, GET /orders/{id}/receipt (sprint-plan S2-01/S2-02). catalog/mandate/
-paypal-adapter calls are monkeypatched at the app.clients function level -- no real
+paypal-adapter calls are monkeypatched at the app_checkout.clients function level -- no real
 network -- per this service's existing pattern (test_carts_and_orders.py); these tests
 exercise checkout's own DB/transaction logic (R4 ordering, revoke-at-capture-time check,
 never-recapture-after-timeout, idempotent return/capture) for real.
@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from app import clients
+from app_checkout import clients
 
 
 def _priced_response(total_minor: int = 2000) -> dict:

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-from app.crypto import canon_hash, canonical_json_bytes
+from app_mandate.crypto import canon_hash, canonical_json_bytes
 
 
 def test_canonical_hash_is_key_order_independent():
@@ -39,7 +39,7 @@ def test_canonical_bytes_are_compact_and_sorted():
 def test_canonical_json_rejects_float():
     import pytest
 
-    from app.crypto import CanonError
+    from app_mandate.crypto import CanonError
 
     with pytest.raises(CanonError):
         canonical_json_bytes({"x": 1.5})
@@ -48,14 +48,14 @@ def test_canonical_json_rejects_float():
 def test_canonical_json_rejects_null():
     import pytest
 
-    from app.crypto import CanonError
+    from app_mandate.crypto import CanonError
 
     with pytest.raises(CanonError):
         canonical_json_bytes({"x": None})
 
 
 def test_hmac_round_trip_and_tamper_detection():
-    from app.crypto import MANDATE_HMAC_DOMAIN, compute_hmac, verify_hmac
+    from app_mandate.crypto import MANDATE_HMAC_DOMAIN, compute_hmac, verify_hmac
 
     key = b"test-key-material-not-a-secret-just-for-unit-tests"
     h = compute_hmac(key, MANDATE_HMAC_DOMAIN, b"\x01" * 32, "buyer-1", "nonce-abc")

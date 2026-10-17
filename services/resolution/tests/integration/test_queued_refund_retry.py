@@ -11,14 +11,14 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import clients, repo
-from app.domain.proposal import Action, ApprovalTier
-from app.domain.states import CaseKind, CaseOrigin
-from app.routers.internal import internal_tick
-from app.usecases.decide import assemble_facts_and_decide
-from app.usecases.execute_refund import execute_refund
-from app.usecases.offers import accept_offer, create_offer
-from app.usecases.open_case import OpenCaseCommand, open_case
+from app_resolution import clients, repo
+from app_resolution.domain.proposal import Action, ApprovalTier
+from app_resolution.domain.states import CaseKind, CaseOrigin
+from app_resolution.routers.internal import internal_tick
+from app_resolution.usecases.decide import assemble_facts_and_decide
+from app_resolution.usecases.execute_refund import execute_refund
+from app_resolution.usecases.offers import accept_offer, create_offer
+from app_resolution.usecases.open_case import OpenCaseCommand, open_case
 from tests.integration.test_money_path import CFG, _mock_money_path
 
 pytestmark = pytest.mark.asyncio
