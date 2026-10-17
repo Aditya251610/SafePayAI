@@ -68,6 +68,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Rewrite README without links into the untracked .claude/ dir
 - Update audit README to reflect Wave 5 status
 - Record live webhook signature verification (#85)
+- Sync frontend-integration-contract with the real live deploy (#109)
 
 ### Miscellaneous Tasks
 
@@ -98,6 +99,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
