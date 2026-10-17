@@ -42,6 +42,30 @@ def _demo_mode_gate(settings: Settings) -> None:
 # ---- mandate -----------------------------------------------------------------
 
 
+@router.post("/mandate/mandates/preview")
+async def proxy_mandate_preview(
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    """Was entirely missing: no buyer flow can ever reach POST /mandate/mandates
+    (which requires the nonce + screen_text_hash this issues) without it - found
+    live, confirmed by reading mandate's own schema, not a documentation gap."""
+    return await forward(
+        request,
+        response,
+        service="mandate",
+        upstream_path="/mandates/preview",
+        method="POST",
+        principal=principal,
+        scope=["mandate:preview"],
+        body=body,
+        require_idempotency=False,
+    )
+
+
 @router.post("/mandate/mandates")
 async def proxy_mandate_sign(
     request: Request,
