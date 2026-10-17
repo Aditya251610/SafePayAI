@@ -44,6 +44,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - *(web)* Resolution - case screen with offer decisions, approval link consent (#117)
 - *(web)* Audit log - chain verification and paged entries for every role (#118)
 - *(web)* Merchant desk and case actions, plus local fonts (#119)
+- *(web)* Ops console and reviewer queue (#120)
 
 ### Bug Fixes
 
@@ -109,6 +110,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
