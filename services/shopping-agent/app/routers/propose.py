@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +32,7 @@ from app.clients import (
     fetch_mandate_summary,
 )
 from app.db import get_db
-from app.deps import ServicePrincipal, require_service_jwt
+from app.deps import ServicePrincipal, mint_outbound_token, require_service_jwt
 from app.eval_schemas import CART_PROPOSAL_JSON_SCHEMA
 from app.eval_validation import validate_cart_output
 from app.form_fallback import match_form_intent, match_free_text_fallback
@@ -58,13 +58,19 @@ def _display_title(sku: str, catalog_items: list[dict]) -> str | None:
 
 
 async def _load_mandate_and_catalog(
-    settings: Settings, mandate_id: str, bearer_token: str | None
+    settings: Settings, mandate_id: str
 ) -> tuple[dict, list[dict]]:
+    # Each downstream call needs its own correctly-audienced service token (aud=
+    # "mandate"/"catalog"), minted here via mint_outbound_token - NOT the inbound
+    # gateway token (aud="agent"), which every downstream service's own audience
+    # check would reject. Was previously forwarding the inbound token as a
+    # documented, deferred gap (see app/clients.py's old module docstring); fixed
+    # by minting properly, same pattern checkout already uses.
     try:
         mandate_summary = await fetch_mandate_summary(
             base_url=settings.mandate_base_url,
             mandate_id=mandate_id,
-            bearer_token=bearer_token,
+            bearer_token=mint_outbound_token(settings, "mandate"),
         )
     except MandateNotFoundError as exc:
         raise _ProposeError(404, "MANDATE_NOT_FOUND", str(exc)) from exc
@@ -73,7 +79,8 @@ async def _load_mandate_and_catalog(
 
     try:
         catalog_items = await fetch_catalog_items(
-            base_url=settings.catalog_base_url, bearer_token=bearer_token
+            base_url=settings.catalog_base_url,
+            bearer_token=mint_outbound_token(settings, "catalog"),
         )
     except CatalogUnavailableError as exc:
         raise _ProposeError(503, "CATALOG_UNAVAILABLE", str(exc)) from exc
@@ -157,17 +164,13 @@ async def propose(
     body: ProposeRequest,
     _principal: ServicePrincipal = Depends(require_service_jwt),
     settings: Settings = Depends(get_settings),
-    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> ProposeResponse | JSONResponse:
     trace_id = uuid.uuid4()
-    bearer_token = (
-        authorization.removeprefix("Bearer ").strip() if authorization else None
-    )
 
     try:
         mandate_summary, catalog_items = await _load_mandate_and_catalog(
-            settings, body.mandate_id, bearer_token
+            settings, body.mandate_id
         )
     except _ProposeError as exc:
         return _error_response(exc, str(trace_id))

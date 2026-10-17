@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     # mismatched literal strings on both sides, not a deploy/config issue.
     service_audience: str = "agent"
 
+    # Outbound service-to-service signing (app/deps.py's mint_outbound_token), for the
+    # direct catalog/mandate reads in app/clients.py - was entirely missing before,
+    # same pattern as checkout/app/settings.py's identically-named pair.
+    service_signing_key: str | None = None
+    service_signing_kid: str | None = None
+
     # Outbox relay (S2-06): see mandate/app/settings.py for the full rationale comment.
     outbox_relay_audit_base_url: str = "http://localhost:8000"
     outbox_relay_jwt_kid: str = DEV_AUDIT_RELAY_KID
