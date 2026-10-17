@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.errors import CatalogError
-from app.schemas.prices import PriceResolveLine, PriceResolveRequest
+from app_catalog.errors import CatalogError
+from app_catalog.schemas.prices import PriceResolveLine, PriceResolveRequest
 
 
 def test_price_resolve_request_rejects_unknown_top_level_field():

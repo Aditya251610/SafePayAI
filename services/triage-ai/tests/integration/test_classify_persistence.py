@@ -35,13 +35,13 @@ def _classify_payload(buyer_text: str = "my order never arrived") -> dict:
 @pytest.fixture(autouse=True)
 def _override_auth(client):
     # `client` must be a declared dependency, not just an implicit ordering hope: it's the
-    # fixture that sets PS_TRIAGEAI_DATABASE_URL before app.main (and transitively app.db/
-    # app.settings) is first imported. An autouse fixture with no dependency on `client` can
-    # run first and freeze app.settings' module-level singleton with an empty database_url,
+    # fixture that sets PS_TRIAGEAI_DATABASE_URL before app_triage_ai.main (and transitively app_triage_ai.db/
+    # app_triage_ai.settings) is first imported. An autouse fixture with no dependency on `client` can
+    # run first and freeze app_triage_ai.settings' module-level singleton with an empty database_url,
     # silently falling back to a credential-less placeholder DSN (asyncpg then defaults to
     # the OS user, not the intended runtime role).
-    from app.deps import require_resolution_caller
-    from app.main import app
+    from app_triage_ai.deps import require_resolution_caller
+    from app_triage_ai.main import app
 
     app.dependency_overrides[require_resolution_caller] = lambda: {"sub": "resolution"}
     yield
@@ -50,7 +50,7 @@ def _override_auth(client):
 
 @pytest.fixture(autouse=True)
 def _disable_llm(client, monkeypatch: pytest.MonkeyPatch):
-    from app.settings import settings
+    from app_triage_ai.settings import settings
 
     monkeypatch.setattr(settings, "llm_enabled", False)
     yield

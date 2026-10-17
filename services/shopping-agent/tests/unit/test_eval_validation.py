@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.eval_validation import validate_cart_output
+from app_shopping_agent.eval_validation import validate_cart_output
 
 CATALOG = {"SKU-A", "SKU-B"}
 MERCHANT_MAP = {"SKU-A": "M1", "SKU-B": "M2"}

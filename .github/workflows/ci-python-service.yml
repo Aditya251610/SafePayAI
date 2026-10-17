@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - run: cd services/${{ inputs.slug }} && uv sync --all-extras --dev
-      - run: cd services/${{ inputs.slug }} && uv run mypy app
+      - run: cd services/${{ inputs.slug }} && uv run mypy $(ls -d app_* 2>/dev/null || echo app)
 
   unit:
     runs-on: ubuntu-latest

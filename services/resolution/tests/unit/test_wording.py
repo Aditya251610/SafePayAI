@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.domain.wording import (
+from app_resolution.domain.wording import (
     WordingTemplateKey,
     WordingViolation,
     gate,

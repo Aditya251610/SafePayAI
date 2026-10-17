@@ -101,13 +101,13 @@ async def client(migrated_db: str):
 
     # Reset app/db.py's module-level engine cache so it picks up the test DSN even if
     # another test module (or a prior run in this process) already initialized it.
-    import app.db as db_module
+    import app_catalog.db as db_module
 
     db_module._engine = None
     db_module._session_factory = None
 
-    from app.deps import Principal, verify_internal_jwt
-    from app.main import app
+    from app_catalog.deps import Principal, verify_internal_jwt
+    from app_catalog.main import app
 
     default_principal = Principal(
         sub="test-caller", role="checkout", jti="test-jti", scope=[]

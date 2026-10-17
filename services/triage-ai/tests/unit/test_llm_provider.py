@@ -12,13 +12,13 @@ from typing import Any
 import pytest
 from safepayai_common.llm.gateway import LLMFailClosedError
 
-from app.llm_provider import (
+from app_triage_ai.llm_provider import (
     GeminiProvider,
     GroqProvider,
     _build_provider,
     build_gateway,
 )
-from app.settings import Settings
+from app_triage_ai.settings import Settings
 
 pytestmark = pytest.mark.unit
 

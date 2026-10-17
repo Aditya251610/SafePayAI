@@ -12,4 +12,4 @@ ENV UV_CACHE_DIR=/workspace/.cache/uv HOME=/workspace
 USER app
 WORKDIR /workspace/services/catalog
 EXPOSE 8000
-CMD ["uv", "run", "--project", "/workspace", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "--project", "/workspace", "uvicorn", "app_catalog.main:app", "--host", "0.0.0.0", "--port", "8000"]

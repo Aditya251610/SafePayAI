@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.mandate_logic import evaluate_cart
+from app_mandate.mandate_logic import evaluate_cart
 
 NOW = datetime(2026, 10, 20, 12, 0, 0, tzinfo=UTC)
 FAR_FUTURE = NOW + timedelta(days=10)

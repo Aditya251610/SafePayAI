@@ -2,8 +2,8 @@
 authorize-capture as the point-of-no-return gate right before the real PayPal
 capture call, commit after a successful capture, release/mark-unknown on every
 non-capture outcome) -- committed_minor stays as a redundant check, this is the
-real cap-enforcement/money-bookkeeping path. See services/checkout/app/clients.py
-and app/routers/{carts,orders}.py.
+real cap-enforcement/money-bookkeeping path. See services/checkout/app_checkout/clients.py
+and app_checkout/routers/{carts,orders}.py.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from app import clients
+from app_checkout import clients
 
 
 def _extract_state(url: str) -> str:

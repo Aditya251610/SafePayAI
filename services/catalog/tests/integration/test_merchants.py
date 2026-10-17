@@ -70,8 +70,8 @@ async def test_responses_carry_data_label_and_request_id_headers(client):
 
 async def test_unauthenticated_caller_rejected(client):
     # Temporarily drop the dependency override to exercise the real auth path.
-    from app.deps import verify_internal_jwt
-    from app.main import app
+    from app_catalog.deps import verify_internal_jwt
+    from app_catalog.main import app
 
     app.dependency_overrides.pop(verify_internal_jwt, None)
     resp = await client.get("/merchants")

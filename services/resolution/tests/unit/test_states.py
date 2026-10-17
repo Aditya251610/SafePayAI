@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.states import CaseState, is_legal_transition
+from app_resolution.domain.states import CaseState, is_legal_transition
 
 
 def test_offered_self_loop_legal_merchant_override() -> None:

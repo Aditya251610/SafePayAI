@@ -6,7 +6,7 @@ need a DB session and are covered by integration tests instead.
 
 from __future__ import annotations
 
-from app.usecases.approvals import _digest
+from app_resolution.usecases.approvals import _digest
 
 
 def test_digest_is_deterministic() -> None:

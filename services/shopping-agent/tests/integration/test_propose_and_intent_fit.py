@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from app import clients as clients_module
-from app import deps
-from app.llm_providers import LLMFailClosedError
+from app_shopping_agent import clients as clients_module
+from app_shopping_agent import deps
+from app_shopping_agent.llm_providers import LLMFailClosedError
 
 
 async def _fake_require_service_jwt() -> deps.ServicePrincipal:
@@ -22,14 +22,14 @@ async def _fake_require_checkout_caller() -> deps.ServicePrincipal:
 
 @pytest.fixture(autouse=True)
 def _patched_auth():
-    """FastAPI dependency_overrides, not monkeypatching app.deps directly -- the
+    """FastAPI dependency_overrides, not monkeypatching app_shopping_agent.deps directly -- the
     routers imported `require_service_jwt`/`require_checkout_caller` by value, so
-    patching the app.deps module attribute would not affect the already-bound Depends()
+    patching the app_shopping_agent.deps module attribute would not affect the already-bound Depends()
     default in each route. This bypasses the real JWKS check (no auth-gateway running in
     this test), which is fine: this test exercises /propose and /intent-fit's own logic
     and DB writes, not token verification (that is covered in test_health.py-adjacent
     auth tests elsewhere)."""
-    from app.main import app as fastapi_app
+    from app_shopping_agent.main import app as fastapi_app
 
     fastapi_app.dependency_overrides[deps.require_service_jwt] = (
         _fake_require_service_jwt
@@ -73,7 +73,7 @@ async def test_propose_form_mode_writes_proposal_log_and_outbox(
     monkeypatch.setattr(
         clients_module, "fetch_mandate_summary", fake_fetch_mandate_summary
     )
-    import app.routers.propose as propose_router
+    import app_shopping_agent.routers.propose as propose_router
 
     monkeypatch.setattr(propose_router, "fetch_catalog_items", fake_fetch_catalog_items)
     monkeypatch.setattr(
@@ -134,7 +134,7 @@ async def test_propose_get_reads_back_stored_proposal(client, monkeypatch) -> No
     async def fake_fetch_mandate_summary(**kwargs):
         return MANDATE_SUMMARY
 
-    import app.routers.propose as propose_router
+    import app_shopping_agent.routers.propose as propose_router
 
     monkeypatch.setattr(propose_router, "fetch_catalog_items", fake_fetch_catalog_items)
     monkeypatch.setattr(
@@ -170,7 +170,7 @@ async def test_propose_get_reads_back_stored_proposal(client, monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_propose_catalog_unavailable_returns_503(client, monkeypatch) -> None:
-    import app.routers.propose as propose_router
+    import app_shopping_agent.routers.propose as propose_router
 
     async def fake_fetch_mandate_summary(**kwargs):
         return MANDATE_SUMMARY
@@ -204,7 +204,7 @@ async def test_propose_catalog_unavailable_returns_503(client, monkeypatch) -> N
 async def test_intent_fit_degrades_to_needs_confirmation_when_llm_fails(
     client, monkeypatch
 ) -> None:
-    import app.routers.intent_fit as intent_fit_router
+    import app_shopping_agent.routers.intent_fit as intent_fit_router
 
     class FailingGateway:
         async def call(self, *args, **kwargs):

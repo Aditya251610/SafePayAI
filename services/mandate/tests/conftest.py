@@ -146,7 +146,7 @@ async def pg_env(rsa_keypair, test_db_name):
 
 @pytest.fixture(scope="session")
 def app(pg_env):
-    from app.main import app as fastapi_app
+    from app_mandate.main import app as fastapi_app
 
     return fastapi_app
 

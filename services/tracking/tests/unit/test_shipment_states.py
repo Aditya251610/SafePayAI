@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.domain.shipment_states import (
+from app_tracking.domain.shipment_states import (
     IllegalTransition,
     ShipmentStatus,
     TransitionSource,

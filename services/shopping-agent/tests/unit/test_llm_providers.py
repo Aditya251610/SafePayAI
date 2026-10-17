@@ -7,7 +7,11 @@ import json
 
 import pytest
 
-from app.llm_providers import GeminiProvider, GroqProvider, LLMFailClosedError
+from app_shopping_agent.llm_providers import (
+    GeminiProvider,
+    GroqProvider,
+    LLMFailClosedError,
+)
 
 SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
 

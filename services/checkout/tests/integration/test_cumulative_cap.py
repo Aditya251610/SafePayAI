@@ -9,7 +9,7 @@ This test proves the real wiring: confirm one cart into an order (AWAITING_APPRO
 counted by sum_committed_minor), then create a second cart under the same mandate and
 assert /carts passes the first order's real total as `committed_minor` -- not 0 -- to
 mandate's /evaluate. The mock below enforces the same cap math mandate's own /evaluate
-handler now does (see services/mandate/app/routers/mandates.py), so this also proves the
+handler now does (see services/mandate/app_mandate/routers/mandates.py), so this also proves the
 end-to-end behavior: a second cart that was fine in isolation is correctly BLOCKED once
 prior committed spend is accounted for.
 """
@@ -21,7 +21,7 @@ import uuid
 
 import pytest
 
-from app import clients
+from app_checkout import clients
 
 CAP_MINOR = 3000
 

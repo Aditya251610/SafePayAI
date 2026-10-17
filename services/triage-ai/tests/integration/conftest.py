@@ -90,24 +90,25 @@ async def db_engine(migrated_db: str):
 
 @pytest_asyncio.fixture
 async def client(migrated_db: str):
-    # app/settings.py builds a module-level `settings = Settings()` singleton that only ever
-    # reads os.environ once, the first time app.settings is imported in this process -- and
-    # unit tests (test_llm_provider.py) import the `Settings` CLASS directly, which also
-    # triggers that same module-level singleton line, before this fixture ever runs. Setting
-    # the env var here is not enough on its own if app.settings (and therefore app.db, whose
-    # module-level engine is built from settings.database_url) was already imported earlier
-    # in this same pytest process. Purge any already-cached app.* modules so the import below
+    # app_triage_ai/settings.py builds a module-level `settings = Settings()` singleton that
+    # only ever reads os.environ once, the first time app_triage_ai.settings is imported in
+    # this process -- and unit tests (test_llm_provider.py) import the `Settings` CLASS
+    # directly, which also triggers that same module-level singleton line, before this
+    # fixture ever runs. Setting the env var here is not enough on its own if
+    # app_triage_ai.settings (and therefore app_triage_ai.db, whose module-level engine is
+    # built from settings.database_url) was already imported earlier in this same pytest
+    # process. Purge any already-cached app_triage_ai.* modules so the import below
     # re-executes fresh, with the env var actually in place.
     import sys
 
     for mod_name in list(sys.modules):
-        if mod_name == "app" or mod_name.startswith("app."):
+        if mod_name == "app_triage_ai" or mod_name.startswith("app_triage_ai."):
             del sys.modules[mod_name]
 
     os.environ["PS_TRIAGEAI_DATABASE_URL"] = migrated_db
 
-    from app.db import engine as app_engine
-    from app.main import app as fastapi_app
+    from app_triage_ai.db import engine as app_engine
+    from app_triage_ai.main import app as fastapi_app
 
     async with AsyncClient(
         transport=ASGITransport(app=fastapi_app), base_url="http://test"

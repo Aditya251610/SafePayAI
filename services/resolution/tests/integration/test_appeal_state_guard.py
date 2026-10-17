@@ -14,10 +14,10 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import repo
-from app.domain.states import CaseKind, CaseOrigin, CaseState
-from app.routers.cases import appeal_case
-from app.schemas.cases import AppealRequest
+from app_resolution import repo
+from app_resolution.domain.states import CaseKind, CaseOrigin, CaseState
+from app_resolution.routers.cases import appeal_case
+from app_resolution.schemas.cases import AppealRequest
 
 pytestmark = pytest.mark.asyncio
 

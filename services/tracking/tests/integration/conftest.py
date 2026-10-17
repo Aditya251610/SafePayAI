@@ -29,12 +29,12 @@ SERVICE_DIR = os.path.dirname(
 )
 
 # app/settings.py builds a module-level `settings = Settings()` singleton that reads os.environ
-# exactly once, at import time. Test modules do `from app... import ...` at module scope, which
+# exactly once, at import time. Test modules do `from app_tracking... import ...` at module scope, which
 # pytest resolves while COLLECTING tests - before any fixture (including pg_env below) runs. So
 # any env var a usecase reads directly off `settings` (e.g. sandbox_mode) must be set here, at
 # conftest module load time, which pytest guarantees happens before it imports sibling test
 # files in this directory. DB URLs don't need this: tests build their own engine/session
-# directly (see `session` fixture) rather than importing app.db's module-level engine.
+# directly (see `session` fixture) rather than importing app_tracking.db's module-level engine.
 os.environ.setdefault("PS_TRACKING_SANDBOX_MODE", "true")
 os.environ.setdefault("PS_TRACKING_DEMO_CONTROLS_ENABLED", "true")
 os.environ.setdefault("INTERNAL_TICK_SECRET", "test-tick-secret")

@@ -8,7 +8,7 @@ Deterministic policy decides refund/review outcomes; AI (triage-ai) never decide
 
 ```
 uv sync
-uv run uvicorn app.main:app --reload
+uv run uvicorn app_resolution.main:app --reload
 ```
 
 Requires a Postgres reachable at `PS_RESOLUTION_DATABASE_URL` with schema `resolution`

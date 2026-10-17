@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from app.catalog_filter import MAX_SUBSET_SIZE, MIN_SUBSET_SIZE, filter_catalog
+from app_shopping_agent.catalog_filter import (
+    MAX_SUBSET_SIZE,
+    MIN_SUBSET_SIZE,
+    filter_catalog,
+)
 
 CATALOG = [
     {

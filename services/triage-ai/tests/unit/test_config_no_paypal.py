@@ -12,11 +12,11 @@ import pathlib
 
 import pytest
 
-from app.settings import Settings
+from app_triage_ai.settings import Settings
 
 pytestmark = pytest.mark.unit
 
-APP_DIR = pathlib.Path(__file__).resolve().parents[2] / "app"
+APP_DIR = pathlib.Path(__file__).resolve().parents[2] / "app_triage_ai"
 
 _FORBIDDEN_MONEY_IMPORT_SUBSTRINGS = (
     "paypal",

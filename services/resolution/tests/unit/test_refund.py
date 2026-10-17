@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from app.domain.refund import RefundAttemptStatus, is_legal_attempt_transition
+from app_resolution.domain.refund import (
+    RefundAttemptStatus,
+    is_legal_attempt_transition,
+)
 
 
 def test_requested_to_sent_legal() -> None:

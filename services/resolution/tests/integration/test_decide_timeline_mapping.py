@@ -13,11 +13,11 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import clients
-from app.domain.policy import PolicyClass, PolicyConfig
-from app.domain.states import CaseKind, CaseOrigin
-from app.usecases.decide import assemble_facts_and_decide
-from app.usecases.open_case import OpenCaseCommand, open_case
+from app_resolution import clients
+from app_resolution.domain.policy import PolicyClass, PolicyConfig
+from app_resolution.domain.states import CaseKind, CaseOrigin
+from app_resolution.usecases.decide import assemble_facts_and_decide
+from app_resolution.usecases.open_case import OpenCaseCommand, open_case
 
 CFG = PolicyConfig(
     policy_version="v1",

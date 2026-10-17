@@ -1,6 +1,6 @@
 """Integration tests for POST /internal/events, GET /internal/outbox, and
 POST /internal/reconcile (api.md section 10) -- previously 501 stubs. mandate/paypal-adapter
-calls are monkeypatched at the app.clients function level, same pattern as
+calls are monkeypatched at the app_checkout.clients function level, same pattern as
 test_capture_return_cancel.py; these exercise checkout's own DB/transaction logic for real.
 """
 
@@ -11,7 +11,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app import clients
+from app_checkout import clients
 
 
 def _priced_response(total_minor: int = 2000) -> dict:
