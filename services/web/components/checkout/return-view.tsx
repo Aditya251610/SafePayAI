@@ -186,7 +186,7 @@ export function ReturnView() {
           <Tag
             tone={
               outcome.tone === "ok"
-                ? "solid-ret"
+                ? "solid-seal"
                 : outcome.tone === "warn"
                   ? "solid-flare"
                   : outcome.tone === "pending"

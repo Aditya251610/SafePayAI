@@ -74,15 +74,22 @@ export function ApproveView() {
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <Slab raised notched className="flex flex-col gap-4">
+      <Slab raised="flare" notched className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <Tag tone="solid-flare">Approval needed</Tag>
           <span className="font-mono text-xs text-dim">CSE-{shortId(p.case_id, 6)}</span>
         </div>
         <h2 className="font-display text-4xl font-extrabold leading-tight">
-          {p.action === "RESHIP"
-            ? "Reship the order"
-            : `Refund ${formatMoney(p.amount_minor, p.currency)}`}
+          {p.action === "RESHIP" ? (
+            "Reship the order"
+          ) : (
+            <>
+              Refund{" "}
+              <span className="font-sans font-semibold tracking-tight">
+                {formatMoney(p.amount_minor, p.currency)}
+              </span>
+            </>
+          )}
         </h2>
         <p className="text-mute">{p.summary}</p>
         <dl className="tabular border-t border-line text-sm">
@@ -102,8 +109,12 @@ export function ApproveView() {
             {done.text}
           </Notice>
         ) : (
-          <Button size="lg" disabled={busy} onClick={() => void consent()}>
-            {busy ? "Approving…" : "Approve"}
+          <Button size="lg" variant="flare" disabled={busy} onClick={() => void consent()}>
+            {busy
+              ? "Approving…"
+              : p.action === "RESHIP"
+                ? "Consent to reship"
+                : "Consent to refund"}
           </Button>
         )}
         <p className="text-xs text-dim">Only you can approve. This link works once.</p>

@@ -23,7 +23,7 @@ export function formatAge(seconds: number): string {
 
 function slaTone(state: string) {
   if (state === "OVER") return "solid-flare" as const;
-  if (state === "WITHIN") return "ret" as const;
+  if (state === "WITHIN") return "seal" as const;
   return "dashed" as const;
 }
 

@@ -87,7 +87,7 @@ describe("CaseView", () => {
   it("shows the kept offer and accepts it with the server's hash", async () => {
     seedReport();
     renderApp(<CaseView />);
-    expect(await screen.findByText("Refund $48.20")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Refund $48.20" })).toBeInTheDocument();
     expect(screen.getByText("Order inside mandate")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Accept offer" }));
     expect(await screen.findByText("Refund in progress.")).toBeInTheDocument();
@@ -211,7 +211,7 @@ describe("ApproveView", () => {
 
   it("consents with the proposal hash and an idempotency key", async () => {
     renderApp(<ApproveView />);
-    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Consent to refund" }));
     expect(await screen.findByText("Refund in progress.")).toBeInTheDocument();
     const call = callsTo("POST", "/resolution/approvals/tok-1/consent")[0];
     expect(call?.body).toMatchObject({ proposal_hash: "offer-hash-2" });
@@ -231,7 +231,7 @@ describe("ApproveView", () => {
     });
     renderApp(<ApproveView />);
     expect(await screen.findByText(title)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Consent to refund" })).not.toBeInTheDocument();
   });
 
   it("after a timeout asks the buyer to check the case rather than consent again", async () => {
@@ -241,9 +241,9 @@ describe("ApproveView", () => {
       ),
     );
     renderApp(<ApproveView />);
-    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Consent to refund" }));
     expect(await screen.findByText("Checking what happened.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Consent to refund" })).not.toBeInTheDocument();
   });
 
   it("shows a consent refusal", async () => {
@@ -253,7 +253,7 @@ describe("ApproveView", () => {
       request_id: "r",
     });
     renderApp(<ApproveView />);
-    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Consent to refund" }));
     expect(await screen.findByText("Offer expired or changed")).toBeInTheDocument();
   });
 });

@@ -140,7 +140,7 @@ function CartBody({ entry }: { entry: CartEntry }) {
             <h2 id="lines-h" className="text-xl font-semibold">
               Cart C-{shortId(cart.cart_id, 4)}
             </h2>
-            <Tag tone={blocked ? "flare" : needsConfirm ? "solid-flare" : "solid-ret"}>
+            <Tag tone={blocked ? "flare" : needsConfirm ? "solid-flare" : "solid-seal"}>
               {blocked ? "Blocked" : needsConfirm ? "Needs your confirmation" : "Checked"}
             </Tag>
           </div>

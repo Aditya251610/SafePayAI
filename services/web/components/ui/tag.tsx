@@ -13,6 +13,7 @@ const tagVariants = cva(
         flare: "border-flare text-flare",
         ret: "border-ret text-ret",
         solid: "border-fg bg-fg text-bg",
+        "solid-seal": "border-seal bg-seal text-on-seal",
         "solid-ret": "border-ret bg-ret text-on-ret",
         "solid-flare": "border-flare bg-flare text-bg",
         dashed: "border-dashed border-line-strong text-dim",

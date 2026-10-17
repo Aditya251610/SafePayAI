@@ -57,9 +57,7 @@ export function LoginPanels() {
   return (
     <div className="grid gap-8 lg:grid-cols-2">
       <Slab raised notched className="flex flex-col gap-4">
-        <Tag tone="seal" className="self-start">
-          Buyer
-        </Tag>
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-seal">Buyer</p>
         <h2 className="font-display text-3xl font-extrabold">Try it as a buyer.</h2>
         <p className="text-mute">
           One click makes a throwaway buyer account and signs you in. No email. No password. Test

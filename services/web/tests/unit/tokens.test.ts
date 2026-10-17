@@ -26,7 +26,7 @@ describe("design tokens", () => {
   const base = block(":root {");
   const osLight = block("@media (prefers-color-scheme: light)");
   const forcedLight = block(':root[data-theme="light"]');
-  const themed = names(base).filter((n) => n !== "--slab");
+  const themed = names(base).filter((n) => n !== "--slab" && n !== "--slab-flare");
 
   it("define the light palette for the OS preference and for the toggle", () => {
     for (const n of themed) {

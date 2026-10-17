@@ -20,7 +20,7 @@ import { useOrders } from "@/lib/hooks/queries";
 import { cn } from "@/lib/utils";
 
 export function orderTone(status: string) {
-  if (status === "CAPTURED") return "ret" as const;
+  if (status === "CAPTURED") return "solid-seal" as const;
   if (status.startsWith("CANCELLED") || status === "EXPIRED") return "neutral" as const;
   if (status.endsWith("FAILED")) return "flare" as const;
   return "seal" as const;

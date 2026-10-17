@@ -144,7 +144,12 @@ function OfferCard({
     <Slab raised notched className="flex flex-col gap-4">
       <p className="text-xs font-bold uppercase tracking-[0.14em] text-flare">Offer</p>
       <h2 className="font-display text-4xl font-extrabold leading-tight">
-        {label} {offer.action === "REFUND" ? formatMoney(offer.amount_minor, offer.currency) : ""}
+        {label}{" "}
+        {offer.action === "REFUND" && (
+          <span className="font-sans font-semibold tracking-tight">
+            {formatMoney(offer.amount_minor, offer.currency)}
+          </span>
+        )}
       </h2>
       <p className="text-sm text-mute">
         Rules drafted this offer from the order, the carrier record and your mandate terms. The
@@ -162,7 +167,7 @@ function OfferCard({
         </Notice>
       ) : (
         <div className="flex flex-col gap-4">
-          <Button size="lg" disabled={busy !== null} onClick={() => void accept()}>
+          <Button size="lg" variant="flare" disabled={busy !== null} onClick={() => void accept()}>
             {busy === "accept" ? "Accepting…" : "Accept offer"}
           </Button>
           <div className="flex flex-col gap-1.5 border-t border-line pt-4">

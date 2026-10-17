@@ -7,9 +7,10 @@ import type { Mandate } from "@/lib/api/schemas/mandate";
 import { formatDate } from "@/lib/format/date";
 import { mandateStatusLabel, shortId } from "@/lib/format/label";
 import { formatMoney } from "@/lib/format/money";
+import { cn } from "@/lib/utils";
 
 export function mandateTone(status: string) {
-  if (status === "active") return "solid-ret" as const;
+  if (status === "active") return "solid-seal" as const;
   if (status === "revoked") return "flare" as const;
   return "neutral" as const;
 }
@@ -17,7 +18,10 @@ export function mandateTone(status: string) {
 /** One mandate on the buyer home. Figures are the server's, shown as given. */
 export function MandateCard({ mandate }: { mandate: Mandate }) {
   return (
-    <Slab className="flex flex-col gap-4">
+    <Slab
+      notched={mandate.status === "active"}
+      className={cn("flex flex-col gap-4", mandate.status !== "active" && "opacity-80")}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Tag tone={mandateTone(mandate.status)}>{mandateStatusLabel(mandate.status)}</Tag>
         <Link
@@ -30,7 +34,7 @@ export function MandateCard({ mandate }: { mandate: Mandate }) {
       <p className="text-lg font-semibold">{mandate.intent_text}</p>
       <div>
         <p className="tabular text-sm text-mute">
-          <span className="font-semibold text-fg">
+          <span className="text-4xl font-semibold tracking-tight text-fg">
             {formatMoney(mandate.spent_minor, mandate.currency)}
           </span>{" "}
           of {formatMoney(mandate.max_total_minor, mandate.currency)}

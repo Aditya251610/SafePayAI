@@ -10,6 +10,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: "notch bg-fg text-bg hover:bg-seal hover:text-on-seal",
+        flare: "notch bg-flare text-bg hover:bg-fg",
         secondary: "border-2 border-line-strong text-fg hover:border-fg",
         danger: "border-2 border-flare text-flare hover:bg-flare hover:text-bg",
         ghost: "text-mute hover:text-fg",
