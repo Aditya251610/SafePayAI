@@ -34,6 +34,18 @@ def load_service_app(slug: str) -> FastAPI:
     # service code does `from app.settings import ...` style relative-to-package imports;
     # make the service's own directory importable as top-level `app` for the duration of this load.
     sys.path.insert(0, str(service_dir))
+    # Every service's internal package is named `app` (docs/service-skeleton-conventions.md).
+    # A previously-loaded service left its own `app`/`app.*` modules cached in sys.modules, and
+    # Python's import system resolves `from app.settings import ...` against that cache, not
+    # against the directory now on sys.path — the collision _mount.py's module docstring above
+    # used to warn about. Evict the whole `app` namespace right before exec so this service's
+    # own main.py always gets a fresh, correctly-scoped `app` package. Safe because each
+    # service's main.py only has module-level side effects on itself (FastAPI() construction,
+    # router includes, a `get_settings()` fail-fast call) — nothing registers into shared global
+    # state that a fresh re-import would lose.
+    for name in list(sys.modules):
+        if name == "app" or name.startswith("app."):
+            del sys.modules[name]
     try:
         spec.loader.exec_module(module)
     finally:
@@ -46,12 +58,13 @@ def build_host(prefix_to_slug: dict[str, str]) -> Starlette:
     return Starlette(routes=routes)
 
 
-# KNOWN LIMITATION (do not ship Profile B on this until fixed): every service's internal package is
-# named `app` (per docs/service-skeleton-conventions.md). Loading two services' main.py in one
-# process both doing `from app.settings import Settings` etc. will have the second service's
-# internal imports resolve against the FIRST service's already-cached top-level `app` package,
-# not its own — a real collision, not just a style nit. Fix before relying on Profile B for the
-# hosted demo: either rename each service's internal package to a unique name (`app_<slug>`) or
-# run Profile B as reverse-proxied subprocesses instead of in-process ASGI mounts. Profile A
-# (docker-compose, one process per service) has no such issue and is the default for local/dev
-# and for judges running the repo from a clean checkout.
+# FIXED (was: "KNOWN LIMITATION, do not ship Profile B on this until fixed"). Every service's
+# internal package is named `app` (per docs/service-skeleton-conventions.md), so loading two
+# services' main.py in one process both doing `from app.settings import Settings` used to have
+# the second service's imports resolve against the FIRST service's already-cached top-level
+# `app` package, not its own. `load_service_app` above now evicts `app`/`app.*` from
+# sys.modules immediately before each service's main.py execs, so every service always sees its
+# own fresh `app` package — verified safe because no service's main.py has side effects beyond
+# its own FastAPI()/router/settings construction (see each main.py's module-level code). Profile
+# A (docker-compose, one process per service) never had this issue and remains the default for
+# local/dev and for judges running the repo from a clean checkout.
