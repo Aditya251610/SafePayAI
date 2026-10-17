@@ -50,3 +50,27 @@ export function useOpsStatus() {
     staleTime: 30_000,
   });
 }
+
+export function useOrders(limit = 20) {
+  return useQuery({
+    queryKey: ["orders", limit] as const,
+    queryFn: ({ signal }) => api.checkout.orders({ limit }, signal),
+  });
+}
+
+export function useBffOrder(id: string) {
+  return useQuery({
+    queryKey: ["bff-order", id] as const,
+    queryFn: ({ signal }) => api.bff.order(requireUuid(id, "order id"), signal),
+  });
+}
+
+/** Only fetched once the order is captured; before that the receipt does not exist. */
+export function useReceipt(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["receipt", id] as const,
+    queryFn: ({ signal }) => api.checkout.receipt(requireUuid(id, "order id"), signal),
+    enabled,
+    retry: false,
+  });
+}

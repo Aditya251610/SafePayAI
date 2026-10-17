@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { reportCaseResponseSchema } from "@/lib/api/schemas/resolution";
 import { cartSchema } from "@/lib/api/schemas/checkout";
 import { proposalSchema } from "@/lib/api/schemas/agent";
 
@@ -24,3 +25,9 @@ const lastOrderSchema = z.object({ orderId: z.string(), mandateId: z.string().op
 export const saveLastOrder = (orderId: string, mandateId?: string) =>
   saveEntry("last-order", { orderId, mandateId });
 export const loadLastOrder = () => loadEntry("last-order", lastOrderSchema);
+
+/** The answer to a problem report. The case read route does not return the offer, so keep it. */
+export const saveReport = (r: z.infer<typeof reportCaseResponseSchema>) =>
+  saveEntry(`report:${r.case_id}`, r);
+export const loadReport = (caseId: string) =>
+  loadEntry(`report:${caseId}`, reportCaseResponseSchema);
