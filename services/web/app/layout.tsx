@@ -1,10 +1,30 @@
 import type { Metadata } from "next";
+import { Bodoni_Moda, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
 import "./globals.css";
-import { ThemeProvider } from "@/components/shared/theme-provider";
+import { Providers } from "./providers";
 import { SandboxBanner } from "@/components/shared/sandbox-banner";
 import { FooterDisclosure } from "@/components/shared/footer-disclosure";
-import { ThemeToggle } from "@/components/shared/theme-toggle";
+
+const display = Bodoni_Moda({
+  subsets: ["latin"],
+  weight: ["700", "800", "900"],
+  style: ["normal", "italic"],
+  variable: "--font-display",
+  display: "swap",
+});
+const sans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
+  display: "swap",
+});
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "SafePayAI (sandbox demo)",
@@ -12,28 +32,20 @@ export const metadata: Metadata = {
     "Buyer-signed purchase protection demo. Sandbox only, no real money, seeded catalog, simulated carrier.",
 };
 
-/**
- * Root layout - wraps every route, including (buyer)/(merchant) groups and
- * the public landing/about pages. Hosts the two REQ-WB-002/004-mandated,
- * non-dismissible disclosures (SandboxBanner, FooterDisclosure) so no screen
- * can ship without them, and the theme provider/toggle (REQ-WB-007).
- *
- * No SSR of authenticated data happens here or anywhere (prd.md sec 4
- * non-goal) - this shell is static; per-route client components fetch their
- * own session-gated data in Wave 5.
- */
+/** Root frame. The sandbox banner and footer disclosure cannot be skipped by any route. */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${display.variable} ${sans.variable} ${mono.variable}`}
+    >
       <body className="flex min-h-screen flex-col">
-        <ThemeProvider>
+        <Providers>
           <SandboxBanner />
-          <div className="flex justify-end px-4 py-2">
-            <ThemeToggle />
-          </div>
           <main className="flex-1">{children}</main>
           <FooterDisclosure />
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );

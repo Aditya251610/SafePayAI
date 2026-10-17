@@ -31,6 +31,7 @@ export const CASE_STATES = [
   "DECLINED",
   "CLOSED",
 ] as const;
+export type CaseState = (typeof CASE_STATES)[number];
 export const caseStateSchema = lenientEnum(CASE_STATES);
 
 export const CASE_KINDS = [

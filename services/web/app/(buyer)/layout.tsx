@@ -1,13 +1,13 @@
-/**
- * (buyer) route group layout.
- *
- * REQ-WB-013: any role check here is UI convenience only - the gateway is
- * authoritative and denies server-side regardless of what the client shows.
- * TODO Wave 5: redirect to /session-ended on a missing/expired session, and
- * to the merchant equivalent if a merchant session hits a buyer route (the
- * server would deny anyway, but hiding it client-side avoids a confusing
- * flash of buyer UI).
- */
+"use client";
+
+import { AppShell } from "@/components/shell/app-shell";
+import { RequireRole } from "@/components/shared/require-role";
+
+/** Role check here is convenience only; the gateway is authoritative. */
 export default function BuyerLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <RequireRole roles={["buyer"]}>
+      <AppShell role="buyer">{children}</AppShell>
+    </RequireRole>
+  );
 }

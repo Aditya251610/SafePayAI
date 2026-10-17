@@ -1,14 +1,16 @@
-// Persistent, non-dismissible SANDBOX banner (REQ-WB-002). Rendered in the
-// root layout so it appears on every page, including error/404 pages.
-// Text is exact per spec.md sec 5 - do not paraphrase.
+import { Tag } from "@/components/ui/tag";
+import { SANDBOX_NOTICE } from "@/lib/honesty/copy";
+
+/** Persistent disclosure on every page. It has no dismiss control. */
 export function SandboxBanner() {
   return (
     <div
       role="note"
       aria-label="Sandbox disclosure"
-      className="w-full bg-amber-500 px-4 py-2 text-center text-sm font-medium text-amber-950"
+      className="flex w-full flex-wrap items-center justify-center gap-3 border-b-2 border-dashed border-line-strong bg-panel-2 px-4 py-2 text-center text-xs font-bold uppercase tracking-[0.1em] text-mute"
     >
-      Sandbox only. No real money. Seeded catalog. Simulated carrier.
+      <Tag tone="dashed">Sandbox</Tag>
+      <span>{SANDBOX_NOTICE}</span>
     </div>
   );
 }

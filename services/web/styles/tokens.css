@@ -1,0 +1,67 @@
+/*
+ * Hard Cap design tokens. Dark is the base; light is selected by the OS
+ * preference or an explicit data-theme="light". Components read only these
+ * variables, so no hex value appears anywhere else in the app.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0b;
+  --panel: #131315;
+  --panel-2: #1c1c20;
+  --line: #2b2b31;
+  --line-strong: #4a4a53;
+  --fg: #f3f0e6;
+  --mute: #b1aea3;
+  --dim: #8b887e;
+  --seal: #5c86ff;
+  --seal-soft: #14203f;
+  --flare: #ff6a3d;
+  --flare-soft: #3a1a10;
+  --ret: #bef542;
+  --ret-soft: #26310a;
+  --on-seal: #0a0a0b;
+  --on-ret: #0a0a0b;
+  --slab: 6px 6px 0 var(--seal);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ece8db;
+    --panel: #f5f2e8;
+    --panel-2: #e0dccd;
+    --line: #d2cdbc;
+    --line-strong: #7d7969;
+    --fg: #0a0a0b;
+    --mute: #3d3b35;
+    --dim: #5a574e;
+    --seal: #1f47d6;
+    --seal-soft: #d2dbf5;
+    --flare: #be320a;
+    --flare-soft: #f4d1ce;
+    --ret: #3a6200;
+    --ret-soft: #dde8c4;
+    --on-seal: #f5f2e8;
+    --on-ret: #f5f2e8;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ece8db;
+  --panel: #f5f2e8;
+  --panel-2: #e0dccd;
+  --line: #d2cdbc;
+  --line-strong: #7d7969;
+  --fg: #0a0a0b;
+  --mute: #3d3b35;
+  --dim: #5a574e;
+  --seal: #1f47d6;
+  --seal-soft: #d2dbf5;
+  --flare: #be320a;
+  --flare-soft: #f4d1ce;
+  --ret: #3a6200;
+  --ret-soft: #dde8c4;
+  --on-seal: #f5f2e8;
+  --on-ret: #f5f2e8;
+}
