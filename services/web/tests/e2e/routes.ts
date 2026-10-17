@@ -78,6 +78,45 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
         protection: {},
       },
     },
+    [`GET /resolution/cases/${id.case}`]: {
+      body: {
+        case_id: id.case,
+        order_id: id.order,
+        state: "OFFERED",
+        version: 2,
+        kind: "LATE",
+        origin: "BUYER_REPORT",
+        opened_at: f.ISO,
+        window_hold: false,
+        timeline: [],
+        decision: null,
+        offer: null,
+        refund: null,
+        queued_reason: null,
+      },
+    },
+    [`POST /resolution/offers/${id.offer}/accept`]: {
+      body: {
+        case_id: id.case,
+        state: "REFUNDING",
+        execution: "IN_PROGRESS",
+        refund: { status: "REQUESTED", paypal_refund_id: null },
+      },
+    },
+    "GET /resolution/approvals/tok-1": {
+      body: {
+        case_id: id.case,
+        action: "REFUND",
+        amount_minor: 6000,
+        currency: "USD",
+        summary: "Refund $60.00 to your PayPal account",
+        expires_at: f.ISO,
+        proposal_hash: "offer-hash-2",
+      },
+    },
+    "POST /resolution/approvals/tok-1/consent": {
+      body: { case_id: id.case, state: "REFUNDING", execution: "IN_PROGRESS" },
+    },
     "POST /agent/propose": { body: f.proposal },
     "POST /checkout/carts": { status: 201, body: f.cart },
     "POST /mandate/mandates/preview": () => ({
