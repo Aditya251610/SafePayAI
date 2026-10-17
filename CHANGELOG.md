@@ -60,6 +60,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Shopping-agent now mints its own outbound service tokens (#105)
 - Mandate only trusted api-gateway as an internal-JWT issuer (#106)
 - Give each co-mounted service a unique internal package name (#107)
+- Shopping-agent read the wrong field name for mandate's merchant allowlist (#108)
 
 ### Documentation
 
@@ -97,6 +98,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
