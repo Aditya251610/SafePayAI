@@ -56,6 +56,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Grant audit_owner membership before transferring schema ownership (#100)
 - Keepwarm pinged the wrong route and only one of 4 Render hosts (#102)
 - Gateway was missing the mandate preview proxy route entirely (#103)
+- Shopping-agent's internal-JWT audience didn't match the gateway's (#104)
 
 ### Documentation
 
@@ -93,6 +94,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
