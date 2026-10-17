@@ -41,6 +41,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - *(web)* Shop and agent screens - intent form, draft proposal, cart build (#114)
 - *(web)* Cart and payment return - rules view, approve, PayPal handoff, capture (#115)
 - *(web)* Orders - list, order detail with receipt, report a problem (#116)
+- *(web)* Resolution - case screen with offer decisions, approval link consent (#117)
 
 ### Bug Fixes
 
@@ -106,6 +107,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
