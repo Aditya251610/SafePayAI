@@ -37,6 +37,7 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm test:coverage
       - run: pnpm build
+      - run: pnpm check:bundle
 
   e2e:
     runs-on: ubuntu-latest
