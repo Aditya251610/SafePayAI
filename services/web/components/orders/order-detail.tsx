@@ -121,8 +121,15 @@ function ReceiptPanel({ receipt }: { receipt: Receipt }) {
   );
 }
 
-export function OrderDetail() {
-  const { id } = useParams<{ id: string }>();
+export function OrderDetail({
+  orderId,
+  embedded = false,
+}: {
+  orderId?: string;
+  embedded?: boolean;
+}) {
+  const params = useParams<{ id: string }>();
+  const id = orderId ?? params.id;
   const bff = useBffOrder(id);
   const [tab, setTab] = React.useState<"overview" | "receipt">("overview");
   const captured = bff.data?.order.status === "CAPTURED";
@@ -144,19 +151,30 @@ export function OrderDetail() {
     );
   }
 
+  const Heading = embedded ? "h2" : "h1";
   const { order, shipment, case: kase, audit_verified: audit } = bff.data;
   const awaiting = order.status === "AWAITING_APPROVAL" && order.approve_url;
 
   return (
     <div className="pb-12">
-      <div className="flex flex-wrap items-end justify-between gap-6 pb-8 pt-10 md:pt-12">
+      <div
+        className={cn(
+          "flex flex-wrap items-end justify-between gap-6 pb-8",
+          !embedded && "pt-10 md:pt-12",
+        )}
+      >
         <div>
           <p className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-seal">
             /orders/ORD-{shortId(order.order_id, 6)}
           </p>
-          <h1 className="mt-3 font-display text-5xl font-black leading-[0.92] tracking-tight md:text-7xl">
+          <Heading
+            className={cn(
+              "mt-3 font-display font-black leading-[0.92] tracking-tight",
+              embedded ? "text-4xl" : "text-5xl md:text-7xl",
+            )}
+          >
             {formatMoney(order.total_minor, order.currency)}
-          </h1>
+          </Heading>
           <p className="mt-3 text-mute">
             {(order.item_titles ?? []).join(", ") || "Order"} · {formatDate(order.created_at)}
           </p>
@@ -173,7 +191,7 @@ export function OrderDetail() {
             aria-selected={tab === t}
             onClick={() => setTab(t)}
             className={cn(
-              "h-10 border-2 px-4 text-xs font-bold uppercase tracking-[0.1em]",
+              "h-12 border-2 px-4 text-xs font-bold uppercase tracking-[0.1em] md:h-10",
               tab === t ? "border-fg text-fg" : "border-line-strong text-dim hover:text-fg",
             )}
           >
@@ -195,7 +213,7 @@ export function OrderDetail() {
           <ReceiptPanel receipt={receipt.data} />
         )
       ) : (
-        <div className="grid gap-8 lg:grid-cols-2">
+        <div className={cn("grid gap-8", !embedded && "lg:grid-cols-2")}>
           {awaiting && (
             <div className="lg:col-span-2">
               <Notice tone="warn" title="Payment not finished">
