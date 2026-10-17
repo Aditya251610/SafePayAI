@@ -33,6 +33,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Wire a real per-event timeline into triage-ai's consistency checks (#94)
 - Wire mandate's real reservation lifecycle into checkout's capture flow (#95)
 - Close the last backend gaps - real bff aggregators, triage item_titles, mandate sweep cron (#96)
+- Real upstream checks in checkout's /readyz (#101)
 
 ### Bug Fixes
 
@@ -90,6 +91,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
