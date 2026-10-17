@@ -7,45 +7,45 @@ services:
     name: safepayai-edge
     runtime: python
     plan: free
-    buildCommand: pip install uv && uv sync --frozen --no-dev
+    buildCommand: pip install uv && uv sync --frozen --no-dev --all-packages
     startCommand: uv run uvicorn hosts.edge:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /gateway/health
-    envVarGroups:
-      - safepayai-shared
-      - safepayai-edge
+    healthCheckPath: /gateway/healthz
+    envVars:
+      - fromGroup: safepayai-shared
+      - fromGroup: safepayai-edge
 
   - type: web
     name: safepayai-core
     runtime: python
     plan: free
-    buildCommand: pip install uv && uv sync --frozen --no-dev
+    buildCommand: pip install uv && uv sync --frozen --no-dev --all-packages
     startCommand: uv run uvicorn hosts.core:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /mandate/health
-    envVarGroups:
-      - safepayai-shared
-      - safepayai-core
+    healthCheckPath: /mandate/healthz
+    envVars:
+      - fromGroup: safepayai-shared
+      - fromGroup: safepayai-core
 
   - type: web
     name: safepayai-ai
     runtime: python
     plan: free
-    buildCommand: pip install uv && uv sync --frozen --no-dev
+    buildCommand: pip install uv && uv sync --frozen --no-dev --all-packages
     startCommand: uv run uvicorn hosts.ai:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /shopping-agent/health
-    envVarGroups:
-      - safepayai-shared
-      - safepayai-ai
+    healthCheckPath: /shopping-agent/healthz
+    envVars:
+      - fromGroup: safepayai-shared
+      - fromGroup: safepayai-ai
 
   - type: web
     name: safepayai-paypal
     runtime: python
     plan: free
-    buildCommand: pip install uv && uv sync --frozen --no-dev
+    buildCommand: pip install uv && uv sync --frozen --no-dev --all-packages
     startCommand: uv run uvicorn hosts.paypal:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /paypal-adapter/health
-    envVarGroups:
-      - safepayai-shared
-      - safepayai-paypal
+    envVars:
+      - fromGroup: safepayai-shared
+      - fromGroup: safepayai-paypal
 
 envVarGroups:
   - name: safepayai-shared
