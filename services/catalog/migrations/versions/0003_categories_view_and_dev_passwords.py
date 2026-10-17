@@ -60,14 +60,30 @@ def upgrade() -> None:
         bind, SCHEMA, RUNTIME_ROLE, [TableGrant("v_categories_public", ("SELECT",))]
     )
 
-    # ALTER ROLE ... PASSWORD does not accept a bind parameter (Postgres does not
-    # allow a protocol parameter in that value position); escape the single
-    # placeholder dev/CI password value instead of interpolating caller input.
-    dev_password = os.environ.get("PS_CATALOG_DEV_DB_PASSWORD", "changeme").replace(
-        "'", "''"
-    )
-    for role in (MIGRATION_ROLE, RUNTIME_ROLE):
-        bind.execute(sa.text(f"ALTER ROLE \"{role}\" WITH PASSWORD '{dev_password}'"))
+    # This block only applies locally/in CI, where migrations run as docker-compose's
+    # `postgres` superuser. Production's mig_catalog is deliberately NOCREATEROLE (the
+    # role-flag set data-architecture.md requires for every mig_<slug> role), and
+    # Postgres requires CREATEROLE (not just ADMIN OPTION) to ALTER another role's
+    # password - so a NOCREATEROLE mig_catalog can never run this statement, which is
+    # correct: production's real passwords are set out of band by ops tooling before
+    # this migration ever runs, per this file's own docstring above. Previously this
+    # unconditionally attempted the ALTER ROLE and crashed the whole migration (plus
+    # the earlier 0001/0002 DDL in the same transaction, since transaction_per_migration
+    # isn't set) the first time it ran anywhere but a local/CI superuser connection.
+    can_alter_roles = bind.execute(
+        sa.text("SELECT rolcreaterole FROM pg_roles WHERE rolname = current_user")
+    ).scalar()
+    if can_alter_roles:
+        # ALTER ROLE ... PASSWORD does not accept a bind parameter (Postgres does not
+        # allow a protocol parameter in that value position); escape the single
+        # placeholder dev/CI password value instead of interpolating caller input.
+        dev_password = os.environ.get("PS_CATALOG_DEV_DB_PASSWORD", "changeme").replace(
+            "'", "''"
+        )
+        for role in (MIGRATION_ROLE, RUNTIME_ROLE):
+            bind.execute(
+                sa.text(f"ALTER ROLE \"{role}\" WITH PASSWORD '{dev_password}'")
+            )
 
 
 def downgrade() -> None:
