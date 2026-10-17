@@ -93,3 +93,10 @@ export function useApproval(token: string) {
     retry: false,
   });
 }
+
+export function useMerchantQueue() {
+  return useQuery({
+    queryKey: ["merchant-queue"] as const,
+    queryFn: ({ signal }) => api.bff.merchantQueue(signal),
+  });
+}

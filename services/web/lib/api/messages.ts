@@ -191,6 +191,31 @@ const COPY: Readonly<Record<string, ErrorCopy>> = {
     text: "You revoked the mandate, so this purchase cannot go ahead.",
     retryable: false,
   },
+  ILLEGAL_TRANSITION: {
+    title: "This case moved",
+    text: "Reload it. The action is no longer available for its current state.",
+    retryable: true,
+  },
+  ORDER_NOT_CAPTURED: {
+    title: "That order is not paid yet",
+    text: "A shipment can only be added once the payment is captured.",
+    retryable: false,
+  },
+  CHECKOUT_UNREACHABLE: {
+    title: "Orders are not reachable",
+    text: "The order service did not answer. Try again shortly.",
+    retryable: true,
+  },
+  SHIPMENT_NOT_FOUND: {
+    title: "Shipment not found",
+    text: "That shipment does not exist.",
+    retryable: false,
+  },
+  ROLE_NOT_ALLOWED: {
+    title: "Not allowed for this account",
+    text: "Your account cannot do this.",
+    retryable: false,
+  },
   OVER_CAP: {
     title: "Over your cap",
     text: "This cart is larger than what is left on your mandate.",

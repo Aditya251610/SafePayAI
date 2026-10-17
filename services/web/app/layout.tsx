@@ -1,27 +1,30 @@
 import type { Metadata } from "next";
-import { Bodoni_Moda, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 
 import "./globals.css";
 import { Providers } from "./providers";
 import { SandboxBanner } from "@/components/shared/sandbox-banner";
 import { FooterDisclosure } from "@/components/shared/footer-disclosure";
 
-const display = Bodoni_Moda({
-  subsets: ["latin"],
-  weight: ["700", "800", "900"],
-  style: ["normal", "italic"],
+// Fonts ship with the app (latin subset) so a build never depends on a font CDN.
+const display = localFont({
+  src: [
+    { path: "./fonts/bodoni-normal-700-900.woff2", weight: "700 900", style: "normal" },
+    { path: "./fonts/bodoni-italic-700-900.woff2", weight: "700 900", style: "italic" },
+  ],
   variable: "--font-display",
   display: "swap",
 });
-const sans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const sans = localFont({
+  src: [{ path: "./fonts/plex-sans-variable.woff2", weight: "400 700", style: "normal" }],
   variable: "--font-sans",
   display: "swap",
 });
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const mono = localFont({
+  src: [
+    { path: "./fonts/plex-mono-normal-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/plex-mono-normal-500.woff2", weight: "500", style: "normal" },
+  ],
   variable: "--font-mono",
   display: "swap",
 });
