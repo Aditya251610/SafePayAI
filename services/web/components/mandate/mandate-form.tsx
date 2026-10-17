@@ -364,8 +364,8 @@ export function MandateForm() {
       </form>
 
       <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start" aria-live="polite">
-        <Slab raised notched className="flex flex-col gap-4">
-          <Tag tone={fresh ? "ret" : "dashed"} className="self-start">
+        <Slab raised="flare" notched className="flex flex-col gap-4">
+          <Tag tone={fresh ? "solid-seal" : "solid-flare"} className="self-start">
             {fresh ? "Ready to sign" : "Awaiting signature"}
           </Tag>
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-dim">

@@ -5,6 +5,7 @@ import { Tag } from "@/components/ui/tag";
 import { Slab } from "@/components/ui/slab";
 import { Meter } from "@/components/ui/meter";
 import { CaseRail } from "@/components/ui/case-rail";
+import { FlowRail } from "@/components/ui/rail";
 import { Field } from "@/components/ui/field";
 import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -126,5 +127,32 @@ describe("Logo", () => {
   it("has a one-tone mark that follows the text colour", () => {
     const { container } = render(<LogoMark tone="mono" />);
     expect(container.querySelector("polygon")).toHaveAttribute("fill", "currentColor");
+  });
+});
+
+describe("FlowRail and Slab shadow", () => {
+  it("marks the buying step the buyer is on", () => {
+    render(<FlowRail step={1} />);
+    expect(screen.getByText("Cart").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.getByText("Approve").closest("li")).not.toHaveAttribute("aria-current");
+  });
+  it("uses the flare shadow for money at risk", () => {
+    render(<Slab raised="flare">Money</Slab>);
+    expect(screen.getByText("Money")).toHaveClass("shadow-slab-flare");
+    expect(screen.getByText("Money")).not.toHaveClass("shadow-slab");
+  });
+  it("casts a notched panel's shadow from a wrapper so the clip does not cut it", () => {
+    render(
+      <Slab raised notched>
+        Cut
+      </Slab>,
+    );
+    expect(screen.getByText("Cut")).not.toHaveClass("shadow-slab");
+    expect(screen.getByText("Cut").parentElement?.className).toContain("drop-shadow");
+  });
+  it("fills spent cells with Seal and outlines the cart being reviewed", () => {
+    const { container } = render(<Meter part={10000} whole={20000} extra={2000} label="Cap" />);
+    expect(container.querySelector('[data-cell="spent"]')).toHaveClass("bg-seal");
+    expect(container.querySelector('[data-cell="extra"]')).toHaveClass("border-seal");
   });
 });

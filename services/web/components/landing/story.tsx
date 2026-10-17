@@ -34,6 +34,12 @@ function SceneHead({
 }) {
   return (
     <div className="flex flex-col gap-4">
+      <span
+        aria-hidden="true"
+        className="font-display text-8xl font-black leading-none text-transparent [-webkit-text-stroke:2px_var(--seal)] md:text-9xl"
+      >
+        {n}
+      </span>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-seal">
         {n} · {name}
       </p>
@@ -215,11 +221,11 @@ export function Story() {
           />
           <Slab raised notched data-rise className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <Tag tone="solid-ret">Mandate active</Tag>
+              <Tag tone="solid-seal">Mandate active</Tag>
               <Illustration />
             </div>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-dim">Cap</p>
-            <p className="tabular font-display text-5xl font-black">{formatMoney(50000)}</p>
+            <p className="tabular text-5xl font-semibold tracking-tight">{formatMoney(50000)}</p>
             <div
               aria-hidden="true"
               className="grid gap-[3px]"
@@ -230,7 +236,7 @@ export function Story() {
                   key={i}
                   data-cap-cell
                   {...(i < LIT_CELLS ? { "data-lit": "" } : {})}
-                  className="box-border h-5 border border-line-strong data-[lit]:border-fg data-[lit]:bg-fg"
+                  className="box-border h-5 bg-line data-[lit]:bg-seal"
                 />
               ))}
             </div>
@@ -275,7 +281,7 @@ export function Story() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="tabular font-semibold">{formatMoney(c.amount)}</span>
-                  <Tag tone={c.ok ? "ret" : "flare"}>{c.ok ? "Inside cap" : "Blocked"}</Tag>
+                  <Tag tone={c.ok ? "solid-seal" : "flare"}>{c.ok ? "Inside cap" : "Blocked"}</Tag>
                 </div>
               </Slab>
             ))}
@@ -341,13 +347,13 @@ export function Story() {
                   className="flex items-center justify-between border-b border-line py-2"
                 >
                   <span>{c}</span>
-                  <Tag tone="ret">Pass</Tag>
+                  <Tag tone="seal">Pass</Tag>
                 </li>
               ))}
             </ul>
             <div className="mt-2 flex items-center justify-between bg-ret px-4 py-3 text-on-ret">
               <span className="font-bold uppercase tracking-[0.08em]">Refund sent</span>
-              <span data-amount className="tabular font-display text-3xl font-black">
+              <span data-amount className="tabular text-3xl font-semibold tracking-tight">
                 +{formatMoney(4820)}
               </span>
             </div>

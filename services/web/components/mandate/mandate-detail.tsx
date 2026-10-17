@@ -182,7 +182,7 @@ export function MandateDetail() {
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-dim">
               Spent under cap
             </p>
-            <p className="tabular font-display text-6xl font-black">
+            <p className="tabular text-6xl font-semibold tracking-tight">
               {formatMoney(m.spent_minor, m.currency)}
             </p>
             <p className="tabular text-sm text-mute">
@@ -239,7 +239,7 @@ export function MandateDetail() {
                 </Tag>
               ))}
             </div>
-            <p className="tabular font-display text-5xl font-black">
+            <p className="tabular text-5xl font-semibold tracking-tight">
               {formatMoney(m.protection.max_refund_minor, m.currency)}
             </p>
             <p className="text-sm text-mute">max refund</p>

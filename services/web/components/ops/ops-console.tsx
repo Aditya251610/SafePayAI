@@ -73,10 +73,10 @@ function FreezePanel({ frozenValue }: { frozenValue: "true" | "false" | "unknown
   }
 
   return (
-    <Slab raised={frozen} className="flex flex-col gap-4">
+    <Slab raised="flare" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-dim">Refunds</p>
-        <Tag tone={frozen ? "solid-flare" : "solid-ret"}>
+        <Tag tone={frozen ? "solid-flare" : "solid-seal"}>
           {frozenValue === "unknown"
             ? "Unknown · treated as frozen"
             : frozen
@@ -257,7 +257,7 @@ function DemoClock() {
       ) : clock.isError ? (
         <ApiErrorNotice error={clock.error} onRetry={() => void clock.refetch()} />
       ) : (
-        <p className="tabular font-display text-3xl font-extrabold">
+        <p className="tabular text-3xl font-semibold tracking-tight">
           {formatDateTime(clock.data.sim_now)}
         </p>
       )}
@@ -315,7 +315,7 @@ export function OpsConsole() {
   return (
     <div className="flex flex-col gap-10 pb-12">
       <div className="flex flex-wrap items-center gap-3">
-        <Tag tone={s.money_routes_enabled ? "ret" : "solid-flare"}>
+        <Tag tone={s.money_routes_enabled ? "seal" : "solid-flare"}>
           Money routes {s.money_routes_enabled ? "on" : "off"}
         </Tag>
         <Tag tone={s.demo_mode ? "seal" : "neutral"}>Demo mode {s.demo_mode ? "on" : "off"}</Tag>

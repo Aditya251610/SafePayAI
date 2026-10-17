@@ -45,7 +45,7 @@ function VerifyPanel() {
         <ApiErrorNotice error={v.error} onRetry={() => void v.refetch()} />
       ) : v.data.ok ? (
         <>
-          <Tag tone="ret" className="self-start">
+          <Tag tone="solid-seal" className="self-start">
             Chain intact
           </Tag>
           <p className="tabular text-sm text-mute">

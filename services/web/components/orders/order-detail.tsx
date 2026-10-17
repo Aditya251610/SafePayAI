@@ -32,7 +32,7 @@ function ReceiptPanel({ receipt }: { receipt: Receipt }) {
       <Slab className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-dim">Receipt</p>
-          <p className="tabular font-display text-4xl font-black">
+          <p className="tabular text-4xl font-semibold tracking-tight">
             {formatMoney(receipt.amount_minor, receipt.currency)}
           </p>
         </div>
@@ -169,7 +169,7 @@ export function OrderDetail({
           </p>
           <Heading
             className={cn(
-              "mt-3 font-display font-black leading-[0.92] tracking-tight",
+              "mt-3 font-sans font-semibold leading-[0.92] tracking-tight",
               embedded ? "text-4xl" : "text-5xl md:text-7xl",
             )}
           >
@@ -333,7 +333,7 @@ export function OrderDetail({
             <Slab className="flex flex-col gap-2">
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-dim">Audit chain</p>
               {audit === true ? (
-                <Tag tone="ret" className="self-start">
+                <Tag tone="solid-seal" className="self-start">
                   Chain intact
                 </Tag>
               ) : audit === false ? (

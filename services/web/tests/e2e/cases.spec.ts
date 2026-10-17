@@ -38,7 +38,7 @@ test("approval link shows the exact refund and consents once", async ({ page }) 
   await page.goto("/approve/tok-1");
   await expect(page.getByRole("heading", { name: "Refund $60.00" })).toBeVisible();
   expect(m.calls).not.toContain("POST /resolution/approvals/tok-1/consent");
-  await page.getByRole("button", { name: "Approve" }).click();
+  await page.getByRole("button", { name: "Consent to refund" }).click();
   await expect(page.getByText("Refund in progress.")).toBeVisible();
 });
 

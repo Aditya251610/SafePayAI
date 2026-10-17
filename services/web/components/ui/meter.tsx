@@ -28,9 +28,9 @@ export function Meter({ part, whole, extra = 0, label, className }: MeterProps) 
           data-cell={i < spent ? "spent" : i < withExtra ? "extra" : "free"}
           className={cn(
             "box-border h-5",
-            i < spent && "bg-fg",
-            i >= spent && i < withExtra && "bg-flare",
-            i >= withExtra && "border border-line-strong",
+            i < spent && "bg-seal",
+            i >= spent && i < withExtra && "border-2 border-seal",
+            i >= withExtra && "bg-line",
           )}
         />
       ))}
