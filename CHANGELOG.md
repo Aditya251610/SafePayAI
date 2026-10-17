@@ -141,3 +141,5 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
+- Regenerate changelog [skip ci]
+- *(web)* Hardening - bundle budget, journey test, docs and cleanup (#122)
