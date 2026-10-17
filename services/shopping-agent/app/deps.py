@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import jwt
 from fastapi import Depends, Header, HTTPException
+from safepayai_common.auth.jwt import ServiceJWTConfig, mint_service_token
 
 from app.settings import Settings, get_settings
 
@@ -58,3 +59,27 @@ async def require_checkout_caller(
     if principal.sub != "svc:checkout":
         raise HTTPException(status_code=403, detail="FORBIDDEN")
     return principal
+
+
+def mint_outbound_token(settings: Settings, audience: str) -> str:
+    """Mints a short-lived shopping-agent -> <audience> service token.
+
+    Was entirely missing (app/clients.py's own module docstring flagged this as a
+    known, documented gap: "forwards whatever bearer token the caller already has
+    ... tracked as follow-up work, not invented here"). The forwarded gateway token
+    carries aud="agent" (this service's own audience), which every downstream
+    service's audience check correctly rejects - found live, confirmed by tracing
+    the claim through api-gateway's forward() call. Mirrors checkout's own
+    mint_outbound_token (app/deps.py) exactly: same ServiceJWTConfig shape, same
+    dev-fallback behavior when no signing key is configured.
+    """
+    if not settings.service_signing_key or not settings.service_signing_kid:
+        return "dev-unsigned-shopping-agent-token"
+    config = ServiceJWTConfig(
+        issuer="shopping-agent",
+        audience=audience,
+        signing_key_pem=settings.service_signing_key,
+        kid=settings.service_signing_kid,
+        ttl_seconds=60,
+    )
+    return mint_service_token("svc:shopping-agent", config)

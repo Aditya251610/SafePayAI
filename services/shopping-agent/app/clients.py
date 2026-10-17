@@ -1,16 +1,12 @@
 """Thin HTTP clients for the two peers this service reads from (spec.md section 1):
 `catalog` (`GET /items`) and `mandate` (`GET /mandates/{id}/summary`).
 
-Known gap, documented rather than silently guessed at: full service-to-service auth
-(minting this service's own signed internal JWT via safepayai_common.auth.jwt) is not
-yet wired anywhere in this service's settings (no signing-key config exists here), and
-is out of scope for this task's build spec (LLM wiring, not the auth-gateway/service-
-identity rollout). This module forwards whatever bearer token the caller already has
-(the buyer's or checkout's own internal JWT) as a best-effort interim; properly minting
-a `shopping-agent -> catalog`/`shopping-agent -> mandate` service token is tracked as
-follow-up work, not invented here. Both calls fail closed to the documented 503 codes
-(`CATALOG_UNAVAILABLE` / `MANDATE_UNAVAILABLE`) on any transport error, timeout, or
-non-2xx response -- never a silent empty result.
+`bearer_token` is minted fresh per call by the caller via `app.deps.mint_outbound_token`
+(audience="catalog"/"mandate") - found live that this used to forward whatever inbound
+token the caller already had (aud="agent", this service's own audience), which every
+downstream service's audience check correctly rejected. Both calls fail closed to the
+documented 503 codes (`CATALOG_UNAVAILABLE` / `MANDATE_UNAVAILABLE`) on any transport
+error, timeout, or non-2xx response -- never a silent empty result.
 """
 
 from __future__ import annotations
