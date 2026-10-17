@@ -38,6 +38,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - *(web)* Design foundation - tokens, fonts, logo, ui primitives, shell, session (#111)
 - *(web)* Public pages - landing story, sign-in and error copy (#112)
 - *(web)* Mandate screens - buyer home, sign a mandate, mandate detail (#113)
+- *(web)* Shop and agent screens - intent form, draft proposal, cart build (#114)
 
 ### Bug Fixes
 
@@ -103,6 +104,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
