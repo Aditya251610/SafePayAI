@@ -50,6 +50,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Close 5 backend security/correctness gaps found in a hackathon code review (#88)
 - Agent/catalog mismatch, cap race, and resolution/refund hardening (#89)
 - Close Profile B's app-package import collision in hosts/_mount.py (#97)
+- Correct render.yaml blueprint schema and build command (#98)
 
 ### Documentation
 
@@ -87,6 +88,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
