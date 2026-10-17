@@ -1,12 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Playwright e2e config. Wave 4 skeleton: a single smoke test (landing
-// renders, SANDBOX banner present) stands in for the full E2E-* suite in
-// test-plan.md. Real suite (cold-start, return-code matrix, a11y via axe,
-// `@paypal-live` tag for the real-click sandbox flow) lands in later waves.
-//
-// webServer auto-starts `pnpm dev` against a local build for CI; point
-// PLAYWRIGHT_BASE_URL at the hosted alias to run against staging instead.
+// E2E runs against the built app with every /api call answered by route
+// handlers in tests/e2e/mock-api.ts, so CI needs no backend. Set
+// PW_CHROMIUM_PATH to use a pre-installed Chromium; set PLAYWRIGHT_BASE_URL
+// to point the same specs at a running deployment.
+
+const executablePath = process.env.PW_CHROMIUM_PATH;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -18,7 +17,10 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
+    },
   ],
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
@@ -26,6 +28,6 @@ export default defineConfig({
         command: "pnpm build && pnpm start",
         url: "http://localhost:3000",
         reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
+        timeout: 180_000,
       },
 });

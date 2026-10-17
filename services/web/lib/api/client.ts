@@ -224,5 +224,18 @@ export function createClient(options: ClientOptions = {}): ApiClient {
   };
 }
 
+type Listener = () => void;
+const unauthenticatedListeners = new Set<Listener>();
+
+/** Subscribe to 401s from the shared client. Returns an unsubscribe function. */
+export function onUnauthenticated(listener: Listener): () => void {
+  unauthenticatedListeners.add(listener);
+  return () => {
+    unauthenticatedListeners.delete(listener);
+  };
+}
+
 /** Shared default client used by the app. */
-export const apiClient: ApiClient = createClient();
+export const apiClient: ApiClient = createClient({
+  onUnauthenticated: () => unauthenticatedListeners.forEach((l) => l()),
+});

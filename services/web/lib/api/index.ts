@@ -1,4 +1,10 @@
-import { apiClient, createClient, type ApiClient, type ClientOptions } from "./client";
+import {
+  apiClient,
+  createClient,
+  onUnauthenticated,
+  type ApiClient,
+  type ClientOptions,
+} from "./client";
 import { agentApi } from "./endpoints/agent";
 import { auditApi } from "./endpoints/audit";
 import { authApi } from "./endpoints/auth";
@@ -31,7 +37,7 @@ export type Api = ReturnType<typeof createApi>;
 export const api: Api = createApi(apiClient);
 
 export { API_BASE_URL } from "./config";
-export { createClient };
+export { createClient, onUnauthenticated };
 export type { ApiClient, ClientOptions };
 export * from "./errors";
 export * from "./ids";
