@@ -54,6 +54,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Correct render.yaml blueprint schema and build command (#98)
 - Guard catalog's dev-password migration step for production (#99)
 - Grant audit_owner membership before transferring schema ownership (#100)
+- Keepwarm pinged the wrong route and only one of 4 Render hosts (#102)
 
 ### Documentation
 
@@ -91,6 +92,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
