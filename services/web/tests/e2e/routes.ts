@@ -38,6 +38,29 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
         has_more: false,
       },
     },
+    [`POST /checkout/carts/${id.cart}/confirm`]: {
+      status: 201,
+      body: {
+        order_id: id.order,
+        status: "AWAITING_APPROVAL",
+        approve_url: f.order.approve_url,
+        total_minor: 4820,
+        currency: "USD",
+      },
+    },
+    "POST /checkout/orders/return": {
+      body: { order_id: id.order, status: "CAPTURED", message_code: "CAPTURED" },
+    },
+    "POST /checkout/orders/cancel": { body: { order_id: id.order, status: "CANCELLED_BUYER" } },
+    [`GET /checkout/orders/${id.order}`]: { body: f.capturedOrder },
+    "GET /ops/status": {
+      body: {
+        demo_mode: true,
+        money_routes_enabled: true,
+        refunds_frozen: "true",
+        build_id: "e2e",
+      },
+    },
     "POST /agent/propose": { body: f.proposal },
     "POST /checkout/carts": { status: 201, body: f.cart },
     "POST /mandate/mandates/preview": () => ({
