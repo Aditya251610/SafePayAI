@@ -183,7 +183,14 @@ async def propose(
     except _ProposeError as exc:
         return _error_response(exc, str(trace_id))
 
-    allowed_merchant_ids = set(mandate_summary.get("allowed_merchant_ids", []))
+    # mandate's GET /mandates/{id}/summary (app_mandate/routers/mandates.py) returns
+    # this field as `merchant_ids`, not `allowed_merchant_ids` - found live: this
+    # silently defaulted to an empty set, so merchant-allowlist filtering eliminated
+    # every candidate and every real propose call returned NO_MATCH/NO_PROPOSAL,
+    # regardless of mandate scope or catalog contents. Same field-name-mismatch class
+    # already fixed once for catalog's category_id/unit_price_minor (clients.py's
+    # _to_agent_item) but missed here.
+    allowed_merchant_ids = set(mandate_summary.get("merchant_ids", []))
     sku_to_merchant = {item["sku"]: item["merchant_id"] for item in catalog_items}
     catalog_skus = set(sku_to_merchant)
 
