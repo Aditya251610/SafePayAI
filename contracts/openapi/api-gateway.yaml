@@ -216,6 +216,19 @@ paths:
       responses:
         "200": { description: OK }
         "501": { description: Not implemented (Wave 4) }
+  /api/mandate/mandates/preview:
+    post:
+      operationId: proxyMandatePreview
+      summary: Preview mandate terms (required before signing)
+      description: >
+        Required first step before POST /mandates - returns the nonce + screen_text_hash
+        that signing needs. Was entirely missing from this file and from the real gateway
+        route table until PR #103 (found live: every real buyer flow 405'd here, since
+        signing cannot proceed without it). Confirmed live and real as of that fix, not a
+        Wave 4 stub - unlike most other paths in this file.
+      responses:
+        "200": { description: "OK, real and confirmed live" }
+        "422": { description: "TERMS_OUT_OF_BOUNDS or validation error" }
   /api/mandate/mandates:
     post:
       operationId: proxyMandateSign

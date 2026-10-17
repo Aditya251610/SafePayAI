@@ -306,10 +306,17 @@ see §Ops below); check that instead of inferring from a 404.
 
 ## 8. Known gaps — do not build against these yet
 
-- **The OpenAPI specs under `contracts/openapi/*.yaml` may be stale** relative to this
-  document and the real route set in `app/routers/proxy.py` — they were not
-  regenerated as part of this pass. Trust this file and the gateway source over the
-  YAML until someone reconciles them.
+- **The OpenAPI specs under `contracts/openapi/*.yaml` are substantially stale** —
+  confirmed, not just suspected: `api-gateway.yaml` still marks almost every real,
+  long-implemented route `"501": Not implemented (Wave 4)`, a leftover from the
+  original scaffolding pass. Only the one gap this pass specifically found and fixed
+  live (`POST /api/mandate/mandates/preview`, §Mandate above) was added to
+  `contracts/openapi/api-gateway.yaml` — everything else in that file, and all 9
+  per-service specs under the same directory, still need a full pass reconciling
+  documented status codes/schemas against actual behavior. That is a much bigger task
+  than this one fix and was deliberately not attempted here — **trust this
+  document and the gateway source over any `contracts/openapi/*.yaml` file** until
+  someone does that reconciliation.
 - **Idempotency-Key values are never retried/deduped by the gateway itself** — it only
   checks the header is present, the real dedupe logic lives in each owning service.
   Reusing the same key for a genuinely different submission is a client bug, not
