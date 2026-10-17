@@ -61,6 +61,23 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
         build_id: "e2e",
       },
     },
+    "GET /checkout/orders": { body: { items: [f.capturedOrder] } },
+    [`GET /bff/orders/${id.order}`]: {
+      body: { order: f.capturedOrder, shipment: f.tracking, case: null, audit_verified: true },
+    },
+    [`GET /checkout/orders/${id.order}/receipt`]: { body: f.receipt },
+    "POST /resolution/cases/report": {
+      status: 201,
+      body: {
+        case_id: id.case,
+        state: "OFFERED",
+        kind: "LATE",
+        origin: "BUYER_REPORT",
+        reasons: [],
+        offer: f.offer,
+        protection: {},
+      },
+    },
     "POST /agent/propose": { body: f.proposal },
     "POST /checkout/carts": { status: 201, body: f.cart },
     "POST /mandate/mandates/preview": () => ({
