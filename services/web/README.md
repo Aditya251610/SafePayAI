@@ -1,50 +1,71 @@
 # web
 
-SafePayAI's only UI (Next.js, App Router, TypeScript). Two route groups,
-`(buyer)` and `(merchant)`, plus a public landing/about area. Owns no data and
-no authorization logic - it displays server decisions from `api-gateway` via
-a same-origin `/api/*` rewrite and never recomputes money, mandate, or policy
-state client-side. See `.claude/prd/services/web/{prd,spec}.md` for full
-requirements.
+SafePayAI's only UI: Next.js (App Router), TypeScript, Tailwind. It owns no data and makes no
+decisions. It shows what `api-gateway` returns, through a same-origin `/api/*` rewrite, and never
+computes money, mandate or policy state in the browser.
 
-This is a **Wave 4 skeleton**: routes, layout, and config exist; screens
-render mock/placeholder data clearly commented as such. No real gateway calls
-are wired yet (`lib/api-client.ts` stub functions are marked `TODO Wave 5`).
+Routes follow the buyer journey and the four roles:
 
-## Stack
+| Area               | Routes                                                                                                                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public             | `/`, `/login`, `/states` (not served in production)                                                                                                                                                                    |
+| Buyer              | `/home`, `/mandate/new`, `/mandate/[id]`, `/intent`, `/agent/[proposal_id]`, `/cart/[id]`, `/checkout/return`, `/checkout/cancel`, `/orders`, `/orders/[id]`, `/orders/[id]/report`, `/cases/[id]`, `/approve/[token]` |
+| Any signed-in role | `/audit`                                                                                                                                                                                                               |
+| Merchant, operator | `/merchant`, `/merchant/cases/[id]`                                                                                                                                                                                    |
+| Operator           | `/ops`                                                                                                                                                                                                                 |
+| Reviewer           | `/review` (read-only)                                                                                                                                                                                                  |
 
-Next.js + TypeScript + shadcn/ui (baseline everywhere) + Framer Motion +
-WebGL/Aceternity UI (landing page only - see `app/page.tsx`). Money-path
-screens (mandate sign, PayPal handoff, receipt, refund offer, audit log,
-human-review) stay plain shadcn/ui + light Framer Motion only, per
-`tech-stack.md` sec 3.1-3.2 and `spec.md` sec 10.
-
-## Dev commands
+## Run
 
 ```bash
 pnpm install
-pnpm dev          # http://localhost:3000
-pnpm build        # production build
-pnpm start        # run the production build
-pnpm lint         # eslint
-pnpm typecheck    # tsc --noEmit
-pnpm test         # vitest (component/unit)
-pnpm test:e2e     # playwright (e2e/a11y)
-pnpm format       # prettier --write
+cp .env.example .env.local        # set PS_WEB_GATEWAY_INTERNAL_URL to a running gateway
+pnpm dev                          # http://localhost:3000
 ```
 
-## Honesty rules (non-negotiable, enforced by lint/tests)
+| Command                                              | What it does                                                                                                                  |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | static checks                                                                                                                 |
+| `pnpm test` / `pnpm test:coverage`                   | unit and component tests (MSW answers every `/api` call)                                                                      |
+| `pnpm test:e2e`                                      | Playwright against the built app, with `/api` answered by route handlers; set `PW_CHROMIUM_PATH` to use an installed Chromium |
+| `pnpm build` then `pnpm check:bundle`                | production build, then the per-route JavaScript budget (180 KB gzip)                                                          |
 
-- Persistent, non-dismissible SANDBOX banner on every page.
-- SIMULATED / CACHED / ILLUSTRATIVE labels wherever that kind of data
-  appears.
-- No "PayPal-backed/verified/protected" or similar banned claims (see
-  `spec.md` sec 5) - enforced by source lint and a runtime crawl test.
-- `dangerouslySetInnerHTML` is banned (`react/no-danger` ESLint rule).
+## Layout
 
-## How we use AG Grid (sponsor-prize candidate)
+```
+app/            routes, layouts, fonts (app/fonts)
+components/     ui primitives, shell, and screen components
+lib/api/        the only way to reach the backend (see below)
+lib/auth/       session, roles, navigation, safe redirects
+lib/format/     display-only money, date and label helpers
+lib/honesty/    banned claims and disclosure text
+styles/         design tokens (the only place a colour value appears)
+tests/          unit, e2e, and test-only mocks and fixtures
+```
 
-Not yet implemented in this skeleton (Wave 4). Will be Community-edition-only
-(sort, filter, pinning, custom cell renderers, CSV export) across exactly
-three screens: merchant orders table, human-review queue, audit log - see
-`spec.md` sec 9.
+## API layer (`lib/api`)
+
+- One base URL, `API_BASE_URL` in `lib/api/config.ts`. Every path is relative to it.
+- Each non-GET call fetches a fresh single-use CSRF token first, and routes that need it get an
+  `Idempotency-Key`. A rejected token is retried once with a new token and the same key.
+- Idempotent reads are retried while the backend wakes up. Posts never are.
+- A timeout or dropped connection on a money route is an `AmbiguousOutcomeError`: screens read the
+  real state back instead of posting again.
+- Every response is checked against a zod schema; every error is reduced to `{ code, message,
+requestId }` whatever shape the owning service used.
+
+## Rules the tests enforce
+
+- No raw `fetch` outside `lib/api`; no arithmetic on `*_minor` values; no colour literals outside
+  `styles/tokens.css`; no `dangerouslySetInnerHTML`.
+- No banned claims in source or in rendered text of any screen, in either theme.
+- Sandbox banner and footer disclosure on every page; simulated carrier data is always labelled.
+- Dark and light themes, phone, tablet and desktop layouts, and no serious accessibility findings
+  on any screen.
+
+## Known gaps on the backend side
+
+The web app works around these without touching the backend: the gateway does not forward request
+bodies for mandate revoke, offer accept, approval consent and the demo shipment force route; the
+case read route returns no offer; there is no reviewer decision route and no seeded reviewer
+account. See `contracts/frontend-integration-contract.md`.
