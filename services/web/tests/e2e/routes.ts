@@ -117,6 +117,28 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
     "POST /resolution/approvals/tok-1/consent": {
       body: { case_id: id.case, state: "REFUNDING", execution: "IN_PROGRESS" },
     },
+    "GET /audit/entries": {
+      body: {
+        rows: [
+          f.auditRow,
+          { ...f.auditRow, seq: 11, summary: "Mandate Signed", event_type: "mandate.signed" },
+        ],
+        lastRow: 2,
+        head_seq: 12,
+      },
+    },
+    "GET /audit/verify": {
+      body: {
+        ok: true,
+        chain_id: "main",
+        checked: 12,
+        head_seq: 12,
+        head_hash: "abc",
+        algorithm: "sha256",
+        duration_ms: 3,
+        anchor: null,
+      },
+    },
     "POST /agent/propose": { body: f.proposal },
     "POST /checkout/carts": { status: 201, body: f.cart },
     "POST /mandate/mandates/preview": () => ({
