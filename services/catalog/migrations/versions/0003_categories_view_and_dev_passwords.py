@@ -81,7 +81,9 @@ def upgrade() -> None:
             "'", "''"
         )
         for role in (MIGRATION_ROLE, RUNTIME_ROLE):
-            bind.execute(sa.text(f"ALTER ROLE \"{role}\" WITH PASSWORD '{dev_password}'"))
+            bind.execute(
+                sa.text(f"ALTER ROLE \"{role}\" WITH PASSWORD '{dev_password}'")
+            )
 
 
 def downgrade() -> None:
