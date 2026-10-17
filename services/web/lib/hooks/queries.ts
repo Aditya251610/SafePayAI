@@ -74,3 +74,22 @@ export function useReceipt(id: string, enabled: boolean) {
     retry: false,
   });
 }
+
+const CASE_IN_MOTION = new Set(["APPROVED", "REFUNDING"]);
+
+export function useCase(id: string) {
+  return useQuery({
+    queryKey: ["case", id] as const,
+    queryFn: ({ signal }) => api.resolution.case(requireUuid(id, "case id"), signal),
+    // A refund in flight is worth watching; everything else waits for the buyer.
+    refetchInterval: (q) => (q.state.data && CASE_IN_MOTION.has(q.state.data.state) ? 5000 : false),
+  });
+}
+
+export function useApproval(token: string) {
+  return useQuery({
+    queryKey: ["approval", token] as const,
+    queryFn: ({ signal }) => api.resolution.approvalPreview(token, signal),
+    retry: false,
+  });
+}
