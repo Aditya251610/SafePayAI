@@ -112,6 +112,13 @@ def upgrade() -> None:
 
     # --- Schema + base USAGE grant (shared helper) ---
     create_schema_and_roles(conn, schema=SCHEMA, migration_role=OWNER_ROLE, runtime_role=APP_ROLE)
+    # A local/CI superuser can ALTER SCHEMA ... OWNER TO any role without membership
+    # (superuser bypasses ownership checks entirely), but a Neon project's admin role
+    # is not a true Postgres superuser and needs explicit membership in audit_owner
+    # first to be allowed to transfer ownership to it. GRANT ROLE is idempotent (a
+    # re-grant of existing membership is a no-op, not an error), so this is safe to run
+    # unconditionally in both environments.
+    conn.execute(text(f'GRANT "{OWNER_ROLE}" TO CURRENT_USER'))
     conn.execute(text(f'ALTER SCHEMA "{SCHEMA}" OWNER TO {OWNER_ROLE}'))
     conn.execute(text(f"ALTER ROLE {APP_ROLE} SET search_path = {SCHEMA}"))
 
