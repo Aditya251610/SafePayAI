@@ -58,6 +58,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Gateway was missing the mandate preview proxy route entirely (#103)
 - Shopping-agent's internal-JWT audience didn't match the gateway's (#104)
 - Shopping-agent now mints its own outbound service tokens (#105)
+- Mandate only trusted api-gateway as an internal-JWT issuer (#106)
 
 ### Documentation
 
@@ -95,6 +96,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Fail-fast on placeholder secrets and harden docker/compose (#91)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
