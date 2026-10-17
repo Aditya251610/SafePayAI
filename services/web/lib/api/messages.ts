@@ -131,6 +131,11 @@ const COPY: Readonly<Record<string, ErrorCopy>> = {
     text: "Try again in a moment.",
     retryable: true,
   },
+  INVALID_REQUEST: {
+    title: "That request was incomplete",
+    text: "Check what you entered and try again.",
+    retryable: false,
+  },
   CATALOG_UNAVAILABLE: {
     title: "Catalog is busy",
     text: "Try again in a moment.",

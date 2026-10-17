@@ -38,6 +38,8 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
         has_more: false,
       },
     },
+    "POST /agent/propose": { body: f.proposal },
+    "POST /checkout/carts": { status: 201, body: f.cart },
     "POST /mandate/mandates/preview": () => ({
       body: { ...f.preview, nonce_expires_at: new Date(Date.now() + 120_000).toISOString() },
     }),

@@ -32,6 +32,12 @@ const config: Config = {
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: { slab: "var(--slab)" },
+      keyframes: {
+        "agent-bar": {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(300%)" },
+        },
+      },
       maxWidth: { page: "1280px" },
     },
   },
