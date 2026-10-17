@@ -15,5 +15,3 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: bash scripts/warmup.sh
-        env:
-          API_BASE_URL: ${{ vars.API_BASE_URL }}
