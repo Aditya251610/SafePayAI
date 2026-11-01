@@ -2,7 +2,7 @@
 # .github/workflows/ci-python-service.yml), not this directory: this service depends on the
 # shared `libs/common` workspace package, and uv needs every workspace member's pyproject.toml
 # present (even ones it won't install) to resolve the lockfile.
-FROM python:3.12-slim AS base
+FROM python:3.15-slim AS base
 WORKDIR /workspace
 RUN pip install --no-cache-dir uv
 COPY . .
