@@ -80,6 +80,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Close known backend gaps (mandate id 404, readyz adapter probe, remaining-cap math, case offer, hermetic evals) (#152)
 - 404 on non-UUID checkout ids and log why the shopping-agent LLM fails closed (#157)
 - Remove the root vercel.json that disabled web deployments (#159)
+- Let operators drive the tracking demo clock and force routes (#160)
 
 ### Documentation
 
@@ -160,6 +161,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Stop the stray root Vercel project and pause Dependabot version PRs (#151)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
