@@ -197,3 +197,5 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
+- Regenerate changelog [skip ci]
+- Codify the edge demo settings and retry the gitleaks download (#176)
