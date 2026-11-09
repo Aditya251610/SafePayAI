@@ -94,6 +94,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Make the intent examples match the seeded catalog (#165)
 - Log why the primary LLM provider failed before falling back (#166)
 - Stop sending response_schema to Gemini from the shopping-agent (#169)
+- Stop mandate evaluate double-counting captured orders against the cap (#175)
 
 ### Documentation
 
@@ -185,6 +186,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - *(deploy)* Codify the non-secret Render settings and refresh the README status (#164)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
