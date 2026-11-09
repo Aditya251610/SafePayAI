@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 5
     if: "!contains(github.event.head_commit.message, 'chore: regenerate changelog')"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
