@@ -1,14 +1,18 @@
+# Version-update PRs are paused (open-pull-requests-limit: 0) until after hackathon submission to stop
+# per-merge PR/email churn. Security updates are unaffected. Raise the limit (default 5) to resume.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       actions: { patterns: ["*"] }
 
   - package-ecosystem: "npm"
     directory: "/services/web"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Majors (Next, Tailwind, Zod, TypeScript, ESLint, Vitest, ...) are taken deliberately, not in a batch.
       - dependency-name: "*"
@@ -19,21 +23,25 @@ updates:
   - package-ecosystem: "pip"
     directory: "/services/api-gateway"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       api_gateway_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/mandate"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       mandate_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/catalog"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       catalog_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/shopping-agent"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # LLM SDK majors are only taken with live-key verification (AI services fail closed).
       - dependency-name: "google-genai"
@@ -45,26 +53,31 @@ updates:
   - package-ecosystem: "pip"
     directory: "/services/checkout"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       checkout_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/paypal-adapter"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       paypal_adapter_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/tracking"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       tracking_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/resolution"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       resolution_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
     directory: "/services/triage-ai"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # LLM SDK majors are only taken with live-key verification (AI services fail closed).
       - dependency-name: "google-genai"
@@ -76,12 +89,14 @@ updates:
   - package-ecosystem: "pip"
     directory: "/services/audit"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     groups:
       audit_deps: { patterns: ["*"] }
 
   - package-ecosystem: "docker"
     directory: "/services/api-gateway"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -91,6 +106,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/mandate"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -100,6 +116,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/catalog"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -109,6 +126,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/shopping-agent"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -118,6 +136,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/checkout"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -127,6 +146,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/paypal-adapter"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -136,6 +156,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/tracking"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -145,6 +166,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/resolution"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -154,6 +176,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/triage-ai"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
@@ -163,6 +186,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/audit"
     schedule: { interval: "monthly" }
+    open-pull-requests-limit: 0
     ignore:
       # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
       - dependency-name: "python"
