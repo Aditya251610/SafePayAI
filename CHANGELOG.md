@@ -84,6 +84,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - End the open read transaction before resolution's tick flushes the outbox (#161)
 - Trust resolution's service token in mandate (#162)
 - Resolve the calling buyer from the token's sub for case reads (#163)
+- Make the intent examples match the seeded catalog (#165)
 
 ### Documentation
 
@@ -175,3 +176,4 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - *(deploy)* Codify the non-secret Render settings and refresh the README status (#164)
+- Regenerate changelog [skip ci]
