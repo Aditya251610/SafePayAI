@@ -20,17 +20,13 @@ class TableGrant:
     privileges: tuple[str, ...]  # e.g. ("SELECT", "INSERT")
 
 
-def create_schema_and_roles(
-    conn: Connection, schema: str, migration_role: str, runtime_role: str
-) -> None:
+def create_schema_and_roles(conn: Connection, schema: str, migration_role: str, runtime_role: str) -> None:
     conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-    conn.execute(text(f'REVOKE ALL ON SCHEMA "{schema}" FROM PUBLIC'))
+    conn.execute(text(f"REVOKE ALL ON SCHEMA \"{schema}\" FROM PUBLIC"))
     conn.execute(text(f'GRANT USAGE ON SCHEMA "{schema}" TO "{runtime_role}"'))
 
 
-def apply_table_grants(
-    conn: Connection, schema: str, runtime_role: str, grants: list[TableGrant]
-) -> None:
+def apply_table_grants(conn: Connection, schema: str, runtime_role: str, grants: list[TableGrant]) -> None:
     for g in grants:
         privs = ", ".join(g.privileges)
         conn.execute(text(f'GRANT {privs} ON "{schema}"."{g.table}" TO "{runtime_role}"'))

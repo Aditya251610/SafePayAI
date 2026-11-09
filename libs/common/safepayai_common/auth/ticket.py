@@ -25,18 +25,9 @@ class TicketPayload:
 
 
 def sign_ticket(payload: TicketPayload, hmac_key: bytes, kid: str) -> str:
-    msg = (
-        DOMAIN_PREFIX
-        + "|".join(
-            [
-                payload.mandate_id,
-                payload.proposal_hash,
-                str(payload.amount_minor),
-                payload.currency,
-                str(payload.expires_at),
-            ]
-        ).encode()
-    )
+    msg = DOMAIN_PREFIX + "|".join(
+        [payload.mandate_id, payload.proposal_hash, str(payload.amount_minor), payload.currency, str(payload.expires_at)]
+    ).encode()
     digest = hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
     return f"{kid}.{payload.expires_at}.{digest}"
 
@@ -49,17 +40,8 @@ def verify_ticket(token: str, payload: TicketPayload, hmac_key: bytes) -> bool:
         return False
     if int(exp_s) != payload.expires_at or time.time() > payload.expires_at:
         return False
-    msg = (
-        DOMAIN_PREFIX
-        + "|".join(
-            [
-                payload.mandate_id,
-                payload.proposal_hash,
-                str(payload.amount_minor),
-                payload.currency,
-                str(payload.expires_at),
-            ]
-        ).encode()
-    )
+    msg = DOMAIN_PREFIX + "|".join(
+        [payload.mandate_id, payload.proposal_hash, str(payload.amount_minor), payload.currency, str(payload.expires_at)]
+    ).encode()
     expected = hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, digest)

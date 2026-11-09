@@ -12,6 +12,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,9 +30,7 @@ class LLMCallResult:
 
 
 class LLMProvider(Protocol):
-    async def call(
-        self, prompt: str, json_schema: dict[str, Any], timeout_s: float
-    ) -> LLMCallResult: ...
+    async def call(self, prompt: str, json_schema: dict[str, Any], timeout_s: float) -> LLMCallResult: ...
 
 
 class LLMGateway:
@@ -42,14 +41,11 @@ class LLMGateway:
         self._primary = primary
         self._fallback = fallback
 
-    async def call(
-        self, prompt: str, json_schema: dict[str, Any], timeout_s: float
-    ) -> LLMCallResult:
+    async def call(self, prompt: str, json_schema: dict[str, Any], timeout_s: float) -> LLMCallResult:
         try:
             return await self._primary.call(prompt, json_schema, timeout_s)
         except LLMFailClosedError as exc:
-            # Never the prompt or any key: only why the primary gave up (truncated). Without this
-            # a primary that always fails is invisible; every answer just comes from the fallback.
+            # Never the prompt or any key: only why the primary gave up (truncated).
             logger.warning("llm_primary_failed reason=%s", str(exc)[:300])
             if self._fallback is None:
                 raise
