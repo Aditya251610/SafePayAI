@@ -77,6 +77,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - *(web)* Match the built UI to the design boards (#123)
 - Use a relative expires_at in mandate integration helpers (#145)
 - Close known backend gaps (mandate id 404, readyz adapter probe, remaining-cap math, case offer, hermetic evals) (#152)
+- 404 on non-UUID checkout ids and log why the shopping-agent LLM fails closed (#157)
 
 ### Documentation
 
@@ -157,5 +158,6 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Stop the stray root Vercel project and pause Dependabot version PRs (#151)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
