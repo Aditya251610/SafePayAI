@@ -328,6 +328,22 @@ class EvaluateResult:
     advisory_flags: list[dict]
 
 
+def effective_remaining_minor(
+    max_total: int, spent: int, reserved: int, committed: int
+) -> int:
+    """Cap left for a new cart, in integer minor units.
+
+    `spent + reserved` is the mandate's own authoritative ledger. `committed` is checkout's
+    total of its non-final and captured orders for this mandate, passed in as a defensive
+    floor. They describe the SAME spend (every captured order is in both), so they must
+    never be added: consumed = max(ledger, committed). Adding them double-counted every
+    captured order and wrongly blocked carts well under the cap (live: $242 spent of $500
+    left $16, so a $59 cart was OVER_CAP).
+    """
+    consumed = max(spent + reserved, max(0, committed))
+    return max(0, max_total - consumed)
+
+
 def evaluate_cart(
     *,
     integrity_ok: bool,
