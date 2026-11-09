@@ -1,3 +1,4 @@
+import { ApiError, AmbiguousOutcomeError } from "@/lib/api/errors";
 import { isAllowedApproveUrl } from "@/lib/auth/roles";
 
 export type OutcomeTone = "ok" | "pending" | "warn" | "neutral";
@@ -94,4 +95,26 @@ export function approveHosts(): string[] {
 /** True only for an https URL on an allowed PayPal host. */
 export function canRedirectToPayPal(url: string): boolean {
   return isAllowedApproveUrl(url, approveHosts());
+}
+
+/** Codes that mean PayPal order creation did not start, so no order can exist behind them. */
+const NOT_STARTED_CODES: ReadonlySet<string> = new Set([
+  "CREATE_FAILED",
+  "UPSTREAM_WAKING",
+  "RATE_LIMITED",
+]);
+
+/**
+ * True only when a confirm attempt definitively failed before any PayPal order existed.
+ * A timeout or dropped connection (AmbiguousOutcomeError) and CREATE_UNKNOWN are never
+ * definite: those must be read back, not posted again.
+ */
+export function isDefiniteStartFailure(error: unknown): boolean {
+  if (error instanceof AmbiguousOutcomeError) return false;
+  return error instanceof ApiError && NOT_STARTED_CODES.has(error.code);
+}
+
+/** True when the order says PayPal never produced a payment link. */
+export function lacksPaymentLink(order: { status: string; approve_url?: string | null }): boolean {
+  return order.status === "CREATE_FAILED" || !order.approve_url;
 }

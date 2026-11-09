@@ -41,8 +41,9 @@ describe("railStep", () => {
 });
 
 describe("nav", () => {
-  it("gives buyers four tabs", () => {
-    expect(NAV.buyer).toHaveLength(4);
+  it("gives buyers five tabs, with Shop second", () => {
+    expect(NAV.buyer).toHaveLength(5);
+    expect(NAV.buyer[1]).toMatchObject({ href: "/shop", label: "Shop" });
   });
   it("matches nested paths as active", () => {
     expect(isActive("/orders/abc", "/orders")).toBe(true);

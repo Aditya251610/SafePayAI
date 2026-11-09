@@ -35,6 +35,9 @@ export default function HomePage() {
             <Link href="/intent">State what you need</Link>
           </Button>
           <Button asChild size="lg" variant="secondary">
+            <Link href="/shop">Browse the marketplace</Link>
+          </Button>
+          <Button asChild size="lg" variant="secondary">
             <Link href="/mandate/new">New mandate</Link>
           </Button>
         </div>

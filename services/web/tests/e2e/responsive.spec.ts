@@ -26,6 +26,7 @@ const BUYER_PAGES: [string, string][] = [
   ["/mandate/new", "Preview terms"],
   [`/mandate/${IDS.mandate}`, "Terms as signed"],
   ["/intent", "Agent boundary"],
+  ["/shop", "Browse the shelves."],
   ["/agent/prop-1", "Draft · decides nothing"],
   [`/cart/${IDS.cart}`, "Rules decided"],
   ["/orders", "newest first"],
