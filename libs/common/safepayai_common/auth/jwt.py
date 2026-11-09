@@ -26,10 +26,14 @@ def mint_service_token(subject: str, config: ServiceJWTConfig) -> str:
         "iat": now,
         "exp": now + config.ttl_seconds,
     }
-    return jwt.encode(payload, config.signing_key_pem, algorithm="RS256", headers={"kid": config.kid})
+    return jwt.encode(
+        payload, config.signing_key_pem, algorithm="RS256", headers={"kid": config.kid}
+    )
 
 
-def verify_service_token(token: str, jwks_client: jwt.PyJWKClient, audience: str, trusted_issuers: list[str]) -> dict:
+def verify_service_token(
+    token: str, jwks_client: jwt.PyJWKClient, audience: str, trusted_issuers: list[str]
+) -> dict:
     """Raises jwt.PyJWTError subclasses on any failure. Callers must fail closed (401/403), never swallow.
 
     `require: ["exp"]` -- PyJWT's default `verify_exp=True` only checks `exp` if the claim
