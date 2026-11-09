@@ -82,6 +82,25 @@ For seeded merchant/operator/reviewer accounts and for buyers created via
 timing, don't try to distinguish them in the UI. Rate-limited per (IP, handle) pair.
 Response body includes `principal.merchant_id` (see "Roles" below).
 
+### `GET /api/auth/demo-personas` → 200 (demo deployments only)
+No session, no CSRF. **404 `NOT_FOUND` unless the gateway runs with
+`PS_APIGATEWAY_DEMO_PERSONA_LOGIN=true`** (default off). Returns
+`{"personas":[{"handle","role","display_name","merchant_id"}]}` — only the fixed seeded
+allowlist (`buyer-persona`, `buyer-alex`, `reviewer-demo`, `operator`, `merchant-trailhead`,
+`merchant-hearth`, `merchant-pixelwire`) that exist and are enabled. No ids or hashes.
+
+### `POST /api/auth/demo-persona` → 200 (demo deployments only)
+```json
+{ "handle": "merchant-trailhead" }
+```
+Passwordless sign-in as one allowlisted persona so judges can explore every role without
+credentials in the frontend. Same response and `__Host-ps_sid` cookie as `/login`; no CSRF
+(no session yet). 404 `NOT_FOUND` when the flag is off, and the identical 404 for any handle
+not in the allowlist (including user-created accounts) or a missing/disabled persona.
+Rate-limited per IP (10/min, separate bucket from login) → 429 `RATE_LIMITED`.
+Security: this is an explicit demo-only opt-in; production leaves the flag off, so the
+routes do not exist there. Only the fixed allowlist is reachable, never signed-up accounts.
+
 ### `POST /api/auth/logout` → 204
 No body, no CSRF token needed (see section 3). Requires a session.
 
@@ -137,7 +156,7 @@ service.
 Token lifetime is `PS_APIGATEWAY_CSRF_TTL_S` (default 3600s) from issuance.
 
 **Exempt from this check** (no `X-CSRF-Token` needed): `POST /api/auth/login`,
-`POST /api/auth/signup`, `POST /api/auth/demo-session` (no session exists yet to bind a token to),
+`POST /api/auth/signup`, `POST /api/auth/demo-session`, `POST /api/auth/demo-persona` (no session exists yet to bind a token to),
 `GET /api/auth/csrf` itself (would be circular), and `POST /api/auth/logout` (not a
 meaningful CSRF target). Every other `/api/*` `POST`/`PUT` route needs it.
 
@@ -226,6 +245,8 @@ needs `Idempotency-Key`. **$** = money-route gated.
 | POST | `/api/auth/demo-session` | none | no | 201, see §2 |
 | POST | `/api/auth/signup` | none | no | 201 / 409 `HANDLE_TAKEN` / 422, see §2 |
 | POST | `/api/auth/login` | none | no | 200, see §2 |
+| GET | `/api/auth/demo-personas` | none | — | 200 / 404 when flag off, see §2 |
+| POST | `/api/auth/demo-persona` | none | no | 200 / 404 / 429, see §2 |
 | POST | `/api/auth/logout` | session | no | 204 |
 | GET | `/api/auth/me` | session | — | 200, see §2 |
 | GET | `/api/auth/csrf` | session | — | 200, see §3 |

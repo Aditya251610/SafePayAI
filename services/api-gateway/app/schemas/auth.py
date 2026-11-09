@@ -14,6 +14,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class DemoPersonaRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    handle: str
+
+
 HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{2,31}$")
 # Handles that collide with seeded/staff identities or demo personas.
 RESERVED_HANDLE_PREFIXES = (
