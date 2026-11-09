@@ -39,3 +39,14 @@ export const loginRequestSchema = z.object({
   password: z.string().min(1),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
+
+export const HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]{2,31}$/;
+export const PASSWORD_MIN = 10;
+export const PASSWORD_MAX = 128;
+
+export const signupRequestSchema = z.object({
+  handle: z.string().regex(HANDLE_PATTERN),
+  password: z.string().min(PASSWORD_MIN).max(PASSWORD_MAX),
+  display_name: z.string().trim().min(1).max(64).optional(),
+});
+export type SignupRequest = z.infer<typeof signupRequestSchema>;

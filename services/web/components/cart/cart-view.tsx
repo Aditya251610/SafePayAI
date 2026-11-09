@@ -196,6 +196,9 @@ function CartBody({ entry }: { entry: CartEntry }) {
           <h2 id="checks-h" className="border-t-4 border-fg pt-3 text-xl font-semibold">
             Rules decided
           </h2>
+          <Tag tone="seal" className="self-start">
+            Checked by rules
+          </Tag>
           <ul>
             {cart.checks.map((c) => (
               <CheckRow key={`${c.name}:${c.reason_code ?? ""}`} check={c} />
