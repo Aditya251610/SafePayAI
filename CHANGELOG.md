@@ -52,6 +52,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Seeded-account picker on /login and a Run the demo guide at /guide (#168)
 - Expand catalog seed to 180 products with top-up script (#170)
 - Generate Hard Cap SVG product images per catalog SKU (#171)
+- Add the 180 generated product images (#172)
 
 ### Bug Fixes
 
@@ -182,6 +183,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - *(deploy)* Codify the non-secret Render settings and refresh the README status (#164)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
