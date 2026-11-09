@@ -8,12 +8,12 @@ Routes follow the buyer journey and the four roles:
 
 | Area               | Routes                                                                                                                                                                                                                 |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Public             | `/`, `/login`, `/states` (not served in production)                                                                                                                                                                    |
+| Public             | `/`, `/login` (sign in, create account, demo), `/how-it-works`, `/states` (not served in production)                                                                                                                   |
 | Buyer              | `/home`, `/mandate/new`, `/mandate/[id]`, `/intent`, `/agent/[proposal_id]`, `/cart/[id]`, `/checkout/return`, `/checkout/cancel`, `/orders`, `/orders/[id]`, `/orders/[id]/report`, `/cases/[id]`, `/approve/[token]` |
 | Any signed-in role | `/audit`                                                                                                                                                                                                               |
 | Merchant, operator | `/merchant`, `/merchant/cases/[id]`                                                                                                                                                                                    |
 | Operator           | `/ops`                                                                                                                                                                                                                 |
-| Reviewer           | `/review` (read-only)                                                                                                                                                                                                  |
+| Reviewer           | `/review` (queue and decision form)                                                                                                                                                                                    |
 
 ## Run
 
@@ -65,7 +65,9 @@ requestId }` whatever shape the owning service used.
 
 ## Known gaps on the backend side
 
-The web app works around these without touching the backend: the gateway does not forward request
-bodies for mandate revoke, offer accept, approval consent and the demo shipment force route; the
-case read route returns no offer; there is no reviewer decision route and no seeded reviewer
-account. See `contracts/frontend-integration-contract.md`.
+The web app keeps working if a newer gateway field or route is absent: the case read may or may
+not include the active `offer` (the saved report is the fallback), and revoke, offer accept,
+approval consent and the demo shipment force route send their bodies in either case. Signup
+(`POST /auth/signup`) and the reviewer decision (`POST /resolution/cases/{id}/review-decision`)
+need the matching backend routes. Reviewer accounts are seeded server-side; no password is kept
+in this repo. See `contracts/frontend-integration-contract.md`.

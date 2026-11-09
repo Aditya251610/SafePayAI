@@ -11,19 +11,56 @@ import { ApiErrorNotice } from "@/components/shared/api-error";
 import { WakingUp } from "@/components/shared/waking-up";
 import { api } from "@/lib/api";
 import { ApiError } from "@/lib/api/errors";
-import type { SessionResponse } from "@/lib/api/schemas/auth";
+import {
+  HANDLE_PATTERN,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  type SessionResponse,
+} from "@/lib/api/schemas/auth";
 import { homeFor, safeNextPath } from "@/lib/auth/roles";
 import { useSession } from "@/lib/auth/session";
 
-/** Demo buyer sign-in and staff sign-in. Both end in the role's own home. */
+interface SignupProblems {
+  handle?: string;
+  password?: string;
+  displayName?: string;
+}
+
+/** Client-side mirror of the signup rules; the server stays the authority. */
+export function validateSignup(input: {
+  handle: string;
+  password: string;
+  displayName: string;
+}): SignupProblems {
+  const out: SignupProblems = {};
+  if (!HANDLE_PATTERN.test(input.handle)) {
+    out.handle =
+      "Use 3 to 32 characters: lowercase letters, digits, _ or -. Start with a letter or digit.";
+  }
+  if (input.password.length < PASSWORD_MIN || input.password.length > PASSWORD_MAX) {
+    const lengthRule = `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`;
+    out.password = lengthRule;
+  }
+  if (input.displayName.trim().length > 64) out.displayName = "Keep it to 64 characters.";
+  return out;
+}
+
+type Kind = "demo" | "staff" | "signup";
+
+/** Sign in, create an account, or try the demo. All end in the role's own home. */
 export function LoginPanels() {
   const router = useRouter();
   const params = useSearchParams();
   const { session, refresh } = useSession();
-  const [pending, setPending] = React.useState<"demo" | "staff" | null>(null);
+  const [pending, setPending] = React.useState<Kind | null>(null);
   const [error, setError] = React.useState<unknown>(null);
+  const [failedKind, setFailedKind] = React.useState<Kind | null>(null);
   const [handle, setHandle] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [newHandle, setNewHandle] = React.useState("");
+  const [newPassword, setNewPassword] = React.useState("");
+  const [newName, setNewName] = React.useState("");
+  const [problems, setProblems] = React.useState<SignupProblems>({});
 
   const next = params.get("next");
   const lastAttempt = React.useRef<(() => Promise<void>) | null>(null);
@@ -39,26 +76,139 @@ export function LoginPanels() {
     router.replace(safeNextPath(next, homeFor(result.principal.role)));
   }
 
-  async function run(kind: "demo" | "staff", call: () => Promise<SessionResponse>) {
+  async function run(kind: Kind, call: () => Promise<SessionResponse>) {
     lastAttempt.current = () => run(kind, call);
     setPending(kind);
     setError(null);
+    setFailedKind(null);
     try {
       await finish(await call());
     } catch (e) {
       setError(e);
+      setFailedKind(kind);
       setPending(null);
     }
   }
 
-  const waking = error instanceof ApiError && error.code === "UPSTREAM_WAKING";
-  const staffError = error instanceof ApiError && error.code === "UNAUTHENTICATED";
+  function submitSignup(e: React.FormEvent) {
+    e.preventDefault();
+    const found = validateSignup({
+      handle: newHandle,
+      password: newPassword,
+      displayName: newName,
+    });
+    setProblems(found);
+    if (Object.keys(found).length > 0) return;
+    const name = newName.trim();
+    void run("signup", () =>
+      api.auth.signup({
+        handle: newHandle,
+        password: newPassword,
+        ...(name ? { display_name: name } : {}),
+      }),
+    );
+  }
+
+  const apiError = error instanceof ApiError ? error : null;
+  const waking = apiError?.code === "UPSTREAM_WAKING";
+  const staffError = failedKind === "staff" && apiError?.code === "UNAUTHENTICATED";
+  const handleTaken = failedKind === "signup" && apiError?.code === "HANDLE_TAKEN";
+  const signupInvalid =
+    failedKind === "signup" &&
+    (apiError?.code === "VALIDATION_ERROR" || apiError?.code === "validation_error");
+  const inline = staffError || handleTaken || signupInvalid;
 
   return (
-    <div className="grid gap-8 lg:grid-cols-2">
+    <div className="grid gap-8 lg:grid-cols-3">
+      <Slab className="flex flex-col gap-4">
+        <Tag className="self-start">Buyer · Merchant · Operator · Reviewer</Tag>
+        <h2 className="font-display text-3xl font-extrabold">Sign in.</h2>
+        <p className="text-mute">
+          Your own account, or a seeded staff account. Each login has exactly one role.
+        </p>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run("staff", () => api.auth.login({ handle, password }));
+          }}
+        >
+          <Field
+            id="handle"
+            label="Handle"
+            autoComplete="username"
+            autoCapitalize="none"
+            value={handle}
+            onChange={(e) => setHandle(e.target.value)}
+            required
+          />
+          <Field
+            id="password"
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            error={staffError ? "Handle or password was not accepted." : undefined}
+            required
+          />
+          <Button type="submit" variant="secondary" size="lg" disabled={pending !== null}>
+            {pending === "staff" ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      </Slab>
+
+      <Slab className="flex flex-col gap-4">
+        <Tag tone="seal" className="self-start">
+          New buyer
+        </Tag>
+        <h2 className="font-display text-3xl font-extrabold">Create account.</h2>
+        <p className="text-mute">A buyer account for the sandbox. No email. Test funds only.</p>
+        <form className="flex flex-col gap-4" onSubmit={submitSignup} noValidate>
+          <Field
+            id="new-handle"
+            label="New account name"
+            hint="3 to 32 characters: a-z, 0-9, _ or -"
+            autoComplete="username"
+            autoCapitalize="none"
+            value={newHandle}
+            onChange={(e) => setNewHandle(e.target.value)}
+            error={handleTaken ? "That handle is taken. Pick a different one." : problems.handle}
+            required
+          />
+          <Field
+            id="new-passphrase"
+            label="Choose a passphrase"
+            type="password"
+            hint={`${PASSWORD_MIN} to ${PASSWORD_MAX} characters`}
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            error={problems.password}
+            required
+          />
+          <Field
+            id="new-display-name"
+            label="Display name (optional)"
+            autoComplete="nickname"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            error={problems.displayName}
+          />
+          {signupInvalid && (
+            <p role="alert" className="text-xs font-semibold text-flare">
+              The server did not accept those details. Check the handle and passphrase rules.
+            </p>
+          )}
+          <Button type="submit" size="lg" disabled={pending !== null}>
+            {pending === "signup" ? "Creating…" : "Create account"}
+          </Button>
+        </form>
+      </Slab>
+
       <Slab raised notched className="flex flex-col gap-4">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-seal">Buyer</p>
-        <h2 className="font-display text-3xl font-extrabold">Try it as a buyer.</h2>
+        <h2 className="font-display text-3xl font-extrabold">Try the demo.</h2>
         <p className="text-mute">
           One click makes a throwaway buyer account and signs you in. No email. No password. Test
           funds only.
@@ -82,47 +232,10 @@ export function LoginPanels() {
         </Button>
       </Slab>
 
-      <Slab className="flex flex-col gap-4">
-        <Tag className="self-start">Merchant · Operator · Reviewer</Tag>
-        <h2 className="font-display text-3xl font-extrabold">Staff sign-in.</h2>
-        <p className="text-mute">
-          Seeded accounts only. Each login has exactly one role. No signup.
-        </p>
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void run("staff", () => api.auth.login({ handle, password }));
-          }}
-        >
-          <Field
-            id="handle"
-            label="Handle"
-            autoComplete="username"
-            value={handle}
-            onChange={(e) => setHandle(e.target.value)}
-            required
-          />
-          <Field
-            id="password"
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            error={staffError ? "Handle or password was not accepted." : undefined}
-            required
-          />
-          <Button type="submit" variant="secondary" size="lg" disabled={pending !== null}>
-            {pending === "staff" ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </Slab>
-
-      <div className="lg:col-span-2" aria-live="polite">
+      <div className="lg:col-span-3" aria-live="polite">
         {waking ? (
           <WakingUp />
-        ) : error && !staffError ? (
+        ) : error && !inline ? (
           <ApiErrorNotice error={error} onRetry={() => void lastAttempt.current?.()} />
         ) : null}
       </div>

@@ -15,7 +15,10 @@ import {
   refundsFrozenStateSchema,
   reportCaseRequestSchema,
   reportCaseResponseSchema,
+  reviewDecisionRequestSchema,
+  reviewDecisionResponseSchema,
   reviewQueueSchema,
+  type ReviewDecisionRequest,
   type ReportCaseRequest,
 } from "../schemas/resolution";
 import { parseBody } from "./validate";
@@ -42,9 +45,23 @@ export function resolutionApi(c: ApiClient) {
         query: { order_id: query.orderId ? requireUuid(query.orderId, "order id") : undefined },
         signal,
       }),
-    /** Reviewer only; read-only in this build. */
+    /** Reviewer only. */
     reviewQueue: async (signal?: AbortSignal) =>
       c.get("/resolution/review/queue", reviewQueueSchema, { signal }),
+    /** Reviewer only. A refund proposal still needs the buyer's own approval. */
+    reviewDecision: async (caseId: string, input: ReviewDecisionRequest, opts: KeyOpts = {}) =>
+      c.send(
+        `/resolution/cases/${requireUuid(caseId, "case id")}/review-decision`,
+        reviewDecisionResponseSchema,
+        {
+          body: parseBody(reviewDecisionRequestSchema, input),
+          idempotent: true,
+          idempotencyKey: opts.idempotencyKey,
+          // A dropped connection may still have recorded the decision, so read the queue back.
+          money: true,
+          signal: opts.signal,
+        },
+      ),
     /** Money route. */
     acceptOffer: async (offerId: string, proposalHash: string, opts: KeyOpts = {}) =>
       c.send(

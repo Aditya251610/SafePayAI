@@ -79,6 +79,14 @@ export async function mockApi(
       role = "buyer";
       return json(201, f.session);
     }
+    if (path === "/auth/signup") {
+      const body = req.postDataJSON() as { handle?: string };
+      if (body.handle === "taken") {
+        return json(409, { error: "HANDLE_TAKEN", message: "taken", request_id: "e2e" });
+      }
+      role = "buyer";
+      return json(201, f.session);
+    }
     if (path === "/auth/login") {
       const body = req.postDataJSON() as { handle?: string; password?: string };
       if (body.handle === "operator" && body.password === "pw") {

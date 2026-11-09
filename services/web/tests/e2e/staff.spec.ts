@@ -21,11 +21,19 @@ test("the demo clock advances", async ({ page }) => {
   await expect.poll(() => m.calls.includes("POST /tracking/demo/clock/advance")).toBe(true);
 });
 
-test("a reviewer sees the queue, read-only", async ({ page }) => {
-  await mockApi(page, { role: "reviewer", routes: buyerRoutes() });
+test("a reviewer sees the queue and records a decision with a note", async ({ page }) => {
+  const m = await mockApi(page, { role: "reviewer", routes: buyerRoutes() });
   await page.goto("/review");
-  await expect(page.getByText("Read-only in this build")).toBeVisible();
   await expect(page.getByText("POLICY_CAP")).toBeVisible();
+  await page.getByRole("button", { name: /Open case CSE-/ }).click();
+  await page.getByRole("button", { name: "Submit decision" }).click();
+  await expect(page.getByText("Choose a decision.")).toBeVisible();
+  expect(m.calls.filter((c) => c.endsWith("/review-decision"))).toEqual([]);
+  await page.getByRole("radio", { name: /Propose a refund/ }).check();
+  await page.getByLabel(/Note/).fill("Carrier record confirms the delay");
+  await page.getByRole("button", { name: "Submit decision" }).click();
+  await expect(page.getByText("Decision recorded")).toBeVisible();
+  expect(m.calls.filter((c) => c.endsWith("/review-decision"))).toHaveLength(1);
 });
 
 test("a merchant cannot open ops", async ({ page }) => {
@@ -39,7 +47,7 @@ for (const scheme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     for (const [role, path, ready] of [
       ["operator", "/ops", "Refunds are paused."],
-      ["reviewer", "/review", "Read-only in this build"],
+      ["reviewer", "/review", "A person decides here"],
     ] as const) {
       await mockApi(page, { role, routes: buyerRoutes() });
       await page.goto(path);

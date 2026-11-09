@@ -129,6 +129,7 @@ export function ProposalView() {
         <Slab raised notched className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2">
             <Tag tone="seal">Draft · decides nothing</Tag>
+            <Tag tone="dashed">AI drafted · rules decide</Tag>
             {p.source === "cached" && <Tag tone="dashed">Cached answer</Tag>}
             {p.source === "form" && <Tag tone="dashed">From the form</Tag>}
           </div>
