@@ -5,6 +5,8 @@ tests, which never touch a database, cannot cover."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from app_shopping_agent import clients as clients_module
@@ -60,7 +62,7 @@ MANDATE_SUMMARY = {
     "merchant_ids": ["M1"],
     "max_total_minor": 10000,
     "currency": "USD",
-    "expiry": "2026-12-31",
+    "expiry": (datetime.now(UTC) + timedelta(days=365)).strftime("%Y-%m-%d"),
 }
 
 

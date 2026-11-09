@@ -47,6 +47,23 @@ class OfferView(BaseModel):
     expires_at: str
 
 
+def offer_view_from_row(row: dict | None) -> OfferView | None:
+    """resolution.offers row -> OfferView (None when the case has no active offer)."""
+    if row is None:
+        return None
+    expires_at = row.get("expires_at")
+    return OfferView(
+        offer_id=str(row["id"]),
+        action=row["action"],
+        amount_minor=int(row["amount_minor"]),
+        currency=row["currency"],
+        tier=row["tier"],
+        status=row["status"],
+        proposal_hash=row["proposal_hash"],
+        expires_at=expires_at.isoformat() if expires_at is not None else "",
+    )
+
+
 class ReportCaseResponse(BaseModel):
     case_id: str
     state: CaseState

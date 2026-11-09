@@ -60,6 +60,7 @@ from app_resolution.schemas.cases import (
     ReviewDecisionResponse,
     ReviewQueueItem,
     ReviewQueueResponse,
+    offer_view_from_row,
 )
 from app_resolution.settings import settings
 from app_resolution.usecases.approvals import issue_approval, lookup_approval
@@ -188,6 +189,7 @@ async def get_case_route(
         origin=case["origin"],
         opened_at=case["opened_at"].isoformat(),
         window_hold=case["window_hold"],
+        offer=offer_view_from_row(await repo.get_active_offer(session, case["id"])),
     )
 
 

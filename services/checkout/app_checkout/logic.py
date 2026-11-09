@@ -77,3 +77,17 @@ def compute_proposal_hash(
         "policy_version": policy_version,
     }
     return sha256_hex(canonical_json_bytes(obj))
+
+
+def remaining_cap_after(
+    remaining_before_minor: int | None, total_minor: int, status: str
+) -> int:
+    """Cap left after this cart, from mandate's authoritative pre-cart `remaining_minor`
+    (evaluate's `mandate.remaining_minor` is the cap BEFORE this cart, net of committed
+    spend). Never negative; a BLOCKED cart (e.g. OVER_CAP) commits nothing, so it shows
+    the unchanged pre-cart remainder only if it was not over cap -- clamped to 0 when the
+    cart exceeds it, so the figure can never read "fits" next to an OVER_CAP block."""
+    before = max(0, remaining_before_minor or 0)
+    if status == "BLOCKED":
+        return before if total_minor <= before else 0
+    return max(0, before - total_minor)

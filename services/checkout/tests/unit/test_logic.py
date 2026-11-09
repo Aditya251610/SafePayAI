@@ -85,3 +85,19 @@ def test_proposal_hash_changes_with_total() -> None:
     h1 = compute_proposal_hash(total_minor=500, **base)
     h2 = compute_proposal_hash(total_minor=600, **base)
     assert h1 != h2
+
+
+def test_remaining_cap_after_subtracts_cart_total() -> None:
+    from app_checkout.logic import remaining_cap_after
+
+    # mandate's remaining_minor is the PRE-cart remainder; "after" must subtract the cart.
+    assert remaining_cap_after(1000, 800, "CHECKED") == 200
+
+
+def test_remaining_cap_after_never_shows_fit_for_over_cap_block() -> None:
+    from app_checkout.logic import remaining_cap_after
+
+    # Regression: mandate said remaining=200, cart total=500 -> OVER_CAP/BLOCKED, yet the
+    # response echoed 200 as "remaining after" (looked like it still fit).
+    assert remaining_cap_after(200, 500, "BLOCKED") == 0
+    assert remaining_cap_after(None, 500, "BLOCKED") == 0
