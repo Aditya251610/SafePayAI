@@ -193,6 +193,9 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
         ],
       },
     },
+    [`POST /resolution/cases/${id.case}/review-decision`]: {
+      body: { case_id: id.case, state: "OFFERED", offer_id: id.offer },
+    },
     "POST /agent/propose": { body: f.proposal },
     "POST /checkout/carts": { status: 201, body: f.cart },
     "POST /mandate/mandates/preview": () => ({

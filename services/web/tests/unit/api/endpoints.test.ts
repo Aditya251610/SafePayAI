@@ -26,6 +26,21 @@ describe("auth", () => {
     await expect(api.auth.login({ handle: "", password: "" })).rejects.toBeInstanceOf(Error);
     expect(calls).toHaveLength(0);
   });
+  it("signup posts the new account without CSRF and returns a session", async () => {
+    const r = await api.auth.signup({ handle: "new-buyer", password: "long-enough-pw" });
+    expect(r.principal.role).toBe("buyer");
+    expect(last().body).toEqual({ handle: "new-buyer", password: "long-enough-pw" });
+    expect(callsTo("GET", "/auth/csrf")).toHaveLength(0);
+  });
+  it("signup rejects a bad handle or short password locally", async () => {
+    await expect(
+      api.auth.signup({ handle: "Ab", password: "long-enough-pw" }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(api.auth.signup({ handle: "okay", password: "short" })).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(calls).toHaveLength(0);
+  });
   it("logout resolves on 204 without CSRF", async () => {
     await expect(api.auth.logout()).resolves.toBeUndefined();
     expect(callsTo("GET", "/auth/csrf")).toHaveLength(0);
@@ -192,6 +207,27 @@ describe("resolution", () => {
     expect((await api.resolution.case(IDS.case)).state).toBe("OFFERED");
     expect((await api.resolution.cases()).items).toHaveLength(1);
     expect((await api.resolution.reviewQueue()).items[0]?.sla_state).toBe("NO_TARGET");
+  });
+  it("reviewDecision sends the exact body with CSRF and a key", async () => {
+    const r = await api.resolution.reviewDecision(IDS.case, {
+      decision: "DECLINE",
+      reviewer_name: "rev",
+      reason: "Outside terms",
+    });
+    expect(r.state).toBe("OFFERED");
+    const c = callsTo("POST", `/resolution/cases/${IDS.case}/review-decision`)[0];
+    expect(c?.body).toEqual({ decision: "DECLINE", reviewer_name: "rev", reason: "Outside terms" });
+    expect(c?.headers["idempotency-key"]).toBeTruthy();
+    expect(c?.headers["x-csrf-token"]).toBeTruthy();
+  });
+  it("reviewDecision requires a note locally", async () => {
+    await expect(
+      api.resolution.reviewDecision(IDS.case, {
+        decision: "CLOSE",
+        reviewer_name: "rev",
+        reason: " ",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
   it("acceptOffer sends the proposal hash", async () => {
     const r = await api.resolution.acceptOffer(IDS.offer, "offer-hash-1");

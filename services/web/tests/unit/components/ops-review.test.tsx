@@ -2,9 +2,9 @@ import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server";
-import { callsTo, recorded } from "../../mocks/handlers";
+import { TEST_BASE, callsTo, recorded } from "../../mocks/handlers";
 import * as f from "../../mocks/fixtures";
 import { answer, renderApp } from "./helpers";
 
@@ -16,6 +16,14 @@ vi.mock("@/lib/api/config", () => ({ API_BASE_URL: "http://gateway.test/api" }))
 
 import { OpsConsole, effectivelyFrozen } from "@/components/ops/ops-console";
 import { ReviewQueue, formatAge } from "@/components/review/review-queue";
+import { SessionProvider } from "@/lib/auth/session";
+
+const renderQueue = () =>
+  renderApp(
+    <SessionProvider>
+      <ReviewQueue />
+    </SessionProvider>,
+  );
 
 const status = (over: Record<string, unknown> = {}) =>
   answer("get", "/ops/status", 200, {
@@ -156,21 +164,75 @@ describe("OpsConsole", () => {
 });
 
 describe("ReviewQueue", () => {
-  it("lists waiting cases and says it is read-only", async () => {
-    renderApp(<ReviewQueue />);
-    expect(await screen.findByText("Read-only in this build")).toBeInTheDocument();
+  it("lists waiting cases with an Open button each", async () => {
+    renderQueue();
+    expect(await screen.findByText("A person decides here")).toBeInTheDocument();
     expect(await screen.findByText("POLICY_CAP")).toBeInTheDocument();
     expect(screen.getByText("Over the policy cap.")).toBeInTheDocument();
     expect(screen.getByText("1 min")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open case CSE-/ })).toBeInTheDocument();
+  });
+  it("needs a decision and a note before it posts anything", async () => {
+    renderQueue();
+    await userEvent.click(await screen.findByRole("button", { name: /Open case CSE-/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Submit decision" }));
+    expect(await screen.findByText("Choose a decision.")).toBeInTheDocument();
+    expect(screen.getByText(/Add a short note/)).toBeInTheDocument();
+    expect(callsTo("POST", `/resolution/cases/${f.IDS.case}/review-decision`)).toHaveLength(0);
+  });
+  it("posts the decision with an idempotency key and CSRF", async () => {
+    server.use(
+      recorded("post", `/resolution/cases/${f.IDS.case}/review-decision`, () =>
+        HttpResponse.json({ case_id: f.IDS.case, state: "OFFERED", offer_id: f.IDS.offer }),
+      ),
+    );
+    renderQueue();
+    await userEvent.click(await screen.findByRole("button", { name: /Open case CSE-/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /Propose a refund/ }));
+    await userEvent.type(screen.getByLabelText(/Note/), "Carrier record confirms the delay");
+    await userEvent.click(screen.getByRole("button", { name: "Submit decision" }));
+    expect(await screen.findByText("Decision recorded")).toBeInTheDocument();
+    const call = callsTo("POST", `/resolution/cases/${f.IDS.case}/review-decision`)[0];
+    expect(call?.body).toEqual({
+      decision: "PROPOSE_REFUND",
+      reviewer_name: expect.any(String),
+      reason: "Carrier record confirms the delay",
+    });
+    expect(call?.headers["idempotency-key"]).toBeTruthy();
+    expect(call?.headers["x-csrf-token"]).toBeTruthy();
+  });
+  it("shows a clear message when the case already moved", async () => {
+    answer("post", `/resolution/cases/${f.IDS.case}/review-decision`, 409, {
+      error: "ILLEGAL_TRANSITION",
+      message: "x",
+    });
+    renderQueue();
+    await userEvent.click(await screen.findByRole("button", { name: /Open case CSE-/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /Decline/ }));
+    await userEvent.type(screen.getByLabelText(/Note/), "Not covered by the terms");
+    await userEvent.click(screen.getByRole("button", { name: "Submit decision" }));
+    expect(await screen.findByText("This case moved")).toBeInTheDocument();
+  });
+  it("treats a dropped connection as an unknown outcome and re-reads the queue", async () => {
+    server.use(
+      http.post(`${TEST_BASE}/resolution/cases/${f.IDS.case}/review-decision`, () =>
+        HttpResponse.error(),
+      ),
+    );
+    renderQueue();
+    await userEvent.click(await screen.findByRole("button", { name: /Open case CSE-/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /Close/ }));
+    await userEvent.type(screen.getByLabelText(/Note/), "Duplicate of another case");
+    await userEvent.click(screen.getByRole("button", { name: "Submit decision" }));
+    expect(await screen.findByText("Checking what happened")).toBeInTheDocument();
   });
   it("has an empty and an error state", async () => {
     answer("get", "/resolution/review/queue", 200, { items: [] });
-    const { unmount } = renderApp(<ReviewQueue />);
+    const { unmount } = renderQueue();
     expect(await screen.findByText("The queue is empty.")).toBeInTheDocument();
     unmount();
     answer("get", "/resolution/review/queue", 403, { error: "FORBIDDEN", message: "x" });
-    renderApp(<ReviewQueue />);
+    renderQueue();
     expect(await screen.findByText("Not available for this account")).toBeInTheDocument();
   });
   it("formats ages", () => {
