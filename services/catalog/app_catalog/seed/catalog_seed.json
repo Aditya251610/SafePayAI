@@ -227,7 +227,7 @@
   ],
   "merchant_refund_policy_seeds": [
     {"merchant_id": "mrc_trailhead", "refund_cap_minor": 5000, "excluded_category_ids": [], "velocity_max_refunds": 2, "velocity_window_days": 30, "note": "Illustrative seed. Policy engine lives in resolution."},
-    {"merchant_id": "mrc_hearth", "refund_cap_minor": 5000, "excluded_category_ids": ["consumable", "pantry"], "velocity_max_refunds": 2, "velocity_window_days": 30, "note": "Illustrative seed. Policy engine lives in resolution."},
+    {"merchant_id": "mrc_hearth", "refund_cap_minor": 5000, "excluded_category_ids": ["consumable"], "velocity_max_refunds": 2, "velocity_window_days": 30, "note": "Illustrative seed. Policy engine lives in resolution."},
     {"merchant_id": "mrc_pixelwire", "refund_cap_minor": 5000, "excluded_category_ids": [], "velocity_max_refunds": 2, "velocity_window_days": 30, "note": "Illustrative seed. Policy engine lives in resolution."}
   ],
   "item_fixtures": [
