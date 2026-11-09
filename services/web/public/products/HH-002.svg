@@ -6,7 +6,7 @@
 <polygon points="8,8 582,8 618,44 618,460 8,460" fill="#131315"/>
 <g clip-path="url(#kHH002)"><rect width="640" height="480" fill="url(#gHH002)" opacity=".55"/></g>
 <path d="M52 30H30V52" class="S" stroke-width="3"/><path d="M52 380H30V358" class="S" stroke-width="3"/><path d="M566 380H588V358" class="S" stroke-width="3"/><circle cx="46" cy="50" r="3" class="s"/>
-<rect x="160" y="46" width="320" height="324" fill="#1c1c20" stroke="#2b2b31" stroke-width="2"/><g transform="translate(320 208) scale(1.16) rotate(-2)"><rect x="60" y="-16" width="78" height="32" class="c"/><circle cx="128" cy="0" r="6" class="d"/><circle cx="-24" cy="0" r="98" class="c"/><circle cx="-24" cy="0" r="78" class="d"/><circle cx="-24" cy="0" r="36" class="c"/><circle cx="-24" cy="0" r="15" class="a"/><path d="M-63.9 47.5A62 62 0 0 1 -63.9 -47.5" class="M" stroke-width="5"/></g>
+<rect x="160" y="46" width="320" height="324" fill="#1c1c20" stroke="#2b2b31" stroke-width="2"/><g transform="translate(320 208) scale(1.16) rotate(-2)"><polygon points="-76,-84 76,-84 26,-26 -26,-26" class="a"/><rect x="-34" y="-26" width="68" height="12" class="m"/><polygon points="-78,108 -42,-6 42,-6 78,108" class="c"/><polygon points="-70,108 -62,56 62,56 70,108" class="d"/><circle cx="0" cy="8" r="6" class="s"/><circle cx="0" cy="26" r="6" class="s"/></g>
 <path d="M8 400H618" stroke="#2b2b31" stroke-width="2"/>
 <rect x="28" y="412" width="104" height="32" fill="#0a0a0b" stroke="#ff6a3d" stroke-width="2"/>
 <text x="80" y="434" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="17" font-weight="700" letter-spacing="2" fill="#f3f0e6">HH-002</text>

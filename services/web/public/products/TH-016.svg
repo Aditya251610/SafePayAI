@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480" role="img">
+<title>Compression Calf Sleeves</title>
+<style>.c{fill:#f3f0e6}.C{stroke:#f3f0e6;fill:none}.a{fill:#5c86ff}.A{stroke:#5c86ff;fill:none}.s{fill:#ff6a3d}.S{stroke:#ff6a3d;fill:none}.m{fill:#b1aea3}.M{stroke:#b1aea3;fill:none}.d{fill:#0a0a0b}.D{stroke:#0a0a0b;fill:none}.p{fill:#1c1c20}.P{stroke:#1c1c20;fill:none}</style>
+<defs><clipPath id="kTH016"><polygon points="8,8 582,8 618,44 618,460 8,460"/></clipPath><pattern id="gTH016" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#2b2b31" stroke-width="1"/></pattern></defs>
+<polygon points="22,22 596,22 632,58 632,474 22,474" fill="#5c86ff"/>
+<polygon points="8,8 582,8 618,44 618,460 8,460" fill="#131315"/>
+<g clip-path="url(#kTH016)"><rect width="640" height="480" fill="url(#gTH016)" opacity=".55"/></g>
+<rect x="30" y="32" width="44" height="4" class="s"/><rect x="30" y="42" width="36" height="4" class="s"/><rect x="30" y="52" width="28" height="4" class="s"/><rect x="30" y="62" width="20" height="4" class="s"/>
+<rect x="160" y="46" width="320" height="324" fill="#1c1c20" stroke="#2b2b31" stroke-width="2"/><g transform="translate(320 208) scale(1.16) rotate(-3)"><g transform="translate(34 -26)"><polygon points="-90,-110 -20,-110 -20,20 100,20 100,90 -90,90" class="m"/><rect x="-90" y="-110" width="70" height="26" class="m"/><rect x="60" y="20" width="40" height="70" class="m"/><rect x="-90" y="62" width="28" height="28" class="m"/></g><g transform="translate(-12 6)"><polygon points="-90,-110 -20,-110 -20,20 100,20 100,90 -90,90" class="c"/><rect x="-90" y="-110" width="70" height="26" class="a"/><rect x="60" y="20" width="40" height="70" class="a"/><rect x="-90" y="62" width="28" height="28" class="a"/></g></g>
+<path d="M8 400H618" stroke="#2b2b31" stroke-width="2"/>
+<rect x="28" y="412" width="104" height="32" fill="#0a0a0b" stroke="#5c86ff" stroke-width="2"/>
+<text x="80" y="434" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="17" font-weight="700" letter-spacing="2" fill="#f3f0e6">TH-016</text>
+<text x="598" y="434" text-anchor="end" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="14" letter-spacing="3" fill="#b1aea3">TRAILHEAD</text>
+<path d="M582 8L618 44" stroke="#5c86ff" stroke-width="3"/>
+<polygon points="8,8 582,8 618,44 618,460 8,460" fill="none" stroke="#4a4a53" stroke-width="3"/>
+</svg>

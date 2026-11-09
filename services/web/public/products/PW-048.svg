@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480" role="img">
+<title>Travel Router</title>
+<style>.c{fill:#f3f0e6}.C{stroke:#f3f0e6;fill:none}.a{fill:#bef542}.A{stroke:#bef542;fill:none}.s{fill:#ff6a3d}.S{stroke:#ff6a3d;fill:none}.m{fill:#b1aea3}.M{stroke:#b1aea3;fill:none}.d{fill:#0a0a0b}.D{stroke:#0a0a0b;fill:none}.p{fill:#1c1c20}.P{stroke:#1c1c20;fill:none}</style>
+<defs><clipPath id="kPW048"><polygon points="8,8 582,8 618,44 618,460 8,460"/></clipPath><pattern id="gPW048" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#2b2b31" stroke-width="1"/></pattern></defs>
+<polygon points="22,22 596,22 632,58 632,474 22,474" fill="#bef542"/>
+<polygon points="8,8 582,8 618,44 618,460 8,460" fill="#131315"/>
+<g clip-path="url(#kPW048)"><rect width="640" height="480" fill="url(#gPW048)" opacity=".55"/></g>
+<rect x="30" y="32" width="44" height="4" class="s"/><rect x="30" y="42" width="36" height="4" class="s"/>
+<rect x="160" y="46" width="320" height="324" fill="#1c1c20" stroke="#2b2b31" stroke-width="2"/><g transform="translate(320 208) scale(1.16) rotate(4)"><g transform="translate(-94 0) rotate(-12)"><rect x="-8" y="-110" width="16" height="120" class="m"/></g><g transform="translate(94 0) rotate(12)"><rect x="-8" y="-110" width="16" height="120" class="m"/></g><rect x="-118" y="10" width="236" height="76" class="c"/><circle cx="-80" cy="40" r="6" class="a"/><circle cx="-56" cy="40" r="6" class="a"/><circle cx="-32" cy="40" r="6" class="a"/><circle cx="-8" cy="40" r="6" class="a"/><circle cx="16" cy="40" r="6" class="m"/><rect x="30" y="30" width="16" height="20" class="d"/><rect x="52" y="30" width="16" height="20" class="d"/><rect x="74" y="30" width="16" height="20" class="d"/><path d="M-18.4 -15.4A24 24 0 0 1 18.4 -15.4" class="A" stroke-width="7"/><path d="M-35.2 -29.6A46 46 0 0 1 35.2 -29.6" class="A" stroke-width="7"/><path d="M-52.1 -43.7A68 68 0 0 1 52.1 -43.7" class="A" stroke-width="7"/><circle cx="0" cy="0" r="7" class="a"/></g>
+<path d="M8 400H618" stroke="#2b2b31" stroke-width="2"/>
+<rect x="28" y="412" width="104" height="32" fill="#0a0a0b" stroke="#bef542" stroke-width="2"/>
+<text x="80" y="434" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="17" font-weight="700" letter-spacing="2" fill="#f3f0e6">PW-048</text>
+<text x="598" y="434" text-anchor="end" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="14" letter-spacing="3" fill="#b1aea3">PIXELWIRE</text>
+<path d="M582 8L618 44" stroke="#bef542" stroke-width="3"/>
+<polygon points="8,8 582,8 618,44 618,460 8,460" fill="none" stroke="#4a4a53" stroke-width="3"/>
+</svg>
