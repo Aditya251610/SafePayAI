@@ -1,8 +1,8 @@
 """GET /items, GET /items/{sku} - real reads against v_items_public/v_prices_public
 joined at the current catalog_version, per catalog/spec.md section 5 and api.md.
 
-Pagination: `limit`/`offset`, capped at 100 per data-architecture.md section 13
-("list endpoints paginate, limit <= 100"); a caller-supplied limit above 100 is
+Pagination: `limit`/`offset`, capped at MAX_LIMIT (200; the seeded catalog holds 180 items)
+(data-architecture.md section 13: list endpoints paginate); a caller-supplied limit above MAX_LIMIT is
 clamped rather than rejected (api.md does not document a dedicated error code for
 this, and clamping is strictly safer than a hard error for a read-only list route).
 """
@@ -19,7 +19,7 @@ from app_catalog.schemas.items import Item, ItemDetailResponse, ItemsResponse
 
 router = APIRouter(tags=["items"])
 
-MAX_LIMIT = 100
+MAX_LIMIT = 200
 DEFAULT_LIMIT = 50
 
 

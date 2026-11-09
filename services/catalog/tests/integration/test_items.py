@@ -8,32 +8,20 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
-async def test_list_items_returns_all_twelve_seeded_items(client):
-    resp = await client.get("/items", params={"limit": 100})
+async def test_list_items_returns_all_seeded_items(client):
+    resp = await client.get("/items", params={"limit": 200})
     assert resp.status_code == 200
     body = resp.json()
     assert body["catalog_version"] == 1
-    assert len(body["items"]) == 12
+    assert len(body["items"]) == 180
     assert body["has_more"] is False
     skus = {item["sku"] for item in body["items"]}
-    assert skus == {
-        "TH-001",
-        "TH-002",
-        "TH-003",
-        "TH-004",
-        "HH-001",
-        "HH-002",
-        "HH-003",
-        "HH-004",
-        "PW-001",
-        "PW-002",
-        "PW-003",
-        "PW-004",
-    }
+    assert len(skus) == 180
+    assert {"TH-001", "HH-004", "PW-004", "TH-060", "HH-060", "PW-060"} <= skus
 
 
 async def test_list_items_text_trust_and_label(client):
-    resp = await client.get("/items", params={"limit": 100})
+    resp = await client.get("/items", params={"limit": 200})
     body = resp.json()
     for item in body["items"]:
         assert item["text_trust"] == "untrusted"
@@ -41,16 +29,20 @@ async def test_list_items_text_trust_and_label(client):
 
 
 async def test_list_items_filters_by_merchant(client):
-    resp = await client.get("/items", params={"merchant_id": "mrc_trailhead"})
+    resp = await client.get(
+        "/items", params={"merchant_id": "mrc_trailhead", "limit": 100}
+    )
     body = resp.json()
-    assert len(body["items"]) == 4
+    assert len(body["items"]) == 60
     assert all(item["merchant_id"] == "mrc_trailhead" for item in body["items"])
 
 
 async def test_list_items_filters_by_category(client):
-    resp = await client.get("/items", params={"category_id": "electronics"})
+    resp = await client.get(
+        "/items", params={"category_id": "electronics", "limit": 100}
+    )
     body = resp.json()
-    assert len(body["items"]) == 4
+    assert len(body["items"]) == 15
     assert all(item["category_id"] == "electronics" for item in body["items"])
 
 
@@ -71,14 +63,28 @@ async def test_pagination_respects_limit_and_offset(client):
     assert set(first_skus).isdisjoint(second_skus)
 
 
-async def test_pagination_caps_limit_at_100(client):
+async def test_pagination_caps_limit_at_max(client):
     resp = await client.get("/items", params={"limit": 10_000})
     body = resp.json()
     assert resp.status_code == 200
-    assert body["limit"] == 100
-    # Only 12 items exist, so this also proves the cap didn't truncate real results.
-    assert len(body["items"]) == 12
+    assert body["limit"] == 200
+    # 180 items exist, below the cap, so nothing is truncated.
+    assert len(body["items"]) == 180
     assert body["has_more"] is False
+
+
+async def test_pagination_walks_all_180_items_with_correct_has_more(client):
+    seen: list[str] = []
+    offset = 0
+    while True:
+        resp = await client.get("/items", params={"limit": 50, "offset": offset})
+        body = resp.json()
+        seen += [i["sku"] for i in body["items"]]
+        if not body["has_more"]:
+            break
+        offset += 50
+    assert len(seen) == 180 and len(set(seen)) == 180
+    assert offset == 150
 
 
 async def test_get_item_by_sku(client):
