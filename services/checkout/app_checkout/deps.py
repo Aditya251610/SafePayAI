@@ -7,6 +7,7 @@ callers; browser never calls checkout directly.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 
 import jwt
@@ -80,3 +81,21 @@ def mint_outbound_token(settings: Settings, audience: str) -> str:
         ttl_seconds=60,
     )
     return mint_service_token("svc:checkout", config)
+
+
+def _valid_uuid(value: str, code: str, what: str) -> str:
+    """A non-UUID id can never exist: a clean 404, not a Postgres uuid-cast 500."""
+    from app_checkout.errors import CheckoutError
+
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        raise CheckoutError(404, code, f"{what} not found") from None
+
+
+def valid_cart_id(cart_id: str) -> str:
+    return _valid_uuid(cart_id, "CART_NOT_FOUND", "cart")
+
+
+def valid_order_id(order_id: str) -> str:
+    return _valid_uuid(order_id, "ORDER_NOT_FOUND", "order")
