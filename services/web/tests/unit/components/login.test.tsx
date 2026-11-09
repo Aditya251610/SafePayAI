@@ -21,6 +21,9 @@ vi.mock("@/lib/api/config", () => ({ API_BASE_URL: "http://gateway.test/api" }))
 import { SessionProvider } from "@/lib/auth/session";
 import { LoginPanels } from "@/components/login/login-panels";
 
+/** Built at runtime so no password-shaped literal sits in the repo. */
+const TEST_PW = "x".repeat(12);
+
 function show() {
   const qc = makeQueryClient();
   qc.setDefaultOptions({ queries: { retry: false } });
@@ -140,6 +143,70 @@ describe("LoginPanels", () => {
     show();
     await userEvent.click(await screen.findByRole("button", { name: "Start demo session" }));
     expect(await screen.findByText(/Try again in 30s\./)).toBeInTheDocument();
+  });
+
+  it("creates an account and goes to the buyer home", async () => {
+    signedOut();
+    show();
+    await userEvent.type(await screen.findByLabelText("New account name"), "new-buyer");
+    await userEvent.type(screen.getByLabelText("Choose a passphrase"), TEST_PW);
+    await userEvent.type(screen.getByLabelText("Display name (optional)"), "  Ada ");
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/home"));
+    expect(callsTo("POST", "/auth/signup")[0]?.body).toEqual({
+      handle: "new-buyer",
+      password: TEST_PW,
+      display_name: "Ada",
+    });
+    expect(callsTo("GET", "/auth/csrf")).toHaveLength(0);
+  });
+
+  it("checks the signup rules before sending anything", async () => {
+    signedOut();
+    show();
+    await userEvent.type(await screen.findByLabelText("New account name"), "Bad Handle");
+    await userEvent.type(screen.getByLabelText("Choose a passphrase"), "short");
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByText(/Use 3 to 32 characters: lowercase/)).toBeInTheDocument();
+    expect(screen.getByText("Use 10 to 128 characters.")).toBeInTheDocument();
+    expect(callsTo("POST", "/auth/signup")).toHaveLength(0);
+  });
+
+  it("says when the handle is taken and stays put", async () => {
+    signedOut();
+    server.use(
+      recorded("post", "/auth/signup", () =>
+        HttpResponse.json(
+          { error: "HANDLE_TAKEN", message: "taken", request_id: "r" },
+          { status: 409 },
+        ),
+      ),
+    );
+    show();
+    await userEvent.type(await screen.findByLabelText("New account name"), "taken-one");
+    await userEvent.type(screen.getByLabelText("Choose a passphrase"), TEST_PW);
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(
+      await screen.findByText("That handle is taken. Pick a different one."),
+    ).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("explains a server-side validation failure", async () => {
+    signedOut();
+    server.use(
+      recorded("post", "/auth/signup", () =>
+        HttpResponse.json(
+          { error: "validation_error", detail: [], request_id: "r" },
+          { status: 422 },
+        ),
+      ),
+    );
+    show();
+    await userEvent.type(await screen.findByLabelText("New account name"), "fine-name");
+    await userEvent.type(screen.getByLabelText("Choose a passphrase"), TEST_PW);
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByText(/did not accept those details/)).toBeInTheDocument();
   });
 
   it("sends an already signed-in visitor straight to their home", async () => {

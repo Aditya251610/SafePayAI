@@ -249,7 +249,9 @@ export function CaseView() {
   }
 
   const c = kase.data;
-  const offer = saved?.offer && saved.offer.status === "ACTIVE" ? saved.offer : null;
+  // The case read carries the active offer on newer gateways; the saved report is the fallback.
+  const savedOffer = saved?.offer && saved.offer.status === "ACTIVE" ? saved.offer : null;
+  const offer = c.offer && c.offer.status === "ACTIVE" ? c.offer : savedOffer;
   const offerOpen = c.state === "OFFERED" && offer !== null && result === null;
   const note = STATE_NOTE[c.state];
 
@@ -269,6 +271,9 @@ export function CaseView() {
         <div className="flex flex-wrap gap-2">
           <Tag tone="flare">{caseStateLabel(c.state)}</Tag>
           <Tag>{caseKindLabel(c.kind)}</Tag>
+          <Tag tone="seal" className="h-auto whitespace-normal py-1">
+            Rules decided · refund via PayPal (merchant-funded)
+          </Tag>
         </div>
       </div>
 

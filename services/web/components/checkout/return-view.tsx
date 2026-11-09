@@ -15,7 +15,7 @@ import { AmbiguousOutcomeError } from "@/lib/api/errors";
 import { newIdempotencyKey } from "@/lib/api/ids";
 import { pollUntil } from "@/lib/api/reconcile";
 import { isFinalStatus, outcomeFor } from "@/lib/checkout/outcome";
-import { orderStatusLabel } from "@/lib/format/label";
+import { orderStatusLabel, shortId } from "@/lib/format/label";
 import { loadLastOrder } from "@/lib/storage/entries";
 
 type Phase = "working" | "ready" | "none";
@@ -196,6 +196,10 @@ export function ReturnView() {
           >
             {orderStatusLabel(state.status)}
           </Tag>
+          <Tag tone="dashed">PayPal sandbox order</Tag>
+          {state.orderId && (
+            <span className="font-mono text-xs text-dim">ORD-{shortId(state.orderId, 6)}</span>
+          )}
           {code && <span className="font-mono text-xs text-dim">message_code · {code}</span>}
         </div>
         <h2 className="font-display text-4xl font-extrabold leading-tight">{outcome.title}</h2>

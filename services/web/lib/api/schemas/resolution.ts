@@ -51,6 +51,11 @@ export const reportCaseResponseSchema = z.object({
 });
 export type ReportCaseResponse = z.infer<typeof reportCaseResponseSchema>;
 
+const lenientOffer = z.unknown().transform((v) => {
+  const r = offerSchema.safeParse(v);
+  return r.success ? r.data : null;
+}) as unknown as z.ZodType<Offer | null>;
+
 export const caseDetailSchema = z.object({
   case_id: z.string(),
   order_id: z.string(),
@@ -79,7 +84,9 @@ export const caseDetailSchema = z.object({
       illustrative: z.boolean().nullish(),
     })
     .nullish(),
-  offer: offerSchema.nullish(),
+  // Newer gateways include the active offer. A shape this page does not know reads as absent,
+  // so the saved-report fallback keeps working.
+  offer: lenientOffer,
   refund: z.object({ status: z.string(), paypal_refund_id: z.string().nullish() }).nullish(),
   queued_reason: z.string().nullish(),
 });
@@ -162,3 +169,22 @@ export const refundsFrozenStateSchema = z.object({
   readable: z.boolean().nullish(),
 });
 export type RefundsFrozenState = z.infer<typeof refundsFrozenStateSchema>;
+
+/** Mirrors resolution's ReviewDecisionRequest exactly (extra keys are forbidden server-side). */
+export const REVIEW_DECISIONS = ["PROPOSE_REFUND", "PROPOSE_RESHIP", "DECLINE", "CLOSE"] as const;
+export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
+export const REVIEW_NOTE_MAX = 500;
+
+export const reviewDecisionRequestSchema = z.object({
+  decision: z.enum(REVIEW_DECISIONS),
+  reviewer_name: z.string().trim().min(1).max(64),
+  reason: z.string().trim().min(3).max(REVIEW_NOTE_MAX),
+});
+export type ReviewDecisionRequest = z.infer<typeof reviewDecisionRequestSchema>;
+
+export const reviewDecisionResponseSchema = z.object({
+  case_id: z.string(),
+  state: caseStateSchema,
+  offer_id: z.string().nullish(),
+});
+export type ReviewDecisionResponse = z.infer<typeof reviewDecisionResponseSchema>;
