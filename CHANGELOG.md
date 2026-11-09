@@ -74,6 +74,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Give each co-mounted service a unique internal package name (#107)
 - Shopping-agent read the wrong field name for mandate's merchant allowlist (#108)
 - *(web)* Match the built UI to the design boards (#123)
+- Use a relative expires_at in mandate integration helpers (#145)
 
 ### Documentation
 
@@ -144,4 +145,5 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - *(web)* Hardening - bundle budget, journey test, docs and cleanup (#122)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
