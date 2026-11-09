@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     # Demo-only opt-in: passwordless sign-in as the allowlisted seeded personas.
     # MUST stay off in production (PS_APIGATEWAY_DEMO_PERSONA_LOGIN).
     demo_persona_login: bool = False
+    # Comma-separated health URLs GET /api/wake pings (PS_APIGATEWAY_WAKE_URLS). Unset = no-op.
+    wake_urls: str | None = None
     log_level: str = "INFO"
     port: int = 8000
 

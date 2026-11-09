@@ -15,7 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routers import auth, bff, health, jwks, ops, proxy
+from app.routers import auth, bff, health, jwks, ops, proxy, wake
 from app.settings import get_settings
 
 app = FastAPI(title="api-gateway", version="0.1.0")
@@ -44,6 +44,7 @@ app.include_router(auth.router)
 app.include_router(ops.router)
 app.include_router(bff.router)
 app.include_router(proxy.router)
+app.include_router(wake.router)
 
 
 def _request_id(request: Request) -> str:
