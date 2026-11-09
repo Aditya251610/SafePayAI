@@ -11,24 +11,21 @@ hash-chained audit trail.
 
 ## Status
 
-**Backend complete and live-tested end to end against the real PayPal sandbox.** All 10 backend
-services (`api-gateway`, `mandate`, `catalog`, `shopping-agent`, `checkout`, `paypal-adapter`,
-`tracking`, `resolution`, `triage-ai`, `audit`) have real business logic, not stubs. Verified live,
-twice, with real PayPal sandbox orders (not mocked): the automated late/lost detection → case →
-offer → buyer accept → refund loop, the buyer-report → AI triage → human-reviewer → approval-link
-→ refund loop, merchant-override and reship paths, mandate revocation correctly blocking future
-(not past) protection, and real PayPal webhook delivery + signature verification (a real sandbox
-webhook subscription, delivered to a temporary public tunnel, passed verification end to end).
-Frontend (`services/web`) has not been started — backend-first build order, per project convention.
+**Backend and frontend are built and deployed, and the full journey was exercised live on the
+real PayPal sandbox:** sign up or sign in, sign a mandate, the AI agent drafts a cart (validated
+by rules against the catalog and mandate), PayPal sandbox approval and capture, a merchant
+shipment on the **simulated** carrier, a late/lost order detected by the deterministic rules
+engine, a refund offer the buyer accepts, and a merchant-funded refund issued through PayPal's
+refund API. Orders the policy engine cannot decide fall to a human reviewer, who decides in the
+reviewer queue. Frontend: Vercel; backend: four Render hosts on a Neon database.
 
-Full `authorization_ticket` HMAC verification is now wired and live-verified at the paypal-adapter
-boundary (checkout and resolution mint real tickets, paypal-adapter verifies the HMAC signature and
-binds it to the exact mandate/amount/currency on both REST and MCP paths — not just a presence
-check), and duplicate-refund, timeout-after-success, replay/reconcile-against-genuinely-UNKNOWN, and
-concurrent refund attempts are covered by integration tests against a real Postgres.
+What each actor does is shown in the app at `/how-it-works`: PayPal hosts approval and executes
+the order and refund; the AI only classifies and drafts; rules decide every amount.
 
-Known remaining gaps: AI triage's injection/timeline-consistency signal is weaker than designed
-(tracking doesn't yet expose a per-shipment-event timeline to triage-ai).
+Known gaps: audit relay keys are not yet provisioned on the deployed hosts, so the hash-chained
+audit log holds only its genesis entry there (`deploy/profile-b/ENV.md`); the PayPal tracker sync
+for simulated shipments reports `FAILED` (non-fatal by design); the AI's primary provider
+(Gemini) falls back to Groq on the deployed host.
 
 ## Honesty / limitations (read this before judging)
 
