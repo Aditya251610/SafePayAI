@@ -21,7 +21,7 @@ from app.csrf import issue_csrf_token
 from app.db import get_db_session
 from app.deps import Principal, clear_session_cookie, require_session
 from app.ratelimit import limiter
-from app.schemas.auth import LoginRequest, SignupRequest
+from app.schemas.auth import DemoPersonaRequest, LoginRequest, SignupRequest
 from app.sessions import (
     count_live_ephemeral_buyers,
     create_session,
@@ -38,6 +38,21 @@ AUTH_LOGIN_RATE_LIMIT = 5
 AUTH_LOGIN_WINDOW_S = 60.0
 AUTH_SIGNUP_RATE_LIMIT = 5
 AUTH_SIGNUP_WINDOW_S = 600.0
+AUTH_PERSONA_RATE_LIMIT = 10
+AUTH_PERSONA_WINDOW_S = 60.0
+
+# Seeded accounts a judge may enter without a password when the demo-only
+# PS_APIGATEWAY_DEMO_PERSONA_LOGIN flag is on. Exact handles; user-created accounts
+# are never eligible.
+DEMO_PERSONA_HANDLES: tuple[str, ...] = (
+    "buyer-persona",
+    "buyer-alex",
+    "reviewer-demo",
+    "operator",
+    "merchant-trailhead",
+    "merchant-hearth",
+    "merchant-pixelwire",
+)
 
 
 def _client_ip(request: Request, settings: Settings) -> str:
@@ -243,6 +258,113 @@ async def login(
     ok = verify_password(body.password, password_hash)
     if row is None or not ok or row["disabled_at"] is not None:
         raise HTTPException(status_code=401, detail="UNAUTHENTICATED")
+
+    # Fixation: delete any presented sid before issuing a new one (REQ-GW-003).
+    await delete_session(db, ps_sid)
+
+    user_id = str(row["id"])
+    raw_sid, expires_at = await create_session(
+        db, user_id=user_id, role=row["role"], epoch=row["epoch"], settings=settings
+    )
+    _set_session_cookie(response, settings, raw_sid, expires_at)
+
+    return {
+        "principal": {
+            "actor_type": row["actor_type"],
+            "actor_id": user_id,
+            "role": row["role"],
+            "display_name": row["display_name"],
+            "merchant_id": row["merchant_id"],
+        },
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+def _persona_gate(settings: Settings) -> None:
+    if not settings.demo_persona_login:
+        raise HTTPException(status_code=404, detail="NOT_FOUND")
+
+
+@router.get("/demo-personas")
+async def demo_personas(
+    db: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Public list of the allowlisted personas that exist. Demo-only (flag)."""
+    _persona_gate(settings)
+    rows = (
+        (
+            await db.execute(
+                text(
+                    """
+                    SELECT handle, role, display_name, merchant_id
+                    FROM "gateway"."users"
+                    WHERE handle = ANY(:handles) AND is_ephemeral = false
+                      AND disabled_at IS NULL
+                    """
+                ),
+                {"handles": list(DEMO_PERSONA_HANDLES)},
+            )
+        )
+        .mappings()
+        .all()
+    )
+    by_handle = {r["handle"]: r for r in rows}
+    return {
+        "personas": [
+            {
+                "handle": h,
+                "role": by_handle[h]["role"],
+                "display_name": by_handle[h]["display_name"],
+                "merchant_id": by_handle[h]["merchant_id"],
+            }
+            for h in DEMO_PERSONA_HANDLES
+            if h in by_handle
+        ]
+    }
+
+
+@router.post("/demo-persona")
+async def demo_persona(
+    body: DemoPersonaRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    ps_sid: str | None = Cookie(default=None, alias="__Host-ps_sid"),
+) -> dict:
+    """Passwordless sign-in as an allowlisted seeded persona. Demo-only (flag).
+    No CSRF (no session exists yet), same as login."""
+    _persona_gate(settings)
+    ip = _client_ip(request, settings)
+    allowed, retry_after = limiter.check(
+        f"auth-persona:{ip}", AUTH_PERSONA_RATE_LIMIT, AUTH_PERSONA_WINDOW_S
+    )
+    if not allowed:
+        return _rate_limited(response, retry_after)
+
+    # Same 404 for non-allowlisted, unknown and disabled: never reveal which.
+    if body.handle not in DEMO_PERSONA_HANDLES:
+        raise HTTPException(status_code=404, detail="NOT_FOUND")
+    row = (
+        (
+            await db.execute(
+                text(
+                    """
+                    SELECT id, role, actor_type, display_name, epoch, merchant_id
+                    FROM "gateway"."users"
+                    WHERE handle = :handle AND is_ephemeral = false
+                      AND disabled_at IS NULL
+                    """
+                ),
+                {"handle": body.handle},
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="NOT_FOUND")
 
     # Fixation: delete any presented sid before issuing a new one (REQ-GW-003).
     await delete_session(db, ps_sid)

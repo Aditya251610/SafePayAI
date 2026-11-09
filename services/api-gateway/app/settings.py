@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     app_env: str = "local"
     demo_mode: bool = False
+    # Demo-only opt-in: passwordless sign-in as the allowlisted seeded personas.
+    # MUST stay off in production (PS_APIGATEWAY_DEMO_PERSONA_LOGIN).
+    demo_persona_login: bool = False
     log_level: str = "INFO"
     port: int = 8000
 
