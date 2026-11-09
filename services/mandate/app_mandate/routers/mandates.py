@@ -785,21 +785,15 @@ async def evaluate_mandate(
             max_total_minor=mandate_row["max_total_minor"],
             now=now,
         )
-        remaining = _remaining(
+        # Cumulative cap (spec.md sec 4 step 6). Checkout reports its own committed order
+        # total as `committed_minor`, but checkout now also reserves/captures through this
+        # mandate's ledger, so both describe the same spend: take the larger, never the sum.
+        remaining = mandate_logic.effective_remaining_minor(
             spend_row["max_total_minor"],
             spend_row["spent_minor"],
             spend_row["reserved_minor"],
+            body.committed_minor or 0,
         )
-        # Cumulative cap enforcement (spec.md sec 4 step 6): the caller (checkout) has no
-        # standing reservation against this mandate's own spend/reserved ledger yet --
-        # checkout tracks its own in-flight/completed order totals and reports them here
-        # each call via `committed_minor`, since nothing currently calls this mandate's
-        # reservation lifecycle (POST .../reservations, authorize-capture, commit,
-        # release) to keep `spent_minor`/`reserved_minor` in sync with checkout's orders.
-        # Without this, `remaining` never reflects prior carts and the same mandate could
-        # approve an unbounded number of carts under its cap.
-        committed_minor = max(0, body.committed_minor or 0)
-        remaining = max(0, remaining - committed_minor)
         result = mandate_logic.evaluate_cart(
             integrity_ok=integrity_ok,
             status=status,
