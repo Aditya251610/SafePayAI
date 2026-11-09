@@ -166,6 +166,13 @@ async def report_case(
     )
 
 
+def caller_buyer_id(claims: dict) -> str:
+    """The calling buyer's id. The gateway's internal token carries it as `sub` (the accept
+    route already relies on that) and never sets a separate `buyer_id` claim, so reading only
+    `buyer_id` made every buyer's own case read 404 and their list/notifications empty."""
+    return str(claims.get("buyer_id") or claims.get("sub") or "")
+
+
 @router.get("/cases/{case_id}")
 async def get_case_route(
     case_id: str,
@@ -178,7 +185,7 @@ async def get_case_route(
     # IDOR guard: a buyer may only read their own case -- matches list_cases_route's own
     # buyer_id scoping. 404, not 403, so existence of another buyer's case isn't leaked.
     role = (claims.get("act") or {}).get("role")
-    if role == "buyer" and str(case["buyer_id"]) != str(claims.get("buyer_id")):
+    if role == "buyer" and str(case["buyer_id"]) != caller_buyer_id(claims):
         raise HTTPException(status_code=404, detail="CASE_NOT_FOUND")
     return CaseDetailResponse(
         case_id=str(case["id"]),
@@ -201,7 +208,7 @@ async def list_cases_route(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     role = (claims.get("act") or {}).get("role")
-    buyer_id = str(claims.get("buyer_id")) if role == "buyer" else None
+    buyer_id = caller_buyer_id(claims) if role == "buyer" else None
     rows = await repo.list_cases(
         session, status=status_, order_id=order_id, buyer_id=buyer_id
     )
@@ -730,7 +737,7 @@ async def list_notifications(
     merchant sees all. Same claims convention as list_cases_route in this file (verified
     against app/deps.py's require_internal_jwt: claims.act.role / claims.buyer_id)."""
     role = (claims.get("act") or {}).get("role")
-    buyer_id = str(claims.get("buyer_id")) if role == "buyer" else None
+    buyer_id = caller_buyer_id(claims) if role == "buyer" else None
     rows = await repo.get_notifications(session, buyer_id=buyer_id)
     return NotificationsResponse(
         items=[
