@@ -174,6 +174,9 @@ export function Story() {
           <a href="#how" className="text-mute hover:text-fg">
             How it works
           </a>
+          <Link href="/how-it-works" className="text-mute hover:text-fg">
+            PayPal and AI
+          </Link>
           <Link href="/audit" className="text-mute hover:text-fg">
             Audit log
           </Link>
@@ -372,7 +375,10 @@ export function Story() {
           <Link href="/login">Sign your first mandate</Link>
         </Button>
         <p className="text-sm text-dim">
-          Sandbox build. Test funds only. Carrier data is simulated.
+          Sandbox build. Test funds only. Carrier data is simulated.{" "}
+          <Link href="/how-it-works" className="underline underline-offset-4 hover:text-fg">
+            Where PayPal and AI fit
+          </Link>
         </p>
       </section>
     </div>

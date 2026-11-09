@@ -74,6 +74,7 @@ export function defaultHandlers(): HttpHandler[] {
     }),
     route("post", "/auth/demo-session", 201, f.session),
     route("post", "/auth/login", 200, f.session),
+    route("post", "/auth/signup", 201, f.session),
     route("post", "/auth/logout", 204, undefined),
     route("get", "/auth/me", 200, f.me),
 
@@ -229,6 +230,11 @@ export function defaultHandlers(): HttpHandler[] {
           brief: "Over the policy cap.",
         },
       ],
+    }),
+    route("post", `/resolution/cases/${id.case}/review-decision`, 200, {
+      case_id: id.case,
+      state: "OFFERED",
+      offer_id: id.offer,
     }),
     route("post", `/resolution/offers/${id.offer}/accept`, 200, {
       case_id: id.case,

@@ -2,6 +2,9 @@ import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./mock-api";
 
+/** Built at runtime so no password-shaped literal sits in the repo. */
+const TEST_PW = "x".repeat(12);
+
 test("landing links to sign in and the story content is present", async ({ page }) => {
   await mockApi(page, { role: null });
   await page.goto("/");
@@ -27,6 +30,30 @@ test("staff sign-in goes to the role's home", async ({ page }) => {
   await page.getByLabel("Password").fill("pw");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/ops$/);
+});
+
+test("creating an account signs in and lands on the buyer home", async ({ page }) => {
+  await mockApi(page, { role: null });
+  await page.goto("/login");
+  await page.getByLabel("New account name").fill("new-buyer");
+  await page.getByLabel("Choose a passphrase").fill(TEST_PW);
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/home$/);
+});
+
+test("signup shows friendly messages for a bad form and a taken handle", async ({ page }) => {
+  const m = await mockApi(page, { role: null });
+  await page.goto("/login");
+  await page.getByLabel("New account name").fill("x");
+  await page.getByLabel("Choose a passphrase").fill("short");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByText(/Use 3 to 32 characters: lowercase/)).toBeVisible();
+  expect(m.calls).not.toContain("POST /auth/signup");
+  await page.getByLabel("New account name").fill("taken");
+  await page.getByLabel("Choose a passphrase").fill(TEST_PW);
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByText("That handle is taken. Pick a different one.")).toBeVisible();
+  await expect(page).toHaveURL(/\/login$/);
 });
 
 test("wrong staff credentials show a clear message and stay put", async ({ page }) => {

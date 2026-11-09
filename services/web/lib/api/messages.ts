@@ -16,6 +16,11 @@ const COPY: Readonly<Record<string, ErrorCopy>> = {
     text: "Your session has ended or the details were not accepted.",
     retryable: false,
   },
+  HANDLE_TAKEN: {
+    title: "That handle is taken",
+    text: "Pick a different handle and try again.",
+    retryable: false,
+  },
   FORBIDDEN: {
     title: "Not available for this account",
     text: "This action belongs to a different kind of account.",

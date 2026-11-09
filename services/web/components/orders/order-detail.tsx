@@ -179,7 +179,10 @@ export function OrderDetail({
             {(order.item_titles ?? []).join(", ") || "Order"} · {formatDate(order.created_at)}
           </p>
         </div>
-        <Tag tone={orderTone(order.status)}>{orderStatusLabel(order.status)}</Tag>
+        <div className="flex flex-wrap items-center gap-2">
+          <Tag tone={orderTone(order.status)}>{orderStatusLabel(order.status)}</Tag>
+          <Tag tone="dashed">PayPal sandbox order</Tag>
+        </div>
       </div>
 
       <div role="tablist" aria-label="Order views" className="mb-6 flex gap-2">
