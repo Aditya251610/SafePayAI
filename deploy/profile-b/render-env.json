@@ -22,7 +22,9 @@
   "safepayai-edge": {
     "PS_APIGATEWAY_DEMO_MODE": "true",
     "PS_APIGATEWAY_UPSTREAM_CONNECT_TIMEOUT_S": "8",
-    "PS_APIGATEWAY_UPSTREAM_READ_TIMEOUT_S": "25"
+    "PS_APIGATEWAY_UPSTREAM_READ_TIMEOUT_S": "25",
+    "PS_APIGATEWAY_DEMO_PERSONA_LOGIN": "true",
+    "PS_APIGATEWAY_WAKE_URLS": "https://safepayai-core.onrender.com/mandate/healthz,https://safepayai-ai.onrender.com/shopping-agent/healthz,https://safepayai-paypal.onrender.com/paypal-adapter/health"
   },
   "safepayai-paypal": {
     "PS_PAYPALADAPTER_PAYPAL_TIMEOUT_SECONDS": "15",
