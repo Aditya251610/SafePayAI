@@ -180,6 +180,10 @@ async def internal_tick(
                 await session.rollback()
                 continue
 
+    # The reads above leave an autobegun transaction open when nothing needed committing;
+    # the shared relay opens its own `session.begin()` and raises if one is already active
+    # (live: POST /internal/tick -> 500 "A transaction is already begun on this Session").
+    await session.commit()
     relay_result = await relay_flush_outbox(session, _relay_config())
     await session.commit()
 
