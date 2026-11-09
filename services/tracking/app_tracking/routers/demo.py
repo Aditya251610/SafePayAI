@@ -41,12 +41,15 @@ def _not_implemented(endpoint: str) -> HTTPException:
 
 
 def _require_sandbox(claims: dict) -> None:
-    """Guards per spec s8: sandbox flags + merchant role, in order, fail closed."""
+    """Guards per spec s8: sandbox flags + a demo-driving role, in order, fail closed.
+
+    The api-gateway only routes the demo clock/force routes to `operator` sessions, so a
+    merchant-only guard made them unreachable end to end; both roles may drive the demo."""
     if not settings.sandbox_mode:
         raise HTTPException(status_code=404)
     if not settings.demo_controls_enabled:
         raise HTTPException(status_code=404)
-    if (claims.get("act") or {}).get("role") != "merchant":
+    if (claims.get("act") or {}).get("role") not in {"merchant", "operator"}:
         raise HTTPException(status_code=403, detail="ROLE_NOT_ALLOWED")
 
 
