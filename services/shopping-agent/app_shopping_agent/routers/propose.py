@@ -16,6 +16,7 @@ and hard checks at `checkout`/`mandate` remain authoritative regardless of `sour
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Literal
 
@@ -54,6 +55,8 @@ from app_shopping_agent.schemas.propose import (
     ProposeResponse,
 )
 from app_shopping_agent.settings import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["propose"])
 
@@ -315,6 +318,11 @@ async def propose(
                     source = "live"
                     no_match_reason = outcome.detail
                 else:
+                    logger.warning(
+                        "llm_output_rejected trace_id=%s status=%s",
+                        trace_id,
+                        outcome.status,
+                    )
                     # SCHEMA_INVALID or HARD_GATE_VIOLATION: never partially trust the
                     # model output -- fall back to the deterministic matcher instead
                     # (conflict C6: form fallback first, NO_PROPOSAL only if that fails
@@ -339,6 +347,13 @@ async def propose(
                         status = "NO_PROPOSAL"
             except LLMFailClosedError as exc:
                 validation_result = f"LLM_FAIL_CLOSED: {exc}"
+                # Ops visibility: without this the only symptom is model=None on the response.
+                logger.warning(
+                    "llm_fail_closed trace_id=%s provider=%s reason=%s",
+                    trace_id,
+                    settings.llm_provider,
+                    str(exc)[:300],
+                )
                 fallback = match_free_text_fallback(
                     catalog_items,
                     intent_text=intent_text,

@@ -25,6 +25,7 @@ from app_checkout.deps import (
     mint_outbound_token,
     require_idempotency_key,
     require_service_jwt,
+    valid_cart_id,
 )
 from app_checkout.errors import CheckoutError
 from app_checkout.schemas.carts import (
@@ -302,7 +303,7 @@ async def create_cart(
 
 @router.get("/carts/{cart_id}")
 async def get_cart(
-    cart_id: str,
+    cart_id: str = Depends(valid_cart_id),
     principal: Principal = Depends(require_service_jwt),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -325,7 +326,8 @@ async def get_cart(
 
 @router.post("/carts/{cart_id}/confirm", status_code=201)
 async def confirm_cart(
-    cart_id: str,
+    *,
+    cart_id: str = Depends(valid_cart_id),
     body: ConfirmCartRequest,
     principal: Principal = Depends(require_service_jwt),
     session: AsyncSession = Depends(get_db),

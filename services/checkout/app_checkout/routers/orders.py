@@ -30,6 +30,7 @@ from app_checkout.deps import (
     mint_outbound_token,
     require_idempotency_key,
     require_service_jwt,
+    valid_order_id,
 )
 from app_checkout.errors import CheckoutError
 from app_checkout.schemas.carts import OrderCancelRequest, OrderReturnRequest
@@ -823,7 +824,7 @@ async def orders_cancel(
 
 @router.post("/orders/{order_id}/capture")
 async def capture_order_endpoint(
-    order_id: str,
+    order_id: str = Depends(valid_order_id),
     principal: Principal = Depends(require_service_jwt),
     session: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -889,7 +890,7 @@ async def capture_order_endpoint(
 
 @router.get("/orders/{order_id}")
 async def get_order(
-    order_id: str,
+    order_id: str = Depends(valid_order_id),
     principal: Principal = Depends(require_service_jwt),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -907,7 +908,7 @@ async def get_order(
 
 @router.get("/orders/{order_id}/receipt")
 async def get_receipt(
-    order_id: str,
+    order_id: str = Depends(valid_order_id),
     principal: Principal = Depends(require_service_jwt),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
