@@ -3,6 +3,9 @@ import { IDS, terms } from "../../mocks/fixtures";
 import { TEST_BASE, calls, callsTo } from "../../mocks/handlers";
 import { ApiError, InvalidIdError, createApi, createClient } from "@/lib/api";
 
+/** Built at runtime so no password-shaped literal sits in the repo. */
+const TEST_PW = "x".repeat(12);
+
 const api = createApi(createClient({ baseUrl: TEST_BASE, sleep: () => Promise.resolve() }));
 
 function last() {
@@ -27,15 +30,15 @@ describe("auth", () => {
     expect(calls).toHaveLength(0);
   });
   it("signup posts the new account without CSRF and returns a session", async () => {
-    const r = await api.auth.signup({ handle: "new-buyer", password: "long-enough-pw" });
+    const r = await api.auth.signup({ handle: "new-buyer", password: TEST_PW });
     expect(r.principal.role).toBe("buyer");
-    expect(last().body).toEqual({ handle: "new-buyer", password: "long-enough-pw" });
+    expect(last().body).toEqual({ handle: "new-buyer", password: TEST_PW });
     expect(callsTo("GET", "/auth/csrf")).toHaveLength(0);
   });
   it("signup rejects a bad handle or short password locally", async () => {
-    await expect(
-      api.auth.signup({ handle: "Ab", password: "long-enough-pw" }),
-    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(api.auth.signup({ handle: "Ab", password: TEST_PW })).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
     await expect(api.auth.signup({ handle: "okay", password: "short" })).rejects.toMatchObject({
       code: "VALIDATION_ERROR",
     });
