@@ -130,6 +130,7 @@ async def proxy_mandate_revoke(
     mandate_id: str,
     request: Request,
     response: Response,
+    body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
     _csrf: None = Depends(require_csrf()),
 ) -> Any:
@@ -141,6 +142,7 @@ async def proxy_mandate_revoke(
         method="POST",
         principal=principal,
         scope=["mandate:revoke"],
+        body=body,
         mandate_id=mandate_id,
     )
 
@@ -484,6 +486,7 @@ async def proxy_tracking_demo_force(
     request: Request,
     response: Response,
     settings: Settings = Depends(get_settings),
+    body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_operator),
     _csrf: None = Depends(require_csrf()),
 ) -> Any:
@@ -496,6 +499,7 @@ async def proxy_tracking_demo_force(
         method="POST",
         principal=principal,
         scope=["tracking:demo"],
+        body=body,
     )
 
 
@@ -581,6 +585,7 @@ async def proxy_resolution_offer_accept(
     offer_id: str,
     request: Request,
     response: Response,
+    body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
     _csrf: None = Depends(require_csrf()),
 ) -> Any:
@@ -592,6 +597,7 @@ async def proxy_resolution_offer_accept(
         method="POST",
         principal=principal,
         scope=["resolution:accept"],
+        body=body,
         require_idempotency=True,
         money_route=True,
     )
@@ -642,6 +648,7 @@ async def proxy_resolution_approval_consent(
     token: str,
     request: Request,
     response: Response,
+    body: dict[str, Any] = Body(default={}),
     principal: Principal = Depends(require_buyer),
     _csrf: None = Depends(require_csrf()),
 ) -> Any:
@@ -653,8 +660,70 @@ async def proxy_resolution_approval_consent(
         method="POST",
         principal=principal,
         scope=["resolution:consent"],
+        body=body,
         require_idempotency=True,
         money_route=True,
+    )
+
+
+@router.post("/resolution/cases/{case_id}/review-decision")
+async def proxy_resolution_review_decision(
+    case_id: str,
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    principal: Principal = Depends(require_reviewer),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    # resolution's review_decision does not require Idempotency-Key (the case state
+    # machine makes a replay a 409 ILLEGAL_TRANSITION), so neither does the gateway.
+    return await forward(
+        request,
+        response,
+        service="resolution",
+        upstream_path=f"/cases/{case_id}/review-decision",
+        method="POST",
+        principal=principal,
+        scope=["resolution:review"],
+        body=body,
+    )
+
+
+@router.post("/resolution/cases/{case_id}/appeal")
+async def proxy_resolution_appeal(
+    case_id: str,
+    request: Request,
+    response: Response,
+    body: dict[str, Any] = Body(default={}),
+    principal: Principal = Depends(require_buyer),
+    _csrf: None = Depends(require_csrf()),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="resolution",
+        upstream_path=f"/cases/{case_id}/appeal",
+        method="POST",
+        principal=principal,
+        scope=["resolution:appeal"],
+        body=body,
+    )
+
+
+@router.get("/resolution/notifications")
+async def proxy_resolution_notifications(
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(require_buyer),
+) -> Any:
+    return await forward(
+        request,
+        response,
+        service="resolution",
+        upstream_path="/notifications",
+        method="GET",
+        principal=principal,
+        scope=["resolution:read"],
     )
 
 

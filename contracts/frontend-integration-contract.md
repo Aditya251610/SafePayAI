@@ -55,11 +55,29 @@ at capacity. Rate-limited per IP (`PS_APIGATEWAY_*` auth limits).
 }
 ```
 
+### `POST /api/auth/signup` → 201
+```json
+{ "handle": "alex-r", "password": "at-least-10-chars", "display_name": "Alex R." }
+```
+Creates a **persistent** buyer account and logs in immediately (same session cookie and
+same response shape as `/login`:
+`{principal:{actor_type,actor_id,role,display_name,merchant_id:null},expires_at}`).
+
+- `handle`: stripped + lowercased, then must match `^[a-z0-9][a-z0-9_-]{2,31}$`. Reserved
+  prefixes rejected with 422: `merchant-`, `operator`, `reviewer`, `admin`, `demo`,
+  `buyer-persona`.
+- `password`: 10-128 chars. `display_name`: optional, 1-60 chars, defaults to the handle.
+- Extra fields are rejected (422). Invalid input → 422 `validation_error`.
+- Handle already exists → **409** `{"error":"HANDLE_TAKEN","message":"...","request_id":"..."}`.
+- Rate-limited per IP (5 per 10 min) → 429 `RATE_LIMITED` with `Retry-After`.
+- No CSRF token needed (no session exists yet).
+
 ### `POST /api/auth/login` → 200
 ```json
 { "handle": "...", "password": "..." }
 ```
-For merchant/operator/reviewer accounts (seeded, not self-service signup). Returns 401
+For seeded merchant/operator/reviewer accounts and for buyers created via
+`/api/auth/signup`. Returns 401
 `UNAUTHENTICATED` for both wrong password and unknown handle — identical in shape and
 timing, don't try to distinguish them in the UI. Rate-limited per (IP, handle) pair.
 Response body includes `principal.merchant_id` (see "Roles" below).
@@ -119,7 +137,7 @@ service.
 Token lifetime is `PS_APIGATEWAY_CSRF_TTL_S` (default 3600s) from issuance.
 
 **Exempt from this check** (no `X-CSRF-Token` needed): `POST /api/auth/login`,
-`POST /api/auth/demo-session` (no session exists yet to bind a token to),
+`POST /api/auth/signup`, `POST /api/auth/demo-session` (no session exists yet to bind a token to),
 `GET /api/auth/csrf` itself (would be circular), and `POST /api/auth/logout` (not a
 meaningful CSRF target). Every other `/api/*` `POST`/`PUT` route needs it.
 
@@ -206,10 +224,16 @@ needs `Idempotency-Key`. **$** = money-route gated.
 | Method | Path | Role | CSRF | Notes |
 |---|---|---|---|---|
 | POST | `/api/auth/demo-session` | none | no | 201, see §2 |
+| POST | `/api/auth/signup` | none | no | 201 / 409 `HANDLE_TAKEN` / 422, see §2 |
 | POST | `/api/auth/login` | none | no | 200, see §2 |
 | POST | `/api/auth/logout` | session | no | 204 |
 | GET | `/api/auth/me` | session | — | 200, see §2 |
 | GET | `/api/auth/csrf` | session | — | 200, see §3 |
+
+> **Body forwarding fix:** `mandate .../revoke`, `resolution .../offers/{id}/accept`,
+> `resolution .../approvals/{token}/consent` and `tracking .../demo/shipments/{id}/force`
+> previously dropped the request body; the gateway now forwards the JSON body (default `{}`)
+> to the owning service on all four.
 
 ### Mandate (`/api/mandate/*`)
 | Method | Path | Role | CSRF | Idem | Notes |
@@ -275,11 +299,14 @@ see §Ops below); check that instead of inferring from a 404.
 | POST | `/api/resolution/cases/report` | buyer | yes | yes | | buyer-initiated report (vs. system-detected). **Body confirmed live: `{"order_id": "<uuid>", "text": "<free text>"}`** — not `{"reason_code": ...}`, which this route rejects with `extra_forbidden` |
 | GET | `/api/resolution/cases/{case_id}` | session | — | — | | buyer sees only their own case (404 if not theirs) |
 | GET | `/api/resolution/cases` | merchant or operator | — | — | | |
-| GET | `/api/resolution/review/queue` | reviewer | — | — | | **No seeded `reviewer` account exists anywhere in `services/api-gateway/scripts/seed.py`** as of this pass (it seeds `merchant-*`, `operator`, an optional `buyer-persona` — no reviewer). There is currently no documented way to actually obtain a reviewer session on any deployment. Either seed one before building UI against this route, or treat it as blocked |
-| POST | `/api/resolution/offers/{offer_id}/accept` | buyer | yes | yes | yes | |
+| GET | `/api/resolution/review/queue` | reviewer | — | — | | reviewer login: handle `reviewer-demo`, seeded by `scripts/seed.py` when `SEED_REVIEWER_PASSWORD` is set (otherwise not present on that deployment) |
+| POST | `/api/resolution/cases/{case_id}/review-decision` | reviewer | yes | — | | forwards the JSON body to resolution (`decision` + optional `reason`; `DECLINE`/`CLOSE` need a reason, else 422 `REASON_REQUIRED`); case must be in `HUMAN_REVIEW` else 409 `ILLEGAL_TRANSITION`. No Idempotency-Key required (resolution does not require one) |
+| POST | `/api/resolution/cases/{case_id}/appeal` | buyer | yes | — | | buyer's own `DECLINED` case → `HUMAN_REVIEW`; body `{note?}`; 404 if not theirs, 409 if not declined |
+| GET | `/api/resolution/notifications` | buyer | — | — | | buyer's own notifications |
+| POST | `/api/resolution/offers/{offer_id}/accept` | buyer | yes | yes | yes | body (e.g. `proposal_hash`) is now forwarded to resolution |
 | POST | `/api/resolution/offers/{offer_id}/decline` | buyer | yes | yes | | body: `{reason_code: "NOT_WANTED"\|"WANT_HUMAN"\|"OTHER"}` |
 | GET | `/api/resolution/approvals/{token}` | session | — | — | | tier-2 approval-link preview, pure read |
-| POST | `/api/resolution/approvals/{token}/consent` | buyer | yes | yes | yes | tier-2 consent; buyer must be the case's own buyer |
+| POST | `/api/resolution/approvals/{token}/consent` | buyer | yes | yes | yes | tier-2 consent; buyer must be the case's own buyer; body (e.g. `proposal_hash`) is now forwarded |
 | POST | `/api/resolution/cases/{case_id}/merchant-action` | merchant | yes | yes | | |
 | GET | `/api/resolution/controls/refunds-frozen` | operator | — | — | | reads the kill-switch state |
 | PUT | `/api/resolution/controls/refunds-frozen` | operator | yes | — | yes | toggles the kill-switch |
@@ -331,7 +358,9 @@ see §Ops below); check that instead of inferring from a 404.
   a cart blocked as over-cap, don't assume the displayed `remaining_cap_minor_after`
   is trustworthy in that same response; re-fetch the mandate's own `remaining_minor`
   as the source of truth instead.
-- **No seeded `reviewer` account** — see the resolution table above. Blocks building
-  real UI for `GET /api/resolution/review/queue` until one exists.
+- **Reviewer account is opt-in per deployment**: `reviewer-demo` only exists where
+  `SEED_REVIEWER_PASSWORD` was set when `scripts/seed.py` ran. Optional buyer personas
+  `buyer-persona` / `buyer-alex` follow the same rule (`SEED_BUYER_PASSWORD` /
+  `SEED_BUYER_ALEX_PASSWORD`).
 - **A 504 on a money route is not a failure signal** — see §6. This is a correctness
   issue for any frontend code that treats a non-2xx as "the action didn't happen."
