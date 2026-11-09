@@ -96,9 +96,13 @@ class GeminiProvider:
             response = await client.aio.models.generate_content(
                 model=self._model,
                 contents=prompt,
+                # response_schema is deliberately NOT sent: our pydantic-style schemas carry
+                # `additionalProperties`, which the SDK forwards as `additional_properties` and
+                # Gemini rejects with a 400 (live: every call fell back to Groq). The JSON mime
+                # hint is enough; validate_cart_output re-validates strictly, the same design
+                # triage-ai's provider documents.
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_schema=json_schema,
                     temperature=0.0,
                 ),
             )
