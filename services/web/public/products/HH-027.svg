@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480" role="img">
+<title>Stainless Mixing Bowl Set</title>
+<style>.c{fill:#f3f0e6}.C{stroke:#f3f0e6;fill:none}.a{fill:#ff6a3d}.A{stroke:#ff6a3d;fill:none}.s{fill:#bef542}.S{stroke:#bef542;fill:none}.m{fill:#b1aea3}.M{stroke:#b1aea3;fill:none}.d{fill:#0a0a0b}.D{stroke:#0a0a0b;fill:none}.p{fill:#1c1c20}.P{stroke:#1c1c20;fill:none}</style>
+<defs><clipPath id="kHH027"><polygon points="8,8 582,8 618,44 618,460 8,460"/></clipPath><pattern id="gHH027" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#2b2b31" stroke-width="1"/></pattern></defs>
+<polygon points="22,22 596,22 632,58 632,474 22,474" fill="#ff6a3d"/>
+<polygon points="8,8 582,8 618,44 618,460 8,460" fill="#131315"/>
+<g clip-path="url(#kHH027)"><rect width="640" height="480" fill="url(#gHH027)" opacity=".55"/></g>
+<polygon points="34,46 44,34 50,34 40,46" class="s"/><polygon points="48,46 58,34 64,34 54,46" class="s"/>
+<rect x="160" y="46" width="320" height="324" fill="#1c1c20" stroke="#2b2b31" stroke-width="2"/><g transform="translate(320 208) scale(1.16) rotate(-5)"><path d="M-112 -20A112 108 0 0 0 112 -20Z" class="c"/><rect x="-124" y="-34" width="248" height="16" class="m"/><path d="M-96 14A100 90 0 0 0 96 14Z" class="a"/><rect x="-44" y="86" width="88" height="14" class="m"/></g>
+<path d="M8 400H618" stroke="#2b2b31" stroke-width="2"/>
+<rect x="28" y="412" width="104" height="32" fill="#0a0a0b" stroke="#ff6a3d" stroke-width="2"/>
+<text x="80" y="434" text-anchor="middle" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="17" font-weight="700" letter-spacing="2" fill="#f3f0e6">HH-027</text>
+<text x="598" y="434" text-anchor="end" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="14" letter-spacing="3" fill="#b1aea3">HEARTH</text>
+<path d="M582 8L618 44" stroke="#ff6a3d" stroke-width="3"/>
+<polygon points="8,8 582,8 618,44 618,460 8,460" fill="none" stroke="#4a4a53" stroke-width="3"/>
+</svg>
