@@ -29,7 +29,10 @@ from app_mandate.settings import Settings, get_settings
 # PS_APIGATEWAY_PREVIOUS_PUBLIC_KEYS membership is what makes a key verifiable at
 # all) - widening the issuer allowlist to match reconciles the two sides instead of
 # ripping out checkout's already-built, already-used minting pattern.
-TRUSTED_ISSUERS = frozenset({"api-gateway", "checkout", "shopping-agent"})
+# resolution mints its own issuer="resolution" token for GET /mandates/{id}/terms (live:
+# every automated case 401'd here, so no refund offer could ever be built). Same reasoning as
+# above: the signing key, not the issuer name, is what proves identity.
+TRUSTED_ISSUERS = frozenset({"api-gateway", "checkout", "shopping-agent", "resolution"})
 
 
 @dataclass(frozen=True)
