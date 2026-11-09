@@ -9,6 +9,10 @@ updates:
   - package-ecosystem: "npm"
     directory: "/services/web"
     schedule: { interval: "monthly" }
+    ignore:
+      # Majors (Next, Tailwind, Zod, TypeScript, ESLint, Vitest, ...) are taken deliberately, not in a batch.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       web-deps: { patterns: ["*"] }
 
@@ -30,6 +34,12 @@ updates:
   - package-ecosystem: "pip"
     directory: "/services/shopping-agent"
     schedule: { interval: "monthly" }
+    ignore:
+      # LLM SDK majors are only taken with live-key verification (AI services fail closed).
+      - dependency-name: "google-genai"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "openai"
+        update-types: ["version-update:semver-major"]
     groups:
       shopping_agent_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
@@ -55,6 +65,12 @@ updates:
   - package-ecosystem: "pip"
     directory: "/services/triage-ai"
     schedule: { interval: "monthly" }
+    ignore:
+      # LLM SDK majors are only taken with live-key verification (AI services fail closed).
+      - dependency-name: "google-genai"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "openai"
+        update-types: ["version-update:semver-major"]
     groups:
       triage_ai_deps: { patterns: ["*"] }
   - package-ecosystem: "pip"
@@ -66,50 +82,90 @@ updates:
   - package-ecosystem: "docker"
     directory: "/services/api-gateway"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       api_gateway_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/mandate"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       mandate_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/catalog"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       catalog_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/shopping-agent"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       shopping_agent_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/checkout"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       checkout_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/paypal-adapter"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       paypal_adapter_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/tracking"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       tracking_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/resolution"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       resolution_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/triage-ai"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       triage_ai_docker: { patterns: ["*"] }
   - package-ecosystem: "docker"
     directory: "/services/audit"
     schedule: { interval: "monthly" }
+    ignore:
+      # Runtime stays on the Python 3.12 line the lockfile, CI and the live deploy use.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       audit_docker: { patterns: ["*"] }

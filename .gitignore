@@ -36,3 +36,10 @@ build/
 .idea/
 .vscode/
 uv.lock.bak
+.vercel
+.env*
+
+# /brag launch-video output (local only)
+brag-output/
+brag-output-*/
+skills-lock.json
