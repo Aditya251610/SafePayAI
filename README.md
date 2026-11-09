@@ -41,8 +41,13 @@ for simulated shipments reports `FAILED` (non-fatal by design); the AI's primary
 
 ```bash
 cp .env.example .env   # fill in sandbox PayPal credentials; never commit this file
-docker compose up
+docker compose up      # then open http://localhost:3000
 ```
+
+For the web app alone: `cd services/web && pnpm install && pnpm dev`.
+
+The step-by-step demo (accounts to sign in as, what to click, what you should see) is the
+**Run the demo** page at `/guide` and, in plain text, [`docs/DEMO-GUIDE.md`](docs/DEMO-GUIDE.md).
 
 Each service also runs standalone: `cd services/<slug> && uv run uvicorn app.main:app --reload`.
 

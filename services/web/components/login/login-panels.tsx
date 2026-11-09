@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Slab } from "@/components/ui/slab";
 import { Tag } from "@/components/ui/tag";
+import { PersonaPicker } from "@/components/login/persona-picker";
 import { ApiErrorNotice } from "@/components/shared/api-error";
 import { WakingUp } from "@/components/shared/waking-up";
 import { api } from "@/lib/api";
@@ -45,7 +46,7 @@ export function validateSignup(input: {
   return out;
 }
 
-type Kind = "demo" | "staff" | "signup";
+type Kind = "demo" | "staff" | "signup" | "persona";
 
 /** Sign in, create an account, or try the demo. All end in the role's own home. */
 export function LoginPanels() {
@@ -116,7 +117,8 @@ export function LoginPanels() {
   const signupInvalid =
     failedKind === "signup" &&
     (apiError?.code === "VALIDATION_ERROR" || apiError?.code === "validation_error");
-  const inline = staffError || handleTaken || signupInvalid;
+  const personaGone = failedKind === "persona" && apiError?.status === 404;
+  const inline = staffError || handleTaken || signupInvalid || personaGone;
 
   return (
     <div className="grid gap-8 lg:grid-cols-3">
@@ -231,6 +233,14 @@ export function LoginPanels() {
           {pending === "demo" ? "Starting…" : "Start demo session"}
         </Button>
       </Slab>
+
+      <PersonaPicker
+        initialHandle={params.get("persona")}
+        busy={pending !== null}
+        pending={pending === "persona"}
+        signInError={failedKind === "persona" ? error : null}
+        onSignIn={(h) => void run("persona", () => api.auth.demoPersona(h))}
+      />
 
       <div className="lg:col-span-3" aria-live="polite">
         {waking ? (

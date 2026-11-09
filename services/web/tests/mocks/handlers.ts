@@ -74,6 +74,8 @@ export function defaultHandlers(): HttpHandler[] {
     }),
     route("post", "/auth/demo-session", 201, f.session),
     route("post", "/auth/login", 200, f.session),
+    route("get", "/auth/demo-personas", 200, f.personas),
+    route("post", "/auth/demo-persona", 200, f.session),
     route("post", "/auth/signup", 201, f.session),
     route("post", "/auth/logout", 204, undefined),
     route("get", "/auth/me", 200, f.me),

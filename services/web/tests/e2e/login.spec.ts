@@ -28,7 +28,7 @@ test("staff sign-in goes to the role's home", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Handle").fill("operator");
   await page.getByLabel("Password").fill("pw");
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/ops$/);
 });
 
@@ -61,7 +61,7 @@ test("wrong staff credentials show a clear message and stay put", async ({ page 
   await page.goto("/login");
   await page.getByLabel("Handle").fill("operator");
   await page.getByLabel("Password").fill("nope");
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByText("Handle or password was not accepted.")).toBeVisible();
   await expect(page).toHaveURL(/\/login$/);
 });
@@ -103,4 +103,21 @@ test("unsafe next paths are ignored", async ({ page }) => {
   await page.goto("/login?next=https%3A%2F%2Fevil.test");
   await page.getByRole("button", { name: "Start demo session" }).click();
   await expect(page).toHaveURL(/\/home$/);
+});
+
+test("a seeded account signs in from the picker and lands on its home", async ({ page }) => {
+  const m = await mockApi(page, { role: null });
+  await page.goto("/login");
+  await page.getByLabel("Account", { exact: true }).selectOption("operator");
+  await expect(page.getByText("Moves the simulated carrier clock")).toBeVisible();
+  await page.getByRole("button", { name: /^Sign in as Operator/ }).click();
+  await expect(page).toHaveURL(/\/ops$/);
+  expect(m.calls).toContain("POST /auth/demo-persona");
+});
+
+test("the picker explains when seeded accounts are off", async ({ page }) => {
+  await mockApi(page, { role: null, personasOff: true });
+  await page.goto("/login");
+  await expect(page.getByText("Seeded accounts are off on this deployment.")).toBeVisible();
+  await expect(page.getByLabel("Account", { exact: true })).toHaveCount(0);
 });
