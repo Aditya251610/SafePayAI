@@ -8,8 +8,12 @@ output must never reach a money-moving code path — only validated enums/IDs ma
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+
+logger = logging.getLogger(__name__)
 
 
 class LLMFailClosedError(Exception):
@@ -40,7 +44,9 @@ class LLMGateway:
     async def call(self, prompt: str, json_schema: dict[str, Any], timeout_s: float) -> LLMCallResult:
         try:
             return await self._primary.call(prompt, json_schema, timeout_s)
-        except LLMFailClosedError:
+        except LLMFailClosedError as exc:
+            # Never the prompt or any key: only why the primary gave up (truncated).
+            logger.warning("llm_primary_failed reason=%s", str(exc)[:300])
             if self._fallback is None:
                 raise
             return await self._fallback.call(prompt, json_schema, timeout_s)
