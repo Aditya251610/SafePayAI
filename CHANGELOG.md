@@ -46,6 +46,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - *(web)* Merchant desk and case actions, plus local fonts (#119)
 - *(web)* Ops console and reviewer queue (#120)
 - *(web)* Responsive pass - phone action bar, 48px targets, tablet split view (#121)
+- Gateway buyer signup, request-body forwarding fixes, reviewer/appeal/notification proxy routes (#153)
 
 ### Bug Fixes
 
@@ -156,4 +157,5 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Stop the stray root Vercel project and pause Dependabot version PRs (#151)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
