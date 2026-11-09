@@ -153,3 +153,5 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
+- Regenerate changelog [skip ci]
+- Stop the stray root Vercel project and pause Dependabot version PRs (#151)
