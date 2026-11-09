@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 
 def sample_terms(**overrides) -> dict:
     terms = {
@@ -10,7 +12,9 @@ def sample_terms(**overrides) -> dict:
         "max_qty_per_line": 2,
         "merchant_allowlist": [{"merchant_id": "shop-a", "display_name": "Shop A"}],
         "intent_text": "birthday gift for a runner",
-        "expires_at": "2026-11-01T12:00:00Z",
+        "expires_at": (datetime.now(UTC) + timedelta(days=7)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
         "protection": {
             "kinds_covered": ["LATE", "LOST"],
             "max_refund_minor": 5000,
