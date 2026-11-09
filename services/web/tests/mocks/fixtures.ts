@@ -35,6 +35,22 @@ export const principal = {
 
 export const session = { principal, expires_at: "2026-10-18T12:00:00Z" };
 
+/** The seeded accounts the gateway lists when seeded-account sign-in is on. */
+export const personas = {
+  personas: [
+    { handle: "buyer-persona", role: "buyer", display_name: "Persona Buyer", merchant_id: null },
+    { handle: "buyer-alex", role: "buyer", display_name: "Alex", merchant_id: null },
+    {
+      handle: "merchant-trailhead",
+      role: "merchant",
+      display_name: "Trailhead (demo merchant)",
+      merchant_id: "mrc_trailhead",
+    },
+    { handle: "operator", role: "operator", display_name: "Operator", merchant_id: null },
+    { handle: "reviewer-demo", role: "reviewer", display_name: "Reviewer", merchant_id: null },
+  ],
+};
+
 export const me = {
   actor_type: "buyer",
   actor_id: IDS.buyer,

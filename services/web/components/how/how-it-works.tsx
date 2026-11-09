@@ -186,6 +186,9 @@ export function HowItWorks() {
           <Link href="/" className="text-mute hover:text-fg">
             Home
           </Link>
+          <Link href="/guide" className="text-mute hover:text-fg">
+            Run the demo
+          </Link>
           <Link href="/audit" className="text-mute hover:text-fg">
             Audit log
           </Link>

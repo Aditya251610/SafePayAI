@@ -14,7 +14,15 @@ export default function LoginPage() {
         <Link href="/" aria-label="SafePayAI home">
           <Logo />
         </Link>
-        <Tag tone="dashed">Sandbox · test funds</Tag>
+        <div className="flex flex-wrap items-center gap-4">
+          <Link
+            href="/guide"
+            className="text-xs font-bold uppercase tracking-[0.12em] text-mute hover:text-fg"
+          >
+            Run the demo
+          </Link>
+          <Tag tone="dashed">Sandbox · test funds</Tag>
+        </div>
       </header>
       <div className="py-12">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-seal">/login</p>

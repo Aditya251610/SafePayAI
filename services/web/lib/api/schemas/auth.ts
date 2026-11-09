@@ -50,3 +50,17 @@ export const signupRequestSchema = z.object({
   display_name: z.string().trim().min(1).max(64).optional(),
 });
 export type SignupRequest = z.infer<typeof signupRequestSchema>;
+
+export const demoPersonaSchema = z.object({
+  handle: z.string().min(1),
+  role: roleSchema,
+  display_name: z.string().nullish(),
+  merchant_id: z.string().nullish(),
+});
+export type DemoPersona = z.infer<typeof demoPersonaSchema>;
+
+export const demoPersonasSchema = z.object({ personas: z.array(demoPersonaSchema) });
+export type DemoPersonas = z.infer<typeof demoPersonasSchema>;
+
+export const demoPersonaRequestSchema = z.object({ handle: z.string().min(1) });
+export type DemoPersonaRequest = z.infer<typeof demoPersonaRequestSchema>;

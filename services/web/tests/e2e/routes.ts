@@ -229,3 +229,6 @@ export function buyerRoutes(): NonNullable<MockOptions["routes"]> {
     },
   };
 }
+
+/** Pages anyone can open without signing in. The accessibility and banned-claims crawl visits each. */
+export const PUBLIC_ROUTES: readonly string[] = ["/", "/login", "/how-it-works", "/guide"];

@@ -14,6 +14,8 @@ export interface MockOptions {
   role: Role | null;
   /** Make demo-session answer with this status instead of creating a buyer. */
   demoStatus?: number;
+  /** Answer the seeded-account routes with 404, as a deployment with them off does. */
+  personasOff?: boolean;
   /** Extra answers keyed "METHOD /path" (path without /api). They win over the defaults. */
   routes?: Record<string, MockResponse | ((body: unknown) => MockResponse)>;
 }
@@ -78,6 +80,21 @@ export async function mockApi(
       }
       role = "buyer";
       return json(201, f.session);
+    }
+    if (path === "/auth/demo-personas") {
+      if (opts.personasOff) {
+        return json(404, { error: "NOT_FOUND", message: "off", request_id: "e2e" });
+      }
+      return json(200, f.personas);
+    }
+    if (path === "/auth/demo-persona") {
+      const body = req.postDataJSON() as { handle?: string };
+      const found = f.personas.personas.find((p) => p.handle === body.handle);
+      if (opts.personasOff || !found) {
+        return json(404, { error: "NOT_FOUND", message: "no", request_id: "e2e" });
+      }
+      role = found.role as Role;
+      return json(200, { principal: { ...f.principal, role: found.role }, expires_at: f.ISO });
     }
     if (path === "/auth/signup") {
       const body = req.postDataJSON() as { handle?: string };

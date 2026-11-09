@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { ApiClient } from "../client";
 import { parseBody } from "./validate";
 import {
+  demoPersonaRequestSchema,
+  demoPersonasSchema,
   loginRequestSchema,
   meSchema,
   sessionResponseSchema,
@@ -14,6 +16,16 @@ export function authApi(c: ApiClient) {
   return {
     demoSession: async (signal?: AbortSignal) =>
       c.send("/auth/demo-session", sessionResponseSchema, { noCsrf: true, signal }),
+    /** Seeded accounts for the picker. 404 when the deployment has them switched off. */
+    demoPersonas: async (signal?: AbortSignal) =>
+      c.get("/auth/demo-personas", demoPersonasSchema, { signal }),
+    /** Sign in as a seeded account by handle; no password, no CSRF. 404 if off or not allowed. */
+    demoPersona: async (handle: string, signal?: AbortSignal) =>
+      c.send("/auth/demo-persona", sessionResponseSchema, {
+        noCsrf: true,
+        body: parseBody(demoPersonaRequestSchema, { handle }),
+        signal,
+      }),
     login: async (input: LoginRequest, signal?: AbortSignal) =>
       c.send("/auth/login", sessionResponseSchema, {
         noCsrf: true,
