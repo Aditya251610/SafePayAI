@@ -25,7 +25,8 @@ import { useBuyerHome, useCatalogMerchants } from "@/lib/hooks/queries";
 import { saveProposal } from "@/lib/storage/entries";
 import { cn } from "@/lib/utils";
 
-const EXAMPLES = ["Desk lamp, under $60", "USB-C dock, any brand", "Replacement cable, 2 m"];
+// Match the seeded catalog (hearth, pixelwire, trailhead) so the first click returns a cart.
+const EXAMPLES = ["Wireless earbuds, under $80", "A pour-over coffee set", "A linen throw blanket"];
 const INTENT_MAX = 500;
 
 type Mode = "intent" | "form";

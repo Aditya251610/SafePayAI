@@ -73,8 +73,10 @@ describe("IntentForm", () => {
 
   it("fills the box from an example", async () => {
     renderApp(<IntentForm />);
-    await userEvent.click(await screen.findByRole("button", { name: "Desk lamp, under $60" }));
-    expect(screen.getByLabelText("What do you need?")).toHaveValue("Desk lamp, under $60");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Wireless earbuds, under $80" }),
+    );
+    expect(screen.getByLabelText("What do you need?")).toHaveValue("Wireless earbuds, under $80");
   });
 
   it("sends the form mode with the budget in minor units", async () => {
