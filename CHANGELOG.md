@@ -82,6 +82,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Remove the root vercel.json that disabled web deployments (#159)
 - Let operators drive the tracking demo clock and force routes (#160)
 - End the open read transaction before resolution's tick flushes the outbox (#161)
+- Trust resolution's service token in mandate (#162)
 
 ### Documentation
 
@@ -162,6 +163,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Stop the stray root Vercel project and pause Dependabot version PRs (#151)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
