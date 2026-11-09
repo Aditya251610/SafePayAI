@@ -1,0 +1,61 @@
+{
+  "_comment": "Non-secret settings for the Render Profile B hosts. Names -> values only; secrets (keys, DB URLs, tick/HMAC secrets) are NEVER stored here. Apply with scripts/render_apply_env.py. Each value was found missing on the live deploy (service defaults are localhost/dev values) - see deploy/profile-b/ENV.md.",
+  "frontend_origin": "https://safepayai-web.vercel.app",
+  "safepayai-core": {
+    "PS_CHECKOUT_HTTP_TIMEOUT_CATALOG_MS": "4000",
+    "PS_CHECKOUT_HTTP_TIMEOUT_MANDATE_MS": "6000",
+    "PS_CHECKOUT_HTTP_TIMEOUT_INTENT_FIT_MS": "8000",
+    "PS_CHECKOUT_HTTP_TIMEOUT_ADAPTER_MS": "15000",
+    "PS_CHECKOUT_RETURN_BASE_URL": "https://safepayai-web.vercel.app",
+    "PS_TRACKING_SANDBOX_MODE": "true",
+    "PS_TRACKING_DEMO_CONTROLS_ENABLED": "true",
+    "PS_TRACKING_LATE_GRACE_SECONDS": "86400",
+    "PS_TRACKING_DEMO_MAX_ADVANCE_SECONDS": "2592000",
+    "PS_TRACKING_DEMO_MAX_ACTIONS_PER_MINUTE": "30",
+    "PS_RESOLUTION_DEMO_MODE": "true",
+    "PS_RESOLUTION_TRIAGE_TIMEOUT_S": "10",
+    "PS_RESOLUTION_ADAPTER_TIMEOUT_S": "20",
+    "PS_TRACKING_SERVICE_SIGNING_KID": "k1",
+    "PS_RESOLUTION_INTERNAL_JWT_KID": "k1",
+    "PS_RESOLUTION_INTERNAL_JWT_TRUSTED_ISSUERS": "api-gateway,resolution,tracking"
+  },
+  "safepayai-edge": {
+    "PS_APIGATEWAY_DEMO_MODE": "true",
+    "PS_APIGATEWAY_UPSTREAM_CONNECT_TIMEOUT_S": "8",
+    "PS_APIGATEWAY_UPSTREAM_READ_TIMEOUT_S": "25"
+  },
+  "safepayai-paypal": {
+    "PS_PAYPALADAPTER_PAYPAL_TIMEOUT_SECONDS": "15",
+    "PS_PAYPALADAPTER_PAYPAL_RETURN_URL_ALLOWED_ORIGINS": "https://safepayai-web.vercel.app"
+  },
+  "safepayai-ai": {
+    "PS_SHOPPINGAGENT_LLM_ENABLED": "true",
+    "PS_SHOPPINGAGENT_LLM_PROVIDER": "gemini",
+    "PS_SHOPPINGAGENT_LLM_FALLBACK_PROVIDER": "groq",
+    "PS_SHOPPINGAGENT_LLM_MODEL_CART": "gemini-3.6-flash",
+    "PS_SHOPPINGAGENT_LLM_MODEL_CART_FALLBACK": "openai/gpt-oss-120b",
+    "PS_SHOPPINGAGENT_LLM_MODEL_FIT": "gemini-3.5-flash-lite",
+    "PS_SHOPPINGAGENT_LLM_MODEL_FIT_FALLBACK": "openai/gpt-oss-20b",
+    "PS_SHOPPINGAGENT_LLM_TIMEOUT_CART_S": "8",
+    "PS_SHOPPINGAGENT_LLM_TIMEOUT_FIT_S": "6",
+    "PS_SHOPPINGAGENT_LLM_WALL_BUDGET_S": "12",
+    "PS_SHOPPINGAGENT_LLM_TEMPERATURE_CART": "0",
+    "PS_SHOPPINGAGENT_LLM_TEMPERATURE_FIT": "0",
+    "PS_SHOPPINGAGENT_LLM_MAX_OUTPUT_CART": "400",
+    "PS_SHOPPINGAGENT_LLM_MAX_OUTPUT_FIT": "200",
+    "PS_SHOPPINGAGENT_LLM_DAILY_CAP_PCT": "70",
+    "PS_TRIAGEAI_LLM_ENABLED": "true",
+    "PS_TRIAGEAI_MIN_CONFIDENCE": "0.7",
+    "PS_TRIAGEAI_MAX_TEXT_CHARS": "1000",
+    "PS_TRIAGEAI_PROMPT_VERSION": "v1",
+    "PS_TRIAGEAI_TIMEOUT_CLASSIFY_S": "6",
+    "PS_TRIAGEAI_TIMEOUT_DRAFT_S": "8",
+    "PS_TRIAGEAI_TIMEOUT_BRIEF_S": "12",
+    "PS_TRIAGEAI_MAX_CALLS_PER_CASE": "6",
+    "PS_TRIAGEAI_CACHE_TTL_HOURS": "24",
+    "PS_TRIAGEAI_LLM_PROVIDER_PRIMARY": "groq",
+    "PS_TRIAGEAI_LLM_PROVIDER_FALLBACK": "gemini",
+    "PS_TRIAGEAI_LLM_MODEL_TRIAGE_PRIMARY": "openai/gpt-oss-20b",
+    "PS_TRIAGEAI_LLM_MODEL_TRIAGE_FALLBACK": "gemini-3.5-flash-lite"
+  }
+}
