@@ -37,7 +37,7 @@ async def test_refund_policy_seed_unknown_merchant_404(client):
     assert resp.json()["error"] == "MERCHANT_NOT_FOUND"
 
 
-async def test_list_categories_returns_six_seeded_categories(client):
+async def test_list_categories_returns_seeded_categories(client):
     resp = await client.get("/categories")
     assert resp.status_code == 200
     body = resp.json()
@@ -49,6 +49,15 @@ async def test_list_categories_returns_six_seeded_categories(client):
         "home",
         "electronics",
         "consumable",
+        "fitness",
+        "apparel",
+        "decor",
+        "pantry",
+        "gifts",
+        "audio",
+        "accessories",
+        "wearables",
+        "office",
     }
 
 
@@ -57,7 +66,7 @@ async def test_catalog_version_matches_seed(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["catalog_version"] == 1
-    assert body["item_count"] == 12
+    assert body["item_count"] == 180
     assert body["merchant_count"] == 3
     assert len(body["seed_hash"]) == 64  # sha256 hex digest
 
