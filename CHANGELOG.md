@@ -49,6 +49,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Gateway buyer signup, request-body forwarding fixes, reviewer/appeal/notification proxy routes (#153)
 - Web signup, how-it-works PayPal and AI story, reviewer decision UI (#158)
 - Add flag-gated demo persona sign-in to the gateway (#167)
+- Seeded-account picker on /login and a Run the demo guide at /guide (#168)
 
 ### Bug Fixes
 
@@ -178,6 +179,7 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - *(deploy)* Codify the non-secret Render settings and refresh the README status (#164)
+- Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
