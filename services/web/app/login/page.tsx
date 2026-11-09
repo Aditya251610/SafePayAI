@@ -4,12 +4,14 @@ import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
 import { Tag } from "@/components/ui/tag";
 import { LoginPanels } from "@/components/login/login-panels";
+import { WakePing } from "@/components/shared/wake-ping";
 
 export const metadata = { title: "Sign in · SafePayAI (sandbox demo)" };
 
 export default function LoginPage() {
   return (
     <div className="mx-auto max-w-page px-4 py-10 md:px-10">
+      <WakePing />
       <header className="flex items-center justify-between border-b-2 border-line pb-6">
         <Link href="/" aria-label="SafePayAI home">
           <Logo />

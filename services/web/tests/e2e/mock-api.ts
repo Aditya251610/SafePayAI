@@ -57,6 +57,7 @@ export async function mockApi(
       return json(r.status ?? 200, r.body ?? {}, r.headers);
     }
 
+    if (path === "/wake") return json(200, { pinged: 3 });
     if (path === "/auth/me") {
       if (!role)
         return json(401, { error: "UNAUTHENTICATED", message: "Sign in", request_id: "e2e" });

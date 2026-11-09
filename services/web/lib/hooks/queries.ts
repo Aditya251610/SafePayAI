@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { requireUuid } from "@/lib/api/ids";
+import type { CatalogItem } from "@/lib/api/schemas/catalog";
 
 export const keys = {
   buyerHome: ["buyer-home"] as const,
@@ -38,6 +39,23 @@ export function useCatalogMerchants() {
   return useQuery({
     queryKey: keys.catalog,
     queryFn: ({ signal }) => api.catalog.items({ limit: 100 }, signal),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** The whole seeded catalog for the marketplace (up to 3 pages of 200). Client filters and pages it. */
+export function useShopCatalog() {
+  return useQuery({
+    queryKey: ["shop-catalog"] as const,
+    queryFn: async ({ signal }) => {
+      const items: CatalogItem[] = [];
+      for (let page = 0; page < 3; page += 1) {
+        const res = await api.catalog.items({ limit: 200, offset: page * 200 }, signal);
+        items.push(...res.items);
+        if (!res.has_more) break;
+      }
+      return items;
+    },
     staleTime: 5 * 60_000,
   });
 }

@@ -279,6 +279,7 @@ export function defaultHandlers(): HttpHandler[] {
       anchor: null,
     }),
 
+    route("get", "/wake", 200, { pinged: 3 }),
     route("get", "/ops/status", 200, {
       demo_mode: true,
       money_routes_enabled: true,

@@ -72,7 +72,8 @@ export type ConfirmCartRequest = z.infer<typeof confirmCartRequestSchema>;
 export const confirmCartResponseSchema = z.object({
   order_id: z.string(),
   status: lenientEnum(ORDER_STATUSES),
-  approve_url: z.string(),
+  /** Empty or absent when PayPal could not create the order. */
+  approve_url: z.string().nullish(),
   total_minor: z.number().int(),
   currency: z.string(),
   expires_at: isoString.nullish(),

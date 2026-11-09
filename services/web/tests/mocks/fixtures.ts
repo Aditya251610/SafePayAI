@@ -263,3 +263,48 @@ export const refundsFrozen = {
   adapter_mirror: "PENDING",
   readable: true,
 };
+
+const SHOP_LAYOUT: [string, string[]][] = [
+  ["mrc_trailhead", ["running", "outdoor"]],
+  ["mrc_hearth", ["kitchen", "home", "pantry", "gifts"]],
+  ["mrc_pixelwire", ["electronics", "audio", "accessories", "wearables", "office"]],
+];
+
+/** Deterministic marketplace catalog built at runtime: 60 products for each of three shops. */
+export function shopItems(perMerchant = 60) {
+  const out: Array<{
+    sku: string;
+    merchant_id: string;
+    category_id: string;
+    title: string;
+    description: string;
+    unit_price_minor: number;
+    currency: string;
+    active: boolean;
+  }> = [];
+  SHOP_LAYOUT.forEach(([merchant, cats], m) => {
+    for (let i = 0; i < perMerchant; i += 1) {
+      const category = cats[i % cats.length] ?? "misc";
+      const n = String(i + 1).padStart(2, "0");
+      out.push({
+        sku: `${merchant.slice(4, 7).toUpperCase()}-${n}`,
+        merchant_id: merchant,
+        category_id: category,
+        title: `${category.charAt(0).toUpperCase()}${category.slice(1)} item ${n} ${merchant.slice(4, 8)}`,
+        description: `Plain description for item ${n}. <b>not html</b>`,
+        unit_price_minor: 1000 + ((i * 7 + m * 13) % 40) * 250,
+        currency: "USD",
+        active: true,
+      });
+    }
+  });
+  return out;
+}
+
+export const shopCatalog = () => ({
+  catalog_version: 1,
+  items: shopItems(),
+  limit: 200,
+  offset: 0,
+  has_more: false,
+});

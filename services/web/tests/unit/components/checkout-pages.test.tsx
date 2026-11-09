@@ -89,6 +89,76 @@ describe("CartView", () => {
     expect(goTo).not.toHaveBeenCalled();
   });
 
+  it("says PayPal could not start the payment when the order has no link, then retries with a new key", async () => {
+    seedCart();
+    answer("post", `/checkout/carts/${f.IDS.cart}/confirm`, 201, {
+      order_id: f.IDS.order,
+      status: "CREATE_FAILED",
+      approve_url: "",
+      total_minor: 4820,
+      currency: "USD",
+    });
+    renderApp(<CartView />);
+    await userEvent.click(await screen.findByRole("button", { name: "Approve cart" }));
+    expect(await screen.findByText(/PayPal could not start the payment/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Nothing was paid\. Try again in about 30 seconds\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Payment link not opened")).toBeNull();
+    expect(goTo).not.toHaveBeenCalled();
+
+    answer("post", `/checkout/carts/${f.IDS.cart}/confirm`, 201, {
+      order_id: f.IDS.order,
+      status: "AWAITING_APPROVAL",
+      approve_url: f.order.approve_url,
+      total_minor: 4820,
+      currency: "USD",
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(goTo).toHaveBeenCalledWith(f.order.approve_url));
+    const keys = callsTo("POST", `/checkout/carts/${f.IDS.cart}/confirm`).map(
+      (c) => c.headers["idempotency-key"],
+    );
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it("treats a CREATE_FAILED error the same way", async () => {
+    seedCart();
+    answer("post", `/checkout/carts/${f.IDS.cart}/confirm`, 422, {
+      error: "CREATE_FAILED",
+      message: "order create did not succeed",
+      request_id: "r",
+    });
+    renderApp(<CartView />);
+    await userEvent.click(await screen.findByRole("button", { name: "Approve cart" }));
+    expect(await screen.findByText(/PayPal could not start the payment/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("never offers a blind retry after an unknown create outcome", async () => {
+    seedCart();
+    answer("post", `/checkout/carts/${f.IDS.cart}/confirm`, 502, {
+      error: "CREATE_UNKNOWN",
+      message: "unknown",
+      request_id: "r",
+    });
+    renderApp(<CartView />);
+    await userEvent.click(await screen.findByRole("button", { name: "Approve cart" }));
+    await waitFor(() =>
+      expect(callsTo("POST", `/checkout/carts/${f.IDS.cart}/confirm`)).toHaveLength(1),
+    );
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByText(/PayPal could not start the payment/)).toBeNull();
+  });
+
+  it("pings the wake route once when the cart opens", async () => {
+    seedCart();
+    renderApp(<CartView />);
+    await screen.findByText("Rules decided");
+    expect(callsTo("GET", "/wake")).toHaveLength(1);
+  });
+
   it("offers no approve button on a blocked cart and says why", async () => {
     seedCart({
       status: "BLOCKED",

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server";
 import { IDS, terms } from "../../mocks/fixtures";
 import { TEST_BASE, calls, callsTo } from "../../mocks/handlers";
 import { ApiError, InvalidIdError, createApi, createClient } from "@/lib/api";
@@ -276,6 +278,15 @@ describe("audit", () => {
 describe("ops", () => {
   it("status", async () => {
     expect((await api.ops.status()).demo_mode).toBe(true);
+  });
+  it("wake returns the ping and swallows every failure", async () => {
+    expect(await api.ops.wake()).toEqual({ pinged: 3 });
+    server.use(
+      http.get(`${TEST_BASE}/wake`, () => HttpResponse.json({ nope: 1 }, { status: 429 })),
+    );
+    expect(await api.ops.wake()).toBeNull();
+    server.use(http.get(`${TEST_BASE}/wake`, () => HttpResponse.json({ bad: true })));
+    expect(await api.ops.wake()).toBeNull();
   });
   it("freeze uses the ops_freeze CSRF purpose and a non-empty reason", async () => {
     await api.ops.freeze({ frozen: false, reason: "resume" });

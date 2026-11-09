@@ -281,8 +281,9 @@ export function HowItWorks() {
           scene="agent"
           title="The agent drafts. Rules check."
           actors={["ai", "rules"]}
-          body="You describe what you want in words. The AI shopping agent drafts a cart from the seeded catalog. Then plain rules check that draft against your mandate."
+          body="Two ways to fill a cart. Describe what you want in words and the AI shopping agent drafts one from the seeded catalog, or browse the marketplace and add items yourself. Either way, plain rules check the cart against your mandate."
           facts={[
+            "Browsing is optional. The server still prices and checks the cart.",
             "The agent never holds PayPal credentials and never pays.",
             "Prices come from the catalog, not from the agent's words.",
             "If the agent fails or is unsure, you get the form instead.",

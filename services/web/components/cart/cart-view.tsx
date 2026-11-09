@@ -19,7 +19,11 @@ import { AmbiguousOutcomeError } from "@/lib/api/errors";
 import { newIdempotencyKey } from "@/lib/api/ids";
 import { pollUntil } from "@/lib/api/reconcile";
 import type { Check } from "@/lib/api/schemas/common";
-import { canRedirectToPayPal } from "@/lib/checkout/outcome";
+import {
+  canRedirectToPayPal,
+  isDefiniteStartFailure,
+  lacksPaymentLink,
+} from "@/lib/checkout/outcome";
 import { goTo } from "@/lib/checkout/navigate";
 import { checkLabel, reasonLabel } from "@/lib/format/checks";
 import { merchantLabel, shortId } from "@/lib/format/label";
@@ -62,6 +66,7 @@ function CartBody({ entry }: { entry: CartEntry }) {
   const [failure, setFailure] = React.useState<unknown>(null);
   const [checking, setChecking] = React.useState(false);
   const [blockedLink, setBlockedLink] = React.useState(false);
+  const [startFailed, setStartFailed] = React.useState(false);
   const key = React.useRef<string | null>(null);
   const seconds = useElapsed(busy);
 
@@ -91,6 +96,7 @@ function CartBody({ entry }: { entry: CartEntry }) {
   async function approve() {
     setFailure(null);
     setBlockedLink(false);
+    setStartFailed(false);
     setBusy(true);
     key.current ??= newIdempotencyKey();
     try {
@@ -102,7 +108,14 @@ function CartBody({ entry }: { entry: CartEntry }) {
         },
         { idempotencyKey: key.current },
       );
-      toPayPal(order.order_id, order.approve_url);
+      if (lacksPaymentLink(order)) {
+        // PayPal never produced a link, so nothing can be paid. A retry needs a new key.
+        key.current = null;
+        setStartFailed(true);
+        setBusy(false);
+        return;
+      }
+      toPayPal(order.order_id, order.approve_url ?? "");
     } catch (e) {
       if (e instanceof AmbiguousOutcomeError) {
         // The order may exist even though the answer was lost. Look for it; do not post again.
@@ -117,6 +130,12 @@ function CartBody({ entry }: { entry: CartEntry }) {
             toPayPal(order.order_id, order.approve_url);
             return;
           }
+          if (order?.status === "CREATE_FAILED") {
+            key.current = null;
+            setStartFailed(true);
+            setBusy(false);
+            return;
+          }
           if (order) {
             router.push(`/orders/${order.order_id}`);
             return;
@@ -127,7 +146,13 @@ function CartBody({ entry }: { entry: CartEntry }) {
           setChecking(false);
         }
       }
-      setFailure(e);
+      if (isDefiniteStartFailure(e)) {
+        // The attempt definitively failed, so the next try is a fresh request with a new key.
+        key.current = null;
+        setStartFailed(true);
+      } else {
+        setFailure(e);
+      }
       setBusy(false);
     }
   }
@@ -328,6 +353,17 @@ function CartBody({ entry }: { entry: CartEntry }) {
             The link did not point to the PayPal sandbox, so it was not opened. Nothing was paid.
           </Notice>
         )}
+        {startFailed && (
+          <Notice tone="warn" title="Payment not started">
+            <p>
+              PayPal could not start the payment, usually because the backend is waking up. Nothing
+              was paid. Try again in about 30 seconds.
+            </p>
+            <Button className="mt-3" size="sm" variant="secondary" onClick={() => void approve()}>
+              Retry
+            </Button>
+          </Notice>
+        )}
         {failure !== null && <ApiErrorNotice error={failure} />}
       </aside>
     </div>
@@ -338,6 +374,10 @@ export function CartView() {
   const { id } = useParams<{ id: string }>();
   const [entry, setEntry] = React.useState<CartEntry | null | undefined>(undefined);
   React.useEffect(() => setEntry(loadCart(id)), [id]);
+  // Start any sleeping backend host waking before the buyer presses Approve.
+  React.useEffect(() => {
+    void api.ops.wake();
+  }, []);
 
   if (entry === undefined) return <Skeleton className="h-72 w-full" />;
   if (entry === null) {

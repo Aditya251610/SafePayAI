@@ -11,6 +11,7 @@ export interface NavItem {
 export const NAV: Readonly<Record<Role, readonly NavItem[]>> = {
   buyer: [
     { href: "/home", label: "Home", tab: "Home" },
+    { href: "/shop", label: "Shop", tab: "Shop" },
     { href: "/intent", label: "Intent", tab: "Intent" },
     { href: "/orders", label: "Orders", tab: "Orders" },
     { href: "/audit", label: "Audit log", tab: "Audit" },

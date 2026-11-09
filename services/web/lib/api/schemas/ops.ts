@@ -13,3 +13,7 @@ export const freezeRequestSchema = z.object({
   reason: z.string().trim().min(1),
 });
 export type FreezeRequest = z.infer<typeof freezeRequestSchema>;
+
+/** Public wake-up ping. The count is informational only. */
+export const wakeSchema = z.object({ pinged: z.number().int().nonnegative() }).passthrough();
+export type Wake = z.infer<typeof wakeSchema>;

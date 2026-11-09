@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import { IntentForm } from "@/components/intent/intent-form";
@@ -20,6 +21,13 @@ export function IntentPage() {
         </div>
         <FlowRail step={0} className="w-full max-w-[220px]" />
       </div>
+      <p className="-mt-4 pb-6 text-sm text-mute">
+        Prefer to pick items yourself?{" "}
+        <Link href="/shop" className="font-semibold text-seal underline-offset-4 hover:underline">
+          Browse the marketplace
+        </Link>
+        .
+      </p>
       <IntentForm initialMode={mode} />
     </div>
   );
