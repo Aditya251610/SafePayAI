@@ -147,3 +147,6 @@ Do not hand-edit the sections below — they will be overwritten on the next reg
 - *(web)* Hardening - bundle budget, journey test, docs and cleanup (#122)
 - Regenerate changelog [skip ci]
 - Regenerate changelog [skip ci]
+- Regenerate changelog [skip ci]
+- *(web)* Take the in-range dependency updates (#147)
+- Ignore local tooling artifacts and pin Dependabot majors (#148)
