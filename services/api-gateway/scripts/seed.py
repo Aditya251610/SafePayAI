@@ -1,7 +1,7 @@
 """Seed script for the gateway's seeded accounts (spec.md section 3 / sprint-tasks
 GW-S1-04/05): one login per real catalog merchant (real multi-tenant identity,
 replacing the former single shared "merchant" demo login), operator, and an
-optional buyer persona. Hashes are made here, at seed time, from env-provided
+optional reviewer and buyer personas. Hashes are made here, at seed time, from env-provided
 passwords; the running app never reads `SEED_*` (per spec.md section 13).
 
 Usage:
@@ -12,7 +12,9 @@ Reads:
     SEED_MERCHANT_HEARTH_PASSWORD      (required)
     SEED_MERCHANT_PIXELWIRE_PASSWORD   (required)
     SEED_OPERATOR_PASSWORD             (required)
-    SEED_BUYER_PASSWORD                (optional - skips the buyer persona if unset)
+    SEED_REVIEWER_PASSWORD             (optional - skips `reviewer-demo` if unset)
+    SEED_BUYER_PASSWORD                (optional - skips `buyer-persona` if unset)
+    SEED_BUYER_ALEX_PASSWORD           (optional - skips `buyer-alex` if unset)
     PS_APIGATEWAY_DATABASE_URL (or PS_APIGATEWAY_MIGRATION_DATABASE_URL)
 
 Idempotent: upserts by handle, re-hashing the password every run (so rotating a
@@ -77,6 +79,24 @@ SEED_USERS = [
         "buyer",
         "Buyer persona (demo)",
         "SEED_BUYER_PASSWORD",
+        False,
+        None,
+    ),
+    (
+        "buyer-alex",
+        "buyer",
+        "buyer",
+        "Alex Rivera (demo buyer)",
+        "SEED_BUYER_ALEX_PASSWORD",
+        False,
+        None,
+    ),
+    (
+        "reviewer-demo",
+        "reviewer",
+        "reviewer",
+        "Reviewer (demo)",
+        "SEED_REVIEWER_PASSWORD",
         False,
         None,
     ),

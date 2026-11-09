@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -10,6 +12,40 @@ class LoginRequest(BaseModel):
 
     handle: str
     password: str
+
+
+HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{2,31}$")
+# Handles that collide with seeded/staff identities or demo personas.
+RESERVED_HANDLE_PREFIXES = (
+    "merchant-",
+    "operator",
+    "reviewer",
+    "admin",
+    "demo",
+    "buyer-persona",
+)
+
+
+class SignupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    handle: str
+    password: str = Field(min_length=10, max_length=128, repr=False)
+    display_name: str | None = Field(default=None, min_length=1, max_length=60)
+
+    @field_validator("handle", mode="before")
+    @classmethod
+    def _normalise_handle(cls, v: object) -> object:
+        return v.strip().lower() if isinstance(v, str) else v
+
+    @field_validator("handle")
+    @classmethod
+    def _check_handle(cls, v: str) -> str:
+        if not HANDLE_RE.fullmatch(v):
+            raise ValueError("handle must match ^[a-z0-9][a-z0-9_-]{2,31}$")
+        if v.startswith(RESERVED_HANDLE_PREFIXES):
+            raise ValueError("handle is reserved")
+        return v
 
 
 class Principal(BaseModel):

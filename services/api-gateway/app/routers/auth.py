@@ -12,15 +12,16 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.passwords import verify_password
+from app.auth.passwords import hash_password, verify_password
 from app.csrf import issue_csrf_token
 from app.db import get_db_session
 from app.deps import Principal, clear_session_cookie, require_session
 from app.ratelimit import limiter
-from app.schemas.auth import LoginRequest
+from app.schemas.auth import LoginRequest, SignupRequest
 from app.sessions import (
     count_live_ephemeral_buyers,
     create_session,
@@ -35,6 +36,8 @@ AUTH_RATE_LIMIT = 10
 AUTH_WINDOW_S = 60.0
 AUTH_LOGIN_RATE_LIMIT = 5
 AUTH_LOGIN_WINDOW_S = 60.0
+AUTH_SIGNUP_RATE_LIMIT = 5
+AUTH_SIGNUP_WINDOW_S = 600.0
 
 
 def _client_ip(request: Request, settings: Settings) -> str:
@@ -127,6 +130,73 @@ async def demo_session(
             "actor_id": user_id,
             "role": "buyer",
             "display_name": display_name,
+        },
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+@router.post("/signup", status_code=201, response_model=None)
+async def signup(
+    body: SignupRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> dict | JSONResponse:
+    """Real, persistent buyer account. No CSRF (no session exists yet), same as
+    login/demo-session. Never logs the password."""
+    ip = _client_ip(request, settings)
+    allowed, retry_after = limiter.check(
+        f"auth-signup:{ip}", AUTH_SIGNUP_RATE_LIMIT, AUTH_SIGNUP_WINDOW_S
+    )
+    if not allowed:
+        return _rate_limited(response, retry_after)
+
+    display_name = body.display_name if body.display_name else body.handle
+    row = (
+        await db.execute(
+            text(
+                """
+                INSERT INTO "gateway"."users"
+                    (handle, role, actor_type, display_name, password_hash,
+                     is_ephemeral, epoch)
+                VALUES (:handle, 'buyer', 'buyer', :display_name, :password_hash,
+                        false, 0)
+                ON CONFLICT (handle) DO NOTHING
+                RETURNING id, epoch
+                """
+            ),
+            {
+                "handle": body.handle,
+                "display_name": display_name,
+                "password_hash": hash_password(body.password),
+            },
+        )
+    ).first()
+    await db.commit()
+    if row is None:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "HANDLE_TAKEN",
+                "message": "That handle is already taken.",
+                "request_id": str(uuid.uuid4()),
+            },
+        )
+    user_id, epoch = str(row[0]), row[1]
+
+    raw_sid, expires_at = await create_session(
+        db, user_id=user_id, role="buyer", epoch=epoch, settings=settings
+    )
+    _set_session_cookie(response, settings, raw_sid, expires_at)
+
+    return {
+        "principal": {
+            "actor_type": "buyer",
+            "actor_id": user_id,
+            "role": "buyer",
+            "display_name": display_name,
+            "merchant_id": None,
         },
         "expires_at": expires_at.isoformat(),
     }
