@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app_mandate import mandate_logic, repo
 from app_mandate.crypto import GRANT_HMAC_DOMAIN, canon_hash, compute_hmac
-from app_mandate.deps import Principal, get_session, require_service_caller
+from app_mandate.deps import (
+    Principal,
+    get_session,
+    require_service_caller,
+    valid_mandate_id,
+)
 from app_mandate.errors import MandateError
 from app_mandate.schemas.reservations import (
     AuthorizeCaptureRequest,
@@ -50,7 +56,7 @@ def _reservation_view(row: dict, mandate_summary: dict | None = None) -> dict:
 
 @router.post("/mandates/{mandate_id}/reservations", status_code=201)
 async def create_reservation(
-    mandate_id: str,
+    mandate_id: Annotated[str, Depends(valid_mandate_id)],
     body: ReservationCreateRequest,
     response: Response,
     principal: Principal = Depends(require_service_caller),

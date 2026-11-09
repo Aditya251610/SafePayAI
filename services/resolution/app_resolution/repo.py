@@ -346,6 +346,22 @@ async def get_offer(
     return dict(row) if row else None
 
 
+async def get_active_offer(
+    session: AsyncSession, case_id: uuid.UUID
+) -> dict[str, Any] | None:
+    """Latest ACTIVE offer for a case (at most one is ACTIVE at a time), else None."""
+    result = await session.execute(
+        text(
+            f"SELECT {OFFER_COLUMNS} FROM resolution.offers "
+            "WHERE case_id = :case_id AND status = 'ACTIVE' "
+            "ORDER BY offer_seq DESC LIMIT 1"
+        ),
+        {"case_id": case_id},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
 async def cas_accept_offer(session: AsyncSession, offer_id: uuid.UUID) -> bool:
     """Single winner: UPDATE offers SET status='ACCEPTED' WHERE status='ACTIVE' (spec s13)."""
     result = await session.execute(

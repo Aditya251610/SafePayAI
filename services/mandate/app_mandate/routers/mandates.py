@@ -6,6 +6,7 @@ import base64
 import secrets
 import uuid
 from datetime import timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy import text
@@ -24,6 +25,7 @@ from app_mandate.deps import (
     get_session,
     require_buyer,
     require_service_caller,
+    valid_mandate_id,
     verify_internal_jwt,
 )
 from app_mandate.errors import MandateError
@@ -448,7 +450,7 @@ async def _load_mandate_context(
 
 @router.get("/mandates/{mandate_id}")
 async def get_mandate(
-    mandate_id: str,
+    mandate_id: Annotated[str, Depends(valid_mandate_id)],
     response: Response,
     principal: Principal = Depends(verify_internal_jwt),
     session: AsyncSession = Depends(get_session),
@@ -493,7 +495,7 @@ async def get_mandate(
 
 @router.get("/mandates/{mandate_id}/terms")
 async def get_mandate_terms(
-    mandate_id: str,
+    mandate_id: Annotated[str, Depends(valid_mandate_id)],
     response: Response,
     principal: Principal = Depends(verify_internal_jwt),
     session: AsyncSession = Depends(get_session),
@@ -559,7 +561,7 @@ async def get_mandate_terms(
 
 @router.get("/mandates/{mandate_id}/summary")
 async def get_mandate_summary(
-    mandate_id: str,
+    mandate_id: Annotated[str, Depends(valid_mandate_id)],
     response: Response,
     principal: Principal = Depends(require_service_caller),
     session: AsyncSession = Depends(get_session),
@@ -609,7 +611,7 @@ async def get_mandate_summary(
 
 @router.get("/mandates/{mandate_id}/verify")
 async def verify_mandate(
-    mandate_id: str,
+    mandate_id: Annotated[str, Depends(valid_mandate_id)],
     response: Response,
     principal: Principal = Depends(verify_internal_jwt),
     session: AsyncSession = Depends(get_session),
@@ -650,7 +652,7 @@ async def verify_mandate(
 
 @router.post("/mandates/{mandate_id}/revoke")
 async def revoke_mandate(
-    mandate_id: str,
+    mandate_id: Annotated[str, Depends(valid_mandate_id)],
     body: RevokeRequest,
     response: Response,
     principal: Principal = Depends(require_buyer),
@@ -751,7 +753,7 @@ async def revoke_mandate(
 
 @router.post("/mandates/{mandate_id}/evaluate")
 async def evaluate_mandate(
-    mandate_id: str,
+    mandate_id: Annotated[str, Depends(valid_mandate_id)],
     body: EvaluateRequest,
     response: Response,
     principal: Principal = Depends(require_service_caller),

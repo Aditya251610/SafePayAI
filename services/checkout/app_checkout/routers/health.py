@@ -18,6 +18,9 @@ from app_checkout.settings import Settings, get_settings
 
 router = APIRouter(tags=["health"])
 
+# paypal-adapter's canonical liveness route is /health (the one exception to /healthz).
+ADAPTER_HEALTH_PATH = "/health"
+
 
 async def _check_db(session_factory: async_sessionmaker[AsyncSession]) -> bool:
     for attempt in range(3):
@@ -30,13 +33,13 @@ async def _check_db(session_factory: async_sessionmaker[AsyncSession]) -> bool:
     return False
 
 
-async def _check_upstream(base_url: str) -> bool:
+async def _check_upstream(base_url: str, path: str = "/healthz") -> bool:
     """A readiness-probe check, not a business call: short timeout, no retry, any
     failure (timeout/connection/non-2xx) just means "not ready yet", not an error to
     surface to the caller."""
     try:
         async with build_client(base_url, timeout=httpx.Timeout(3.0)) as client:
-            resp = await client.get("/healthz")
+            resp = await client.get(path)
         return resp.status_code == 200
     except httpx.HTTPError:
         return False
@@ -53,7 +56,7 @@ async def readyz(settings: Settings = Depends(get_settings)) -> JSONResponse:
         _check_db(SessionLocal),
         _check_upstream(settings.mandate_base_url),
         _check_upstream(settings.catalog_base_url),
-        _check_upstream(settings.paypal_adapter_base_url),
+        _check_upstream(settings.paypal_adapter_base_url, ADAPTER_HEALTH_PATH),
     )
     body = {
         "db": "ok" if db_ok else "unreachable",

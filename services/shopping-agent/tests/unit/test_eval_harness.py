@@ -14,12 +14,34 @@ import pytest
 SERVICE_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVICE_DIR / "scripts"))
 
-from run_agent_eval import run_all
+import run_agent_eval
+from run_agent_eval import REPORT_JSON_PATH, REPORT_MD_PATH, run_all
+
+from app_shopping_agent.settings import Settings
 
 
 @pytest.mark.asyncio
-async def test_every_case_fails_closed_against_stub_providers() -> None:
+async def test_every_case_fails_closed_against_stub_providers(monkeypatch) -> None:
+    # Hermetic: never reach live LLMs even when real keys are in the env / .env, and
+    # never touch the committed evals/report.json + REPORT.md (run_all() only returns
+    # the report; write_reports() is main()'s job -- guarded below with a snapshot).
+    for var in (
+        "PS_SHOPPINGAGENT_GEMINI_API_KEY",
+        "PS_SHOPPINGAGENT_GROQ_API_KEY",
+        "GEMINI_API_KEY",
+        "GROQ_API_KEY",
+    ):
+        monkeypatch.setenv(var, "")
+    monkeypatch.setattr(
+        run_agent_eval,
+        "get_settings",
+        lambda: Settings(_env_file=None, gemini_api_key=None, groq_api_key=None),
+    )
+    committed = [REPORT_JSON_PATH, REPORT_MD_PATH]
+    before = [p.read_bytes() for p in committed]
     report = await run_all()
+    assert [p.read_bytes() for p in committed] == before
+    assert report["models_seen"] == []
     assert report["total_cases"] == 20
     assert report["fail_closed_count"] == 20
     assert report["hard_gate_violation_count"] == 0

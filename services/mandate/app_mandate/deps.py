@@ -7,6 +7,7 @@ preferred, no cold-start network dependency) or PS_MANDATE_INTERNAL_JWKS_URL.
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass, field
 
 import jwt
@@ -128,3 +129,14 @@ async def require_service_caller(
     if not principal.sub.startswith("svc:"):
         raise HTTPException(status_code=403, detail="CALLER_NOT_ALLOWED")
     return principal
+
+
+def valid_mandate_id(mandate_id: str) -> str:
+    """Path-param guard: a non-UUID id can never exist, so it is a clean 404 (not a
+    Postgres uuid-cast error surfacing as a 500)."""
+    from app_mandate.errors import MandateError
+
+    try:
+        return str(uuid.UUID(mandate_id))
+    except ValueError:
+        raise MandateError(404, "MANDATE_NOT_FOUND", "mandate not found", {}) from None

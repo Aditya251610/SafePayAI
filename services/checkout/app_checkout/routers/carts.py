@@ -280,9 +280,11 @@ async def create_cart(
         currency=currency,
         lines=response_lines,
         total_minor=total_minor,
-        remaining_cap_minor_after=(mandate_eval or {})
-        .get("mandate", {})
-        .get("remaining_minor", 0),
+        remaining_cap_minor_after=logic.remaining_cap_after(
+            (mandate_eval or {}).get("mandate", {}).get("remaining_minor", 0),
+            total_minor,
+            status,
+        ),
         proposal_hash=proposal_hash,
         checks=[
             CartCheck(
